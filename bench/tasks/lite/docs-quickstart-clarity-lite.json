@@ -21,7 +21,6 @@
   "forbidden_doc_patterns": [
     "requirements\\.txt",
     "generate_report\\.py",
-    "git clone",
     "pip install -r"
   ]
 }

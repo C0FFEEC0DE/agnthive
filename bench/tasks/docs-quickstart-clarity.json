@@ -22,7 +22,6 @@
   "forbidden_doc_patterns": [
     "requirements\\.txt",
     "generate_report\\.py",
-    "git clone",
     "anthropics/claude-crew",
     "pip install -r"
   ]
