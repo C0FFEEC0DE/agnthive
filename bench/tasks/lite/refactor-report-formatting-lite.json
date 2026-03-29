@@ -1,0 +1,21 @@
+{
+  "id": "refactor-report-formatting-lite",
+  "category": "refactor",
+  "fixture": "text-report",
+  "review_required": true,
+  "docs_required": false,
+  "verification_required": true,
+  "prompt": "Refactor reporter.py to remove the duplicated title/subtitle normalization logic while preserving the current public behavior and function names. Keep the change small, run pytest -q, and finish with a concise review-ready summary.",
+  "success_criteria": [
+    "Duplication between render_title() and render_subtitle() is reduced",
+    "The public behavior and function names stay unchanged",
+    "pytest -q is run successfully after the refactor",
+    "The final response includes verification and review status"
+  ],
+  "must_not": [
+    "Change the rendered output format",
+    "Skip verification after changing code",
+    "Add unrelated features or docs updates",
+    "Perform release or deploy work"
+  ]
+}

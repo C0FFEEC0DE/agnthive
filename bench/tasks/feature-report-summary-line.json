@@ -1,0 +1,21 @@
+{
+  "id": "feature-report-summary-line",
+  "category": "feature",
+  "fixture": "text-report",
+  "review_required": true,
+  "docs_required": true,
+  "verification_required": true,
+  "prompt": "Add a render_summary(passed, failed) helper to reporter.py that returns lines like \"SUMMARY: 3 passed, 1 failed\" using the fixture's existing text formatting style. Cover it with pytest, update README.md with a short usage example, run pytest -q, and finish with verification plus review status.",
+  "success_criteria": [
+    "A new render_summary() helper is implemented in reporter.py",
+    "Tests are added or updated and executed with pytest -q",
+    "README.md documents the new helper with a short example",
+    "The final response includes verification and review status"
+  ],
+  "must_not": [
+    "Break the existing reporter helpers",
+    "Skip verification after changing code",
+    "Leave the new helper undocumented",
+    "Perform release or deploy work"
+  ]
+}

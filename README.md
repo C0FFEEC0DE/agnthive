@@ -164,7 +164,7 @@ That workflow:
 - runs `claudecfg/install.sh` to install the repo config into `~/.claude`
 - copies each benchmark fixture into an isolated task workdir
 - runs the real `claude -p` inside that workdir
-- uses the lightweight default task suite under `bench/tasks/lite/` so small models can still exercise agent behavior
+- uses the default task suite under `bench/tasks/` so the gate exercises real coding workflows instead of only the lightest smoke cases
 - checks that required tasks actually changed files, kept docs/code scope rules, and still pass verification
 - requires the final Claude response to include `Verification status:`, `Review outcome:`, and `Remaining risks:`
 - uploads per-task Claude logs, results, and workspace patches as artifacts
@@ -172,7 +172,8 @@ That workflow:
 
 This is now the only real Claude Code workflow in the repository.
 
-The heavier task definitions in `bench/tasks/*.json` remain available for manual full-suite runs, but CI defaults to the lighter suite so the gate measures agent behavior rather than raw model capability.
+The default suite now covers multiple agent workflows: a bugfix with tests and docs, a new feature in the calculator fixture, a bounded refactor that must preserve behavior, a new feature in the text-report fixture, and a docs-only README task that must not touch code.
+The lighter task definitions in `bench/tasks/lite/*.json` remain available for manual cheap smoke runs when you want a faster provider sanity check.
 
 Required benchmark model variable:
 

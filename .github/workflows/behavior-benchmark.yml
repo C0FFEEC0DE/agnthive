@@ -7,7 +7,7 @@ on:
       task_glob:
         description: "Task glob relative to repository root"
         required: false
-        default: "bench/tasks/lite/*.json"
+        default: "bench/tasks/*.json"
         type: string
       max_turns:
         description: "Maximum Claude Code turns per task"
@@ -54,7 +54,7 @@ jobs:
           VAR_BENCHMARK_TIMEOUT_SECONDS: ${{ vars.BEHAVIOR_BENCHMARK_TIMEOUT_SECONDS }}
           VAR_BENCHMARK_MAX_OUTPUT_TOKENS: ${{ vars.BEHAVIOR_BENCHMARK_MAX_OUTPUT_TOKENS }}
         run: |
-          task_glob="${INPUT_TASK_GLOB:-bench/tasks/lite/*.json}"
+          task_glob="${INPUT_TASK_GLOB:-bench/tasks/*.json}"
           max_turns="${INPUT_MAX_TURNS:-16}"
           model="${VAR_OLLAMA_MODEL:-}"
           timeout_seconds="${INPUT_TIMEOUT_SECONDS:-${VAR_BENCHMARK_TIMEOUT_SECONDS:-420}}"
