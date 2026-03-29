@@ -173,7 +173,7 @@ That workflow:
 - runs `claudecfg/install.sh` to install the repo config into `~/.claude`
 - copies each benchmark fixture into an isolated task workdir
 - runs the real `claude -p` inside that workdir
-- uses the default task suite under `bench/tasks/` so the gate exercises real coding workflows instead of only the lightest smoke cases
+- uses the default cheap CI suite under `bench/tasks/lite/` so the gate stays fast enough for small models
 - checks that required tasks actually changed files, kept docs/code scope rules, and still pass verification
 - requires the final Claude response to include `Verification status:`, `Review outcome:`, and `Remaining risks:`
 - reports both configured and executed task counts so fail-fast runs are not mistaken for full-suite coverage
@@ -182,13 +182,17 @@ That workflow:
 
 This is now the only real Claude Code workflow in the repository.
 
-The default suite now covers multiple agent workflows: a bugfix with tests and docs, a new feature in the calculator fixture, a bounded refactor that must preserve behavior, a new feature in the text-report fixture, and a docs-only README task that must not touch code.
-The lighter task definitions in `bench/tasks/lite/*.json` remain available for manual cheap smoke runs when you want a faster provider sanity check.
+The default CI suite covers three small agent workflows:
+- a bugfix with tests and a short docs update
+- a docs-only README task that must not touch code
+- a bounded refactor that must preserve behavior
+
+The fuller suite in `bench/tasks/*.json` remains available for manual or slower evaluation runs when you want broader workflow coverage.
 
 Required benchmark model variable:
 
 - `OLLAMA_MODEL=qwen3.5:cloud`
-- optional: `BEHAVIOR_BENCHMARK_MAX_OUTPUT_TOKENS=4096`
+- optional: `BEHAVIOR_BENCHMARK_MAX_OUTPUT_TOKENS=1024`
 
 ## Logs
 

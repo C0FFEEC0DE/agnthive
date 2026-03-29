@@ -5,7 +5,7 @@
   "review_required": false,
   "docs_required": true,
   "verification_required": false,
-  "prompt": "Edit README.md only. Add a short quickstart section for the text-report fixture that tells the reader to inspect reporter.py and run pytest -q. Keep it explicit that the fixture already contains everything needed and no extra install or clone step is required.",
+  "prompt": "Edit README.md only. Add a short quickstart that tells the reader to inspect reporter.py and run pytest -q. Say that no extra install or clone step is needed.",
   "success_criteria": [
     "README.md is updated with a short quickstart section",
     "The quickstart mentions reporter.py and pytest -q",

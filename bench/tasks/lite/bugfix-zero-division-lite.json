@@ -5,12 +5,12 @@
   "review_required": true,
   "docs_required": true,
   "verification_required": true,
-  "prompt": "Update divide() so dividing by zero raises ValueError(\"division by zero\"). Add one focused pytest case in test_calculator.py, update README.md with a short note about the zero-division behavior, run pytest -q, and finish with a concise review-ready summary.",
+  "prompt": "Make divide() raise ValueError(\"division by zero\") on zero division. Add one pytest case, add one short README note, run pytest -q, and finish with the required footer.",
   "success_criteria": [
-    "divide() raises a clear ValueError on zero division",
-    "A focused pytest case covers the zero-division behavior",
+    "divide() raises ValueError on zero division",
+    "One focused pytest case covers the behavior",
     "README.md mentions the zero-division behavior",
-    "The final response includes verification and review status"
+    "The final response includes the required footer"
   ],
   "must_not": [
     "Skip pytest -q after changing code",

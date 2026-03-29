@@ -7,22 +7,22 @@ on:
       task_glob:
         description: "Task glob relative to repository root"
         required: false
-        default: "bench/tasks/*.json"
+        default: "bench/tasks/lite/*.json"
         type: string
       max_turns:
         description: "Maximum Claude Code turns per task"
         required: false
-        default: "16"
+        default: "8"
         type: string
       timeout_seconds:
         description: "Per-task Claude timeout in seconds"
         required: false
-        default: "420"
+        default: "240"
         type: string
       max_output_tokens:
         description: "Claude Code max output tokens per request"
         required: false
-        default: "4096"
+        default: "1024"
         type: string
 
 jobs:
@@ -54,11 +54,11 @@ jobs:
           VAR_BENCHMARK_TIMEOUT_SECONDS: ${{ vars.BEHAVIOR_BENCHMARK_TIMEOUT_SECONDS }}
           VAR_BENCHMARK_MAX_OUTPUT_TOKENS: ${{ vars.BEHAVIOR_BENCHMARK_MAX_OUTPUT_TOKENS }}
         run: |
-          task_glob="${INPUT_TASK_GLOB:-bench/tasks/*.json}"
-          max_turns="${INPUT_MAX_TURNS:-16}"
+          task_glob="${INPUT_TASK_GLOB:-bench/tasks/lite/*.json}"
+          max_turns="${INPUT_MAX_TURNS:-8}"
           model="${VAR_OLLAMA_MODEL:-}"
-          timeout_seconds="${INPUT_TIMEOUT_SECONDS:-${VAR_BENCHMARK_TIMEOUT_SECONDS:-420}}"
-          max_output_tokens="${INPUT_MAX_OUTPUT_TOKENS:-${VAR_BENCHMARK_MAX_OUTPUT_TOKENS:-4096}}"
+          timeout_seconds="${INPUT_TIMEOUT_SECONDS:-${VAR_BENCHMARK_TIMEOUT_SECONDS:-240}}"
+          max_output_tokens="${INPUT_MAX_OUTPUT_TOKENS:-${VAR_BENCHMARK_MAX_OUTPUT_TOKENS:-1024}}"
 
           if [ -z "$model" ]; then
             echo "OLLAMA_MODEL GitHub Actions variable is required" >&2
