@@ -34,6 +34,10 @@
   "required_transcript_patterns": [
     "Task:\\s*Debug",
     "Reproduction:",
-    "Root cause:"
+    "Root cause:",
+    "Outcome:",
+    "Changed files:|No files changed:",
+    "Verification status:",
+    "Remaining risks:|Next step:"
   ]
 }

@@ -684,7 +684,7 @@ def completed_task_recovery_mode(
     if exit_code == 124 and fatal_error.startswith("Claude timed out after "):
         return "timeout"
 
-    if exit_code != 0 and payload_subtype == "error_max_turns":
+    if payload_subtype == "error_max_turns":
         return "max_turns"
 
     return "none"

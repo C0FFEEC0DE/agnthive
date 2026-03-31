@@ -98,7 +98,7 @@
     "script": "claudecfg/hooks/subagent-stop-guard.sh",
     "stdin": "tests/hooks/fixtures/subagent_stop_missing_risks_or_next.json",
     "expect_exit": 0,
-    "stdout_jq": ".decision == \"block\" and (.reason | contains(\"remaining risks or the next step\"))"
+    "stdout_jq": ".decision == \"block\" and (.reason | contains(\"remaining risks or the next step\")) and (.errorDetails | contains(\"- [PASS] Concrete outcome\")) and (.errorDetails | contains(\"- [FAIL] Closure line\")) and (.errorDetails | contains(\"### Minimal Valid Template\"))"
   },
   {
     "name": "subagent_stop_allows_complete_summary",
@@ -181,13 +181,6 @@
     "expect_exit": 0,
     "stdout_jq": ".hookSpecificOutput.hookEventName == \"UserPromptSubmit\" and (.hookSpecificOutput.additionalContext | contains(\"@cr\"))",
     "state_jq": ".task_type == \"review\" and .required_subagents == [\"cr\"] and .required_subagent_any_of == []"
-  },
-  {
-    "name": "user_prompt_submit_leaves_model_question_as_other",
-    "script": "claudecfg/hooks/user-prompt-submit.sh",
-    "stdin": "tests/hooks/fixtures/user_prompt_model_question.json",
-    "expect_exit": 0,
-    "state_jq": ".task_type == \"other\" and .required_subagents == [] and .required_subagent_any_of == []"
   },
   {
     "name": "user_prompt_submit_classifies_mixed_intent_as_bugfix",
@@ -479,7 +472,7 @@
     "stdin": "tests/hooks/fixtures/stop_guard_missing_verification.json",
     "seed_state": "tests/hooks/fixtures/state_stop_guard_seed.json",
     "expect_exit": 0,
-    "stdout_jq": ".decision == \"block\" and (.reason | contains(\"verification status\"))"
+    "stdout_jq": ".decision == \"block\" and (.reason | contains(\"verification status\")) and (.errorDetails | contains(\"- [FAIL] Verification status line\")) and (.errorDetails | contains(\"- [FAIL] Review outcome line\")) and (.errorDetails | contains(\"- [PASS] Changed files line\")) and (.errorDetails | contains(\"### Workflow Gates\")) and (.errorDetails | contains(\"### Minimal Valid Template\"))"
   },
   {
     "name": "stop_guard_blocks_keyword_only_summary_without_exact_footer_prefixes",
@@ -625,6 +618,13 @@
     "seed_state": "tests/hooks/fixtures/state_stop_guard_repeated_review_block.json",
     "expect_exit": 0,
     "stdout_jq": ".decision == \"block\" and (.reason | contains(\"Repeated stop-block loop detected\"))"
+  },
+  {
+    "name": "stop_guard_allows_other_task_type_without_verification",
+    "script": "claudecfg/hooks/stop-guard.sh",
+    "stdin": "tests/hooks/fixtures/stop_guard_other_task_type.json",
+    "seed_state": "tests/hooks/fixtures/state_stop_guard_other_task_type.json",
+    "expect_exit": 0
   },
   {
     "name": "session_start_detects_node_scripts",

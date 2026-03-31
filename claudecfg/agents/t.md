@@ -35,7 +35,9 @@ type: Tester
 - Highlight important gaps that still need manual or automated verification
 - Name any changed test or fixture files explicitly
 - Distinguish automated checks that ran from manual checks that still need a human
-- For handoff replies, include exact lines that begin with `Outcome:`, `Changed files:`, `Verification status:`, and either `Remaining risks:` or `Next step:`
+- For handoff replies, end with a stop-safe footer that uses exact line prefixes recognized by the shell guard
+- The footer must include `Outcome:`, `Changed files:` or `No files changed:`, `Verification status:`, and one closure line: either `Remaining risks:` or `Next step:`
+- Prefer `Remaining risks:` when the main handoff is coverage gaps or residual uncertainty
 
 ## Strategies
 
@@ -59,17 +61,15 @@ type: Tester
 
 ## Standard Output
 
-```
+```text
 Task: Testing — <what to test>
 Status: <pending|in_progress|completed|blocked>
 Commands run: <exact commands or `not-run`>
 Covered behavior: <what assertions or checks actually covered>
 Gaps: <what's not covered>
 Outcome: <what was verified>
-Changed files: <files or no changes>
-Verification status: <passed|failed|not-run>
+Changed files: <path1>, <path2> | No files changed: <reason>
+Verification status: <passed|failed|not run|not required> - <exact command or reason>
 Remaining risks: <risks or none>
-Next step: <next step>
 ```
-
-Fill every field.
+Use `Next step:` instead of `Remaining risks:` when the best handoff is a concrete follow-up verification action.

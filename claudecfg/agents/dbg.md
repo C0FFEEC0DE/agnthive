@@ -37,11 +37,13 @@ type: Debugger
 - Prefer minimal probes over broad random changes
 - Document reproduction steps so another agent can continue from your state
 - If you changed files while debugging, name them explicitly
-- For handoff replies, include exact lines that begin with `Outcome:`, `Changed files:`, `Verification status:`, and either `Remaining risks:` or `Next step:`
+- For handoff replies, end with a stop-safe footer that uses exact line prefixes recognized by the shell guard
+- The footer must include `Outcome:`, `Changed files:` or `No files changed:`, `Verification status:`, and one closure line: either `Remaining risks:` or `Next step:`
+- Prefer `Next step:` when the debugger isolated the issue but implementation is not finished yet
 
 ## Output Format
 
-```
+```text
 Task: Debug — <brief description>
 Status: <pending|in_progress|completed|blocked>
 Reproduction:
@@ -54,10 +56,8 @@ Location: <file:function, hook, or path>
 Root cause: <why it happens>
 Fix direction: <what should change or no fix proposed>
 Outcome: <what was reproduced or fixed>
-Changed files: <files or no changes>
-Verification status: <status or not run>
-Remaining risks: <risks or none>
+Changed files: <path1>, <path2> | No files changed: <reason>
+Verification status: <passed|failed|not run|not required> - <command, evidence, or reason>
 Next step: <next step if any>
 ```
-
-Fill every field.
+Use `Remaining risks:` instead of `Next step:` when residual risk is the real handoff.

@@ -61,11 +61,13 @@ This is static analysis work.
 - Prefer a short list of defensible findings over a long speculative list
 - If no material findings are present, say that clearly
 - End with the safest next debugging or implementation step
-- For handoff replies, include exact lines that begin with `Outcome:`, `Changed files:`, `Verification status:`, and either `Remaining risks:` or `Next step:`
+- For handoff replies, end with a stop-safe footer that uses exact line prefixes recognized by the shell guard
+- The footer must include `Outcome:`, `Changed files:` or `No files changed:`, `Verification status:`, and one closure line: either `Remaining risks:` or `Next step:`
+- Prefer `Next step:` when the output is primarily an investigation handoff
 
 ## Output Format
 
-```
+```text
 Task: Bug Scan — <file/module>
 Status: <in_progress|completed|blocked>
 Findings:
@@ -73,10 +75,8 @@ Findings:
 - [MAJOR] <pattern>: <file:line> — <description>
 - [MINOR] <pattern>: <file:line> — <description>
 Outcome: <what was confirmed>
-Changed files: <files or no changes>
-Verification status: <status or not run>
-Remaining risks: <risks or none>
+Changed files: <path1>, <path2> | No files changed: <reason>
+Verification status: <passed|failed|not run|not required> - <command, evidence, or reason>
 Next step: <next debugging or implementation step>
 ```
-
-Fill every field.
+Use `Remaining risks:` instead of `Next step:` when the main handoff is residual risk rather than a concrete action.

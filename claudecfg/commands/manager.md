@@ -31,3 +31,5 @@ The @manager agent will:
 - For broad review scopes, normally hand off to `@e` before `@cr` so the reviewer gets a mapped target area instead of doing all discovery inline
 - Do not expose hook mechanics, footer formatting repair, or prefix-matching chatter in user-facing updates
 - Call out blockers and assumptions explicitly
+- Manager and specialist handoffs should end with exact footer prefixes recognized by the hooks: `Outcome:`, `Changed files:` or `No files changed:`, `Verification status:`, and either `Remaining risks:` or `Next step:`
+- When the manager is producing the final implementation summary after code/config changes, include `Review outcome:` as well

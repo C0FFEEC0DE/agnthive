@@ -26,3 +26,4 @@ The @debugger agent will:
 - Don't change code until you understand the cause
 - Document what you've tried
 - Stop if stuck > 30 min
+- The resulting handoff should end with exact footer prefixes recognized by the hooks: `Outcome:`, `Changed files:` or `No files changed:`, `Verification status:`, and either `Remaining risks:` or `Next step:`

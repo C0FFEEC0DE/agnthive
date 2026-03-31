@@ -283,19 +283,24 @@ emit_loop_aware_block() {
     local prefix="$1"
     local reason="$2"
     local message="$3"
-    local count final_reason
+    local count final_reason error_message checklist_output
 
     record_loop_block "$prefix" "$reason" "$message"
     count="$(loop_block_count "$prefix")"
     final_reason="$reason"
+    error_message="$reason"
 
     if [ "$count" -ge 3 ]; then
         final_reason="Repeated stop-block loop detected (${count}x): ${reason} Do not retry the same final response again; change the summary or perform the required action first."
+        error_message="Repeated stop-block loop detected (${count}x)"
     fi
 
-    jq -n --arg reason "$final_reason" '{
+    checklist_output="$(build_block_checklist "$prefix" "$final_reason" "$message")"
+
+    jq -n --arg checklist "$checklist_output" --arg reason "$final_reason" '{
         decision: "block",
-        reason: $reason
+        reason: $reason,
+        errorDetails: $checklist
     }'
 }
 
@@ -323,28 +328,52 @@ emit_context() {
 emit_pretool_decision() {
     local decision="$1"
     local reason="$2"
+    local error_details=""
+    error_details+="### PreToolUse Decision\n\n"
+    error_details+="- **Decision:** ${decision}\n"
+    error_details+="- **Reason:** ${reason}\n"
+    error_details+="\n### What to Do Instead\n\n"
+    error_details+="- Use safe alternatives to blocked commands\n"
+    error_details+="- For build/test/deploy, use the repo's CI/CD workflow\n"
+    error_details+="\n---\n"
+    error_details+="**Decision:** ${decision}\n"
+    error_details+="**Reason:** ${reason}\n"
     jq -n \
         --arg decision "$decision" \
         --arg reason "$reason" \
+        --arg error_details "$error_details" \
         '{
             hookSpecificOutput: {
                 hookEventName: "PreToolUse",
                 permissionDecision: $decision,
-                permissionDecisionReason: $reason
+                permissionDecisionReason: $reason,
+                errorDetails: $error_details
             }
         }'
 }
 
 emit_permission_request_deny() {
     local message="$1"
+    local error_details=""
+    error_details+="### Permission Request Denied\n\n"
+    error_details+="- **Decision:** deny\n"
+    error_details+="- **Reason:** ${message}\n"
+    error_details+="\n### What to Do Instead\n\n"
+    error_details+="- Use allowed commands per the profile\n"
+    error_details+="- For manual review, use the CLI directly with explicit approval\n"
+    error_details+="\n---\n"
+    error_details+="**Decision:** deny\n"
+    error_details+="**Reason:** ${message}\n"
     jq -n \
         --arg message "$message" \
+        --arg error_details "$error_details" \
         '{
             hookSpecificOutput: {
                 hookEventName: "PermissionRequest",
                 decision: {
                     behavior: "deny",
-                    message: $message
+                    message: $message,
+                    errorDetails: $error_details
                 }
             }
         }'
@@ -368,6 +397,18 @@ permission_denied_should_retry() {
 
 stop_safe_no_change_footer_hint() {
     printf ' If this reply did not introduce additional changes, still report the actual verification, review, changed files, and remaining risks instead of using a no-change shortcut after code or config changes.'
+}
+
+checklist_status_line() {
+    local status="$1"
+    local label="$2"
+    local detail="$3"
+
+    printf -- "- [%s] %s" "$status" "$label"
+    if [ -n "$detail" ]; then
+        printf -- " %s" "$detail"
+    fi
+    printf "\n"
 }
 
 message_has_line_prefix() {
@@ -867,6 +908,175 @@ message_reports_no_changes() {
     message_has_line_prefix "$message" "No changes were made." \
         || message_has_line_prefix "$message" "No files changed." \
         || message_has_line_prefix "$message" "Nothing changed."
+}
+
+block_checklist_summary_requirements() {
+    local prefix="$1"
+    local message="$2"
+    local state code_changed task_type
+    local verification_ok review_ok files_ok risks_ok next_ok outcome_ok
+
+    state="$(state_file)"
+    code_changed="$(jq -r '.code_changed // false' "$state")"
+    task_type="$(jq -r '.task_type // "other"' "$state")"
+
+    printf "### Requirement Checklist\n\n"
+
+    if [ "$prefix" = "stop" ]; then
+        if [ "$code_changed" != "true" ] || [ "$task_type" = "other" ]; then
+            checklist_status_line "SKIP" "Implementation summary lines" "Not required for this stop event."
+            return 0
+        fi
+
+        verification_ok="FAIL"
+        review_ok="FAIL"
+        files_ok="FAIL"
+        risks_ok="FAIL"
+
+        if message_mentions_verification_status "$message"; then
+            verification_ok="PASS"
+        fi
+        if message_mentions_review_outcome "$message"; then
+            review_ok="PASS"
+        fi
+        if message_mentions_changed_files "$message"; then
+            files_ok="PASS"
+        fi
+        if message_mentions_remaining_risks "$message"; then
+            risks_ok="PASS"
+        fi
+
+        checklist_status_line "$verification_ok" "Verification status line" 'Accepted prefixes: `Verification status:`, `Verification:`, `Verification result:`, `Test status:`, `Tests:`.'
+        checklist_status_line "$review_ok" "Review outcome line" 'Accepted prefixes: `Review outcome:`, `Review status:`, `Review:`.'
+        checklist_status_line "$files_ok" "Changed files line" 'Accepted prefixes: `Changed files:`, `Key files changed:`, `Files changed:`, `Updated files:`, `Modified files:`, `No files changed:`.'
+        checklist_status_line "$risks_ok" "Remaining risks line" 'Accepted prefixes: `Remaining risks:`, `Residual risks:`, `Risks:`.'
+
+        if message_reports_no_changes "$message"; then
+            checklist_status_line "FAIL" "No-change shortcut" 'Do not use `No changes were made.` after code/config changes.'
+        else
+            checklist_status_line "PASS" "No-change shortcut" "No forbidden no-change shortcut detected."
+        fi
+        return 0
+    fi
+
+    outcome_ok="FAIL"
+    files_ok="FAIL"
+    verification_ok="FAIL"
+    risks_ok="FAIL"
+    next_ok="FAIL"
+
+    if message_mentions_concrete_outcome "$message"; then
+        outcome_ok="PASS"
+    fi
+    if message_mentions_changed_files "$message"; then
+        files_ok="PASS"
+    fi
+    if message_mentions_verification_status "$message"; then
+        verification_ok="PASS"
+    fi
+    if message_mentions_remaining_risks "$message"; then
+        risks_ok="PASS"
+    fi
+    if message_mentions_next_step "$message"; then
+        next_ok="PASS"
+    fi
+
+    checklist_status_line "$outcome_ok" "Concrete outcome" 'Example prefixes/content: `Outcome:`, `Result:`, or a concrete action like `fixed`, `updated`, `implemented`.'
+    checklist_status_line "$files_ok" "Changed files line" 'Accepted prefixes: `Changed files:`, `Files changed:`, `Updated files:`, `Modified files:`, `No files changed:`.'
+    checklist_status_line "$verification_ok" "Verification status line" 'Accepted prefixes: `Verification status:`, `Verification:`, `Verification result:`, `Test status:`, `Tests:`.'
+    if [ "$risks_ok" = "PASS" ] || [ "$next_ok" = "PASS" ]; then
+        checklist_status_line "PASS" "Closure line" 'Need either `Remaining risks:` or `Next step:`.'
+    else
+        checklist_status_line "FAIL" "Closure line" 'Add either `Remaining risks:` or `Next step:`.'
+    fi
+}
+
+block_checklist_gate_requirements() {
+    local prefix="$1"
+    local state code_changed task_type
+    local verification_reason handoff_reason
+
+    state="$(state_file)"
+    code_changed="$(jq -r '.code_changed // false' "$state")"
+    task_type="$(jq -r '.task_type // "other"' "$state")"
+
+    if [ "$prefix" != "stop" ]; then
+        return 0
+    fi
+
+    printf "\n### Workflow Gates\n\n"
+
+    if [ "$code_changed" = "true" ]; then
+        verification_reason="$(session_block_reason || true)"
+        if [ -n "$verification_reason" ]; then
+            checklist_status_line "FAIL" "Verification gate" "$verification_reason"
+        else
+            checklist_status_line "PASS" "Verification gate" "No failing or missing required verification commands detected."
+        fi
+    else
+        checklist_status_line "SKIP" "Verification gate" "No code/config changes recorded."
+    fi
+
+    case "$task_type" in
+        feature|bugfix|refactor|review|docs)
+            handoff_reason="$(session_agent_enforcement_reason || true)"
+            if [ -n "$handoff_reason" ]; then
+                checklist_status_line "FAIL" "Required specialist handoffs" "$handoff_reason"
+            else
+                checklist_status_line "PASS" "Required specialist handoffs" "All required roles for this workflow are satisfied."
+            fi
+            ;;
+        *)
+            checklist_status_line "SKIP" "Required specialist handoffs" "No workflow-specific handoff requirement for this task type."
+            ;;
+    esac
+}
+
+block_checklist_fix_template() {
+    local prefix="$1"
+
+    printf "\n### Minimal Valid Template\n\n"
+    if [ "$prefix" = "stop" ]; then
+        cat <<'EOF'
+```text
+Verification status: passed|failed|not run - <what you ran or why not>
+Review outcome: done|pending - <what review happened or why pending>
+Changed files: <path1>, <path2> | No files changed: <reason>
+Remaining risks: none | <specific risk>
+```
+EOF
+    else
+        cat <<'EOF'
+```text
+Outcome: <concrete result>
+Changed files: <path1>, <path2> | No files changed: <reason>
+Verification status: passed|failed|not run - <command or reason>
+Remaining risks: none | <specific risk>
+```
+If risks are not known yet, replace the last line with:
+```text
+Next step: <single concrete next action>
+```
+EOF
+    fi
+}
+
+build_block_checklist() {
+    local prefix="$1"
+    local final_reason="$2"
+    local message="$3"
+
+    printf "### Block Reason\n\n"
+    printf -- "- **Reason:** %s\n" "$final_reason"
+    printf "\n"
+    block_checklist_summary_requirements "$prefix" "$message"
+    block_checklist_gate_requirements "$prefix"
+    block_checklist_fix_template "$prefix"
+    printf "\n### Your Current Response\n\n"
+    printf "```text\n%s\n```\n" "$message"
+    printf "\n---\n"
+    printf "**Decision:** block\n"
+    printf "**Reason:** %s\n" "$final_reason"
 }
 
 session_block_reason() {

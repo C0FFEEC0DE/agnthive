@@ -29,3 +29,4 @@ The @architect agent will:
 - YAGNI — don't do for "later"
 - Start simple, improve as needed
 - This handoff satisfies the design/exploration branch of the agent gate for `feature` and `refactor` workflows
+- The resulting handoff should end with exact footer prefixes recognized by the hooks: `Outcome:`, `Changed files:` or `No files changed:`, `Verification status:`, and either `Remaining risks:` or `Next step:`

@@ -27,3 +27,4 @@ The @docwriter agent will:
 - Do not invent files, commands, or setup steps
 - Prefer updating existing docs before adding new ones
 - This is the documented entry point for the `@doc` handoff used by `docs` workflows
+- The resulting handoff should end with exact footer prefixes recognized by the hooks: `Outcome:`, `Changed files:` or `No files changed:`, `Verification status:`, and either `Remaining risks:` or `Next step:`

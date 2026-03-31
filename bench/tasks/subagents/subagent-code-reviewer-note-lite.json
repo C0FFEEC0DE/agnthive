@@ -32,6 +32,11 @@
   ],
   "required_transcript_patterns": [
     "Task:\\s*Code Review",
-    "Findings:"
+    "Findings:",
+    "Review outcome:",
+    "Outcome:",
+    "Changed files:|No files changed:",
+    "Verification status:",
+    "Remaining risks:|Next step:"
   ]
 }

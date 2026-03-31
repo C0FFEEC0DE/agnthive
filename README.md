@@ -92,7 +92,7 @@ The profile uses hooks as enforcement points, not markdown alone:
 - `SessionEnd` — index transcript paths and session metadata for later dataset work
 
 `Stop` and `SubagentStop` are enforced by shell guards only. This avoids prompt-hook failures on tool-only turns while still requiring structured final summaries after code/config changes or subagent handoffs. If a repo has no detected `test`, `lint`, or `build` command, `Stop` no longer deadlocks the session, but the final summary must explicitly say that verification was not run and why. In manager-led workflows, `TeammateIdle` also blocks if no specialist handoff happened yet, so `@m` cannot linger in manager-only analysis indefinitely. When the runtime explicitly backgrounds a live manager-led workflow and no code/config changes have happened yet, `Stop` now defers the specialist-role gate for that turn instead of looping on a premature finalization attempt.
-For code or config changes, the stop-safe summary is line-oriented: include exact summary lines for `Verification status:`, `Review outcome:`, `Changed files:` or `No files changed:`, and `Remaining risks:` rather than relying on loose keywords alone.
+For code or config changes, the stop-safe summary is line-oriented: include exact summary lines for `Verification status:`, `Review outcome:`, `Changed files:` or `No files changed:`, and `Remaining risks:` rather than relying on loose keywords alone. For subagent handoffs, use `Outcome:`, `Changed files:` or `No files changed:`, `Verification status:`, and one closure line: either `Remaining risks:` or `Next step:`.
 General informational questions should remain outside the SDLC workflow gates. Mentions of models, Ollama, or OpenRouter only trigger implementation workflows when the prompt also asks to change the repository, such as adding support, integrating, configuring, or implementing behavior.
 
 If a later reply in the same session makes no additional changes after earlier code/config edits, keep reporting the actual verification, review status, changed files, and remaining risks instead of switching to a no-change footer.
@@ -183,7 +183,7 @@ That workflow:
 - runs the real `claude -p` inside that workdir
 - uses the default cheap CI suite under `bench/tasks/lite/` so the gate stays fast enough for small models
 - checks that required tasks actually changed files, kept docs/code scope rules, and still pass verification
-- requires the final Claude response to include `Verification status:`, `Review outcome:`, and `Remaining risks:`
+- requires the final Claude response to include exact stop-safe summary lines for `Verification status:`, `Review outcome:`, `Changed files:` or `No files changed:`, and `Remaining risks:`
 - reports both configured and executed task counts so fail-fast runs are not mistaken for full-suite coverage
 - uploads per-task Claude logs, results, and workspace patches as artifacts
 - fails unless every benchmark task passes

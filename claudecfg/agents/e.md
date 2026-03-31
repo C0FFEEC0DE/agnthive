@@ -54,7 +54,9 @@ When supporting `@cr`, prioritize review-oriented mapping: workflow boundaries, 
 - Do not re-read the same file section if the earlier read already answered the question
 - Make the relevant files and symbols explicit in the final handoff
 - End with the most useful next place to look or next action to take
-- For handoff replies, include exact lines that begin with `Outcome:`, `Changed files:`, `Verification status:`, and either `Remaining risks:` or `Next step:`
+- For handoff replies, end with a stop-safe footer that uses exact line prefixes recognized by the shell guard
+- The footer must include `Outcome:`, `Changed files:` or `No files changed:`, `Verification status:`, and one closure line: either `Remaining risks:` or `Next step:`
+- Prefer `Next step:` when the exploration result is mainly a map for the next agent
 
 ## Strategies
 
@@ -71,17 +73,15 @@ Who uses whom → where things connect → full picture.
 
 Start with the actual exploration answer. Append the required handoff footer after that answer rather than replacing the answer with footer-only content.
 
-```
+```text
 Task: Explore — <what we're exploring>
 Status: <pending|in_progress|completed|blocked>
 Locations: <files, symbols, entry points>
 Control flow: <how the path moves through the code>
 Config/env: <relevant config, flags, env, or none>
 Outcome: <what was confirmed>
-Changed files: <files or no changes>
-Verification status: <status or not run>
-Remaining risks: <unknowns or none>
+Changed files: <path1>, <path2> | No files changed: <reason>
+Verification status: <passed|failed|not run|not required> - <command, evidence, or reason>
 Next step: <next step>
 ```
-
-Fill every field.
+Use `Remaining risks:` instead of `Next step:` when unresolved uncertainty is the main handoff.

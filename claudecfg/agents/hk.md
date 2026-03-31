@@ -45,7 +45,9 @@ type: Housekeeper
 - Prefer precise targeted searches over broad recursive scans
 - Warn about leftover risk or debt instead of hiding it
 - When invoked for refactor work, keep the scope structural and behavior-preserving unless the user explicitly asked for more
-- For handoff replies, include exact lines that begin with `Outcome:`, `Changed files:`, `Verification status:`, and either `Remaining risks:` or `Next step:`
+- For handoff replies, end with a stop-safe footer that uses exact line prefixes recognized by the shell guard
+- The footer must include `Outcome:`, `Changed files:` or `No files changed:`, `Verification status:`, and one closure line: either `Remaining risks:` or `Next step:`
+- Prefer `Remaining risks:` when cleanup leaves debt or risky leftovers behind
 
 ## Strategies
 
@@ -60,15 +62,13 @@ Structure → duplicates → unused files → report.
 
 ## Standard Output
 
-```
+```text
 Task: Veles — <what we're doing>
 Status: <pending|in_progress|completed|blocked>
 Warnings: <warnings>
 Outcome: <what was cleaned or refactored>
-Changed files: <files or no changes>
-Verification status: <status or not run>
+Changed files: <path1>, <path2> | No files changed: <reason>
+Verification status: <passed|failed|not run|not required> - <command, evidence, or reason>
 Remaining risks: <risks or none>
-Next step: <next step>
 ```
-
-Fill every field.
+Use `Next step:` instead of `Remaining risks:` when the important handoff is the next concrete cleanup or refactor action.

@@ -94,23 +94,23 @@ Required role gates by workflow:
 - Reuse findings from earlier reads in the same session instead of repeating full-file reads
 - Call out assumptions, blockers, and any missing verification context
 - Do not include release/deploy work in this profile
-- For any subagent handoff or completion-style reply, include exact lines that begin with `Outcome:`, `Changed files:`, `Verification status:`, and either `Remaining risks:` or `Next step:`
+- For any subagent handoff or completion-style reply, end with a stop-safe footer that uses exact line prefixes recognized by the shell guard
+- The footer must include `Outcome:`, `Changed files:` or `No files changed:`, `Verification status:`, and one closure line: either `Remaining risks:` or `Next step:`
+- When the manager is producing a final implementation summary after code/config changes, also include `Review outcome:` in the main summary because the stop guard requires it
 
 ## Standard Output
 
 Start with the actual coordination or explanatory content. Append the required handoff footer after that content rather than turning the whole reply into footer repair chatter.
 
-```
+```text
 Task: <name>
 Status: <pending|in_progress|completed|blocked>
 Plan:
 - <current plan or coordination state>
 Workflow phase: <discover|design|implement|verify|review|docs|cleanup|blocked>
 Outcome: <what was coordinated or confirmed>
-Changed files: <files or no changes>
-Verification status: <status or not run>
-Remaining risks: <risks or none>
+Changed files: <path1>, <path2> | No files changed: <reason>
+Verification status: <passed|failed|not run|not required> - <command, evidence, or reason>
 Next step: <next step>
 ```
-
-Fill every field.
+Use `Remaining risks:` instead of `Next step:` when residual risk is the more useful close.

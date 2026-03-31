@@ -10,6 +10,8 @@ This profile is hook-gated:
 - session metadata is logged for later audit or dataset indexing
 - final completion and subagent handoff are enforced by shell hooks using shared session state for test/lint/build results and summary requirements
 - stop-safe no-op replies are only valid when the session made no code or config changes; after code/config edits, keep reporting the actual verification, review outcome, changed files, and remaining risks instead of using a no-change shortcut
+- final implementation summaries after code/config changes must include exact stop-safe lines for `Verification status:`, `Review outcome:`, `Changed files:` or `No files changed:`, and `Remaining risks:`
+- subagent handoffs must include exact handoff-footer lines for `Outcome:`, `Changed files:` or `No files changed:`, `Verification status:`, and one closure line: `Remaining risks:` or `Next step:`
 - feature work requires successful verification or `@t`, plus `@cr` and one of `@e|@a`
 - bugfix work requires successful verification or `@t`, plus `@cr` and one of `@bug|@e|@dbg`
 - refactor work requires successful verification or `@t`, plus `@cr` and one of `@a|@e|@hk`
@@ -56,5 +58,6 @@ Repository CI now includes:
 - `Behavior Benchmark` on every push, plus manual runs with model and task-glob overrides, using real `claude -p` inside isolated benchmark fixtures
 
 Agent-level regressions are covered by the golden suite in `bench/tasks/subagents/`. Use `docs/agent-contracts.md` for the contract matrix and the expected benchmark/hook layers for each agent.
+The repository validator also enforces the shared subagent footer markers inside those golden benchmark tasks, so prompt, benchmark, and hook contracts cannot silently drift apart.
 
 OpenRouter-backed Claude Code is configured via repository secrets/variables. See `docs/benchmarking.md`.

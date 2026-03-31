@@ -190,3 +190,30 @@ def test_completed_task_recovery_mode_rejects_max_turns_without_required_review(
     )
 
     assert recovery == "none"
+
+
+def test_completed_task_recovery_mode_accepts_max_turns_with_zero_exit_when_contract_is_satisfied(
+    tmp_path, monkeypatch
+):
+    runner = load_runner_module(tmp_path, monkeypatch)
+
+    recovery = runner.completed_task_recovery_mode(
+        exit_code=0,
+        payload_subtype="error_max_turns",
+        fatal_error="Claude result text is missing or empty.",
+        completed=True,
+        verification_required=True,
+        tests_run=True,
+        tests_passed=True,
+        verification_summary_present=True,
+        review_required=True,
+        review_present=True,
+        risks_present=True,
+        docs_required=True,
+        docs_updated=True,
+        category="bugfix",
+        non_doc_changed_files=["calculator.py"],
+        doc_pattern_hits=[],
+    )
+
+    assert recovery == "max_turns"

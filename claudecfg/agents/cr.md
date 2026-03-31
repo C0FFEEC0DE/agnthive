@@ -51,7 +51,9 @@ type: Code Reviewer
 - For small localized reviews, do not force an explorer handoff if the scope is already clear
 - Prefer review comments tied to behavior, risk, and maintainability over style nitpicks
 - Include file or symbol context for each material finding when possible
-- For handoff replies, include exact lines that begin with `Outcome:`, `Changed files:`, `Verification status:`, and either `Remaining risks:` or `Next step:`
+- For handoff replies, end with a stop-safe footer that uses exact line prefixes recognized by the shell guard
+- The footer must include `Outcome:`, `Changed files:` or `No files changed:`, `Verification status:`, and one closure line: either `Remaining risks:` or `Next step:`
+- Keep `Review outcome:` in the role-specific section because review workflows and the main stop summary rely on it
 
 **Note**: Review is a required final gate for implementation and refactor work in this profile.
 
@@ -71,17 +73,15 @@ Only SOLID, DRY, code cleanliness.
 
 ## Standard Output
 
-```
+```text
 Task: Code Review — <file/module>
 Status: <pending|in_progress|completed|blocked>
 Findings:
 - <ordered finding or `none`>
 Review outcome: <done|pending|not required> - <one sentence>
 Outcome: <what was reviewed>
-Changed files: <files reviewed or no changes>
-Verification status: <status or not run>
+Changed files: <path1>, <path2> | No files changed: <reason>
+Verification status: <passed|failed|not run|not required> - <command, evidence, or reason>
 Remaining risks: <risks or none>
-Next step: <next step>
 ```
-
-Fill every field.
+Use `Next step:` instead of `Remaining risks:` when the review's main handoff is a concrete follow-up action.

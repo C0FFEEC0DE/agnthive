@@ -31,6 +31,7 @@ The @code-reviewer agent will:
 - [ ] Tests exist and pass
 - [ ] No sensitive data in logs
 - This is the documented entry point for the required `@cr` handoff used by `feature`, `bugfix`, `refactor`, and `review` workflows
+- Review handoffs should also include `Review outcome:` plus exact footer prefixes recognized by the hooks: `Outcome:`, `Changed files:` or `No files changed:`, `Verification status:`, and either `Remaining risks:` or `Next step:`
 
 ## Review Scope Policy
 - Small localized reviews can stay `@cr`-only

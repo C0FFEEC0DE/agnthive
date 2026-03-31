@@ -32,6 +32,10 @@
   ],
   "required_transcript_patterns": [
     "Task:\\s*Explore",
-    "Locations:"
+    "Locations:",
+    "Outcome:",
+    "Changed files:|No files changed:",
+    "Verification status:",
+    "Remaining risks:|Next step:"
   ]
 }

@@ -27,3 +27,4 @@ The @bugbuster agent will:
 - Prefer root cause over symptom-level patching
 - Keep the investigation scoped to the described failure
 - This is the documented entry point for the bug-investigation handoff used by `bugfix` workflows
+- The resulting handoff should end with exact footer prefixes recognized by the hooks: `Outcome:`, `Changed files:` or `No files changed:`, `Verification status:`, and either `Remaining risks:` or `Next step:`

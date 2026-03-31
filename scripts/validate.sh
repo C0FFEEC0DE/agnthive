@@ -10,14 +10,14 @@ cd "$REPO_ROOT"
 
 ERRORS=0
 
-echo "=== Validation Script ==="
-echo "Repository: $REPO_ROOT"
-echo ""
-
 report_error() {
     echo "ERROR: $1"
     ERRORS=$((ERRORS + 1))
 }
+
+echo "=== Validation Script ==="
+echo "Repository: $REPO_ROOT"
+echo ""
 
 echo "--- Checking JSON files ---"
 while IFS= read -r json_file; do
@@ -189,6 +189,12 @@ echo "--- Checking benchmark tasks ---"
 TASK_IDS=()
 EXPECTED_SUBAGENT_ALIASES=(m e a bug dbg t cr doc hk)
 SUBAGENT_ALIASES_SEEN=()
+SUBAGENT_REQUIRED_FOOTER_REGEXES=(
+    "Outcome:"
+    "Changed files:|No files changed:"
+    "Verification status:"
+    "Remaining risks:|Next step:"
+)
 shopt -s nullglob
 while IFS= read -r task_file; do
     task_id="$(jq -r '.id // empty' "$task_file")"
@@ -223,6 +229,22 @@ while IFS= read -r task_file; do
             report_error "Subagent benchmark task must declare agent_alias plus non-empty required/forbidden transcript patterns: $task_file"
         else
             SUBAGENT_ALIASES_SEEN+=("$agent_alias")
+        fi
+
+        for required_regex in "${SUBAGENT_REQUIRED_FOOTER_REGEXES[@]}"; do
+            if ! jq -e --arg pattern "$required_regex" '
+                (.required_transcript_patterns // []) | any(test($pattern))
+            ' "$task_file" >/dev/null; then
+                report_error "Subagent benchmark task is missing required footer transcript pattern '$required_regex': $task_file"
+            fi
+        done
+
+        if [ "$agent_alias" = "cr" ]; then
+            if ! jq -e '
+                (.required_transcript_patterns // []) | any(. == "Review outcome:")
+            ' "$task_file" >/dev/null; then
+                report_error "Code reviewer benchmark task must require 'Review outcome:' in transcript patterns: $task_file"
+            fi
         fi
     fi
 

@@ -54,7 +54,9 @@ type: Plan
 - Call out risks, compatibility concerns, and follow-up work
 - Make the design handoff concrete enough that another agent can implement it without guessing
 - If design uncertainty remains, say what code or runtime evidence is still needed
-- For handoff replies, include exact lines that begin with `Outcome:`, `Changed files:`, `Verification status:`, and either `Remaining risks:` or `Next step:`
+- For handoff replies, end with a stop-safe footer that uses exact line prefixes recognized by the shell guard
+- The footer must include `Outcome:`, `Changed files:` or `No files changed:`, `Verification status:`, and one closure line: either `Remaining risks:` or `Next step:`
+- Prefer `Remaining risks: none` when there is no meaningful follow-up handoff
 
 ## Strategies
 
@@ -69,16 +71,14 @@ Old architecture → new → transition plan (step by step).
 
 ## Standard Output
 
-```
+```text
 Task: Design — <what we're designing>
 Status: <pending|in_progress|completed|blocked>
 Solution: <chosen solution and why>
 Files: <file structure>
 Outcome: <what was decided>
-Changed files: <files or no changes>
-Verification status: <status or not run>
+Changed files: <path1>, <path2> | No files changed: <reason>
+Verification status: <passed|failed|not run|not required> - <command, evidence, or reason>
 Remaining risks: <risks or none>
-Next step: <next step>
 ```
-
-Fill every field.
+Use `Next step:` instead of `Remaining risks:` when the most useful close is a concrete next action.

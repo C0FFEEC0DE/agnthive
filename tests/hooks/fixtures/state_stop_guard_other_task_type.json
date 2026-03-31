@@ -1,0 +1,20 @@
+{
+  "session_id": "case-stop-guard-other",
+  "cwd": "",
+  "transcript_path": "",
+  "created_at": "2026-03-25T00:00:00Z",
+  "task_type": "other",
+  "edited": true,
+  "code_changed": true,
+  "docs_changed": false,
+  "tests_ok": false,
+  "tests_failed": false,
+  "lint_ok": false,
+  "lint_failed": false,
+  "build_ok": false,
+  "build_failed": false,
+  "last_test_command": "",
+  "last_lint_command": "",
+  "last_build_command": "",
+  "files": []
+}

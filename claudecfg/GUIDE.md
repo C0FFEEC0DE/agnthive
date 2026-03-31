@@ -124,17 +124,17 @@ Those footer requirements are an internal handoff contract. Agents should not na
 
 ## Standard Output
 
-All subagents may include role-specific sections, but their handoff footer must use exact line prefixes that the shell guards recognize:
+All subagents may include role-specific sections, but their handoff footer must use exact line prefixes that the shell guards recognize. Use one closure line, not both, unless the extra line adds real value:
 
 ```text
 Task: <name>
 Status: <pending|in_progress|completed|blocked>
 Outcome: <what was done or confirmed>
-Changed files: <files or no changes>
-Verification status: <passed|failed|not run|not required>
+Changed files: <path1>, <path2> | No files changed: <reason>
+Verification status: <passed|failed|not run|not required> - <command, evidence, or reason>
 Remaining risks: <risks or none>
-Next step: <next step>
 ```
+Use `Next step:` instead of `Remaining risks:` when the main handoff is a concrete follow-up action.
 
 ## CLAUDE.md
 Create `./CLAUDE.md` in project — put project context there (max 50 lines).

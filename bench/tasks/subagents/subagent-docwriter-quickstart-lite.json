@@ -25,7 +25,11 @@
   ],
   "required_transcript_patterns": [
     "Task:\\s*Docs",
-    "Coverage:"
+    "Coverage:",
+    "Outcome:",
+    "Changed files:|No files changed:",
+    "Verification status:",
+    "Remaining risks:|Next step:"
   ],
   "forbidden_transcript_patterns": [
     "I see the issue",

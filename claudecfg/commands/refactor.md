@@ -29,3 +29,4 @@ The @housekeeper agent, Veles, will:
 - Don't add features with refactor
 - Leave code cleaner than it was
 - This handoff satisfies the refactor design/cleanup branch of the gate together with required `@cr` and either successful verification or `@t`
+- The resulting handoff should end with exact footer prefixes recognized by the hooks: `Outcome:`, `Changed files:` or `No files changed:`, `Verification status:`, and either `Remaining risks:` or `Next step:`

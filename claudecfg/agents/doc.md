@@ -39,7 +39,9 @@ type: Docwriter
 - Prefer the smallest doc update that removes ambiguity
 - Call out remaining documentation drift if you see it
 - Name the exact documentation files you changed
-- For handoff replies, include exact lines that begin with `Outcome:`, `Changed files:`, `Verification status:`, and either `Remaining risks:` or `Next step:`
+- For handoff replies, end with a stop-safe footer that uses exact line prefixes recognized by the shell guard
+- The footer must include `Outcome:`, `Changed files:` or `No files changed:`, `Verification status:`, and one closure line: either `Remaining risks:` or `Next step:`
+- Prefer `Remaining risks:` when the main handoff is documentation drift or unverified examples
 
 ## Strategies
 
@@ -54,15 +56,13 @@ Endpoints → parameters → responses → curl examples.
 
 ## Standard Output
 
-```
+```text
 Task: Docs — <what we're documenting>
 Status: <pending|in_progress|completed|blocked>
 Coverage: <what's covered>
 Outcome: <what was documented>
-Changed files: <files or no changes>
-Verification status: <status or not run>
-Remaining risks: <risks or none>   # use this when residual risk or drift remains
-Next step: <next step>             # use this instead when the key handoff is the next action
+Changed files: <path1>, <path2> | No files changed: <reason>
+Verification status: <passed|failed|not run|not required> - <command, evidence, or reason>
+Remaining risks: <risks or none>
 ```
-
-Fill every field except that the final line may be either `Remaining risks:` or `Next step:` to match the handoff contract.
+Use `Next step:` instead of `Remaining risks:` when the key handoff is the next concrete action.
