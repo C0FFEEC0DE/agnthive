@@ -361,7 +361,7 @@ task_type_requires_specialist_handoffs() {
     local task_type="${1:-}"
 
     case "$task_type" in
-        feature|bugfix|refactor|review|docs)
+        feature|bugfix|refactor|review|docs|support)
             return 0
             ;;
         *)
@@ -840,7 +840,13 @@ command_class() {
         *"npm run lint"*|*"pnpm lint"*|*"yarn lint"*|*"ruff"*|*"flake8"*|*"cargo clippy"*|*"golangci-lint"*|*"eslint"*|*"shellcheck"*|*"python -m compileall "*|*"make lint"*)
             printf "lint"
             ;;
-        *"make"$|*"make "*|*"make:"*)
+        *"cmake --build"*)
+            printf "build"
+            ;;
+        *"make test"*|*"make all"*|*"make clean"*)
+            printf "test"
+            ;;
+        "make"|"make "*)
             printf "build"
             ;;
         *)
@@ -1087,7 +1093,7 @@ block_checklist_gate_requirements() {
         checklist_status_line "SKIP" "Verification gate" "No code/config changes recorded."
     fi
 
-    if task_type_requires_specialist_handoffs "$task_type"; then
+    if task_type_requires_implementation_summary "$task_type"; then
         handoff_reason="$(session_agent_enforcement_reason || true)"
         if [ -n "$handoff_reason" ]; then
             checklist_status_line "FAIL" "Required specialist handoffs" "$handoff_reason"

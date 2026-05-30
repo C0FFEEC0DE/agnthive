@@ -38,7 +38,7 @@ fi
 if [ "$code_changed" = "true" ]; then
     load_last_message
     if [ -z "$last_message" ]; then
-        emit_loop_aware_block "stop" "Code or config changed, but no assistant summary message was found for this stop event." "$last_message"
+        emit_loop_aware_block "stop" "Code or config changed (${task_type}), but no assistant summary message was found for this stop event." "$last_message"
         exit 0
     fi
 
