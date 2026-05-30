@@ -73,7 +73,7 @@ extract_last_assistant_message_from_jsonl_stream() {
             reverse[]
             | select(
                 (.type? == "assistant")
-                or (.type? == "result")
+                or (.type? == "result" and (has("tool_use_id") | not))
                 or (.role? == "assistant")
                 or (.message?.role? == "assistant")
             )
@@ -487,6 +487,8 @@ message_has_line_prefix() {
     lower_prefix="${prefix,,}"
 
     while IFS= read -r line; do
+        # Trim leading whitespace so indented footer lines still match.
+        line="${line#"${line%%[![:space:]]*}"}"
         lower_line="${line,,}"
         if [[ "$lower_line" == "$lower_prefix"* ]]; then
             return 0
