@@ -229,19 +229,26 @@ fi
 echo ""
 
 echo "--- Checking slash command inventory ---"
-declare -A COMMAND_TO_ALIAS=(
-    [manager]="m"
-    [explore]="e"
-    [bug]="bug"
-    [debug]="dbg"
-    [design]="a"
-    [test]="t"
-    [refactor]="a"
-    [review]="cr"
-    [docs]="doc"
-)
-EXPECTED_COMMANDS=(manager explore bug debug design test refactor review docs)
+# bash 3.2 (macOS /bin/bash) does not support `declare -A` associative
+# arrays. Use two parallel indexed arrays and a lookup function instead.
+COMMAND_NAMES=(manager explore bug debug design test refactor review docs)
+COMMAND_ALIASES=(m e bug dbg a t a cr doc)
+EXPECTED_COMMANDS=("${COMMAND_NAMES[@]}")
 EXPECTED_SKILLS=(design docs refactor review test)
+
+# Look up the agent alias for a given command name. Returns empty string
+# if the command is not in the table.
+command_alias_for() {
+    local name="$1"
+    local i
+    for i in "${!COMMAND_NAMES[@]}"; do
+        if [ "${COMMAND_NAMES[$i]}" = "$name" ]; then
+            printf '%s' "${COMMAND_ALIASES[$i]}"
+            return 0
+        fi
+    done
+    return 1
+}
 
 compare_command_lists() {
     local file="$1"
@@ -258,7 +265,11 @@ compare_command_lists() {
     actual=()
     while IFS= read -r item; do
         [ -n "$item" ] && actual+=("$item")
-    done < <(sed -n "/^${start}$/,/^${end}$/p" "$file" | grep -oP "^- \`/\K[^\`]+(?=\`)" | sort -u || true)
+    # bash 3.2 (macOS /bin/bash) and BSD utilities do not support `grep -P`
+    # (PCRE). Use sed -E for portable extended-regex matching. The original
+    # PCRE used \K to drop the prefix and a lookahead for the trailing
+    # backtick; sed -E captures both with a single group instead.
+    done < <(sed -n "/^${start}$/,/^${end}$/p" "$file" | sed -nE "s|^- \`/([^\`]+)\`.*|\1|p" | sort -u || true)
     expected=()
     while IFS= read -r item; do
         [ -n "$item" ] && expected+=("$item")
@@ -315,7 +326,7 @@ compare_skill_file_inventory
 
 for command in "${EXPECTED_COMMANDS[@]}"; do
     command_file="$REPO_ROOT/claudecfg/commands/$command.md"
-    expected_alias="${COMMAND_TO_ALIAS[$command]}"
+    expected_alias="$(command_alias_for "$command" || true)"
     agent_file="$REPO_ROOT/claudecfg/agents/$expected_alias.md"
 
     if [ ! -f "$command_file" ]; then
@@ -638,7 +649,8 @@ while IFS= read -r md_file; do
             if [ ! -e "$target" ] && [ ! -e "${target}.md" ]; then
                 report_error "Broken link in $md_file: $link (resolved to: $target)"
             fi
-        done < <(grep -oP '\]\([^)]+\)' <<<"$line" | sed 's/\](\(.*\)/\1/' | tr -d ')' || true)
+        # bash 3.2 / BSD grep does not support -P (PCRE). Use sed -E.
+        done < <(sed -nE 's/.*\]\(([^)]*)\).*/\1/p' <<<"$line" | tr -d ')' || true)
     done < "$md_file"
 done < <(find "$REPO_ROOT" -name "*.md" -type f | sort)
 echo ""

@@ -515,12 +515,14 @@ message_has_line_prefix() {
     local lower_line=""
     local lower_prefix=""
 
-    lower_prefix="${prefix,,}"
+    # bash 3.2 (macOS /bin/bash) does not support ${var,,}, so use tr for
+    # case-folding. tr is POSIX and behaves identically on Linux/macOS.
+    lower_prefix="$(printf '%s' "$prefix" | tr '[:upper:]' '[:lower:]')"
 
     while IFS= read -r line; do
         # Trim leading whitespace so indented footer lines still match.
         line="${line#"${line%%[![:space:]]*}"}"
-        lower_line="${line,,}"
+        lower_line="$(printf '%s' "$line" | tr '[:upper:]' '[:lower:]')"
         if [[ "$lower_line" == "$lower_prefix"* ]]; then
             return 0
         fi

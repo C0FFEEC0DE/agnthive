@@ -27,7 +27,13 @@ NOTIFICATION_LOG="${LOG_ROOT}/notification.jsonl"
 MAX_SIZE=1048576
 
 if [ -f "$NOTIFICATION_LOG" ]; then
-    size="$(stat -c%s "$NOTIFICATION_LOG" 2>/dev/null || echo 0)"
+    # GNU stat uses -c%s; BSD/macOS stat uses -f%z. Probe once and cache the
+    # correct flag so the rotation check works on every Unix.
+    if stat -c%s "$NOTIFICATION_LOG" >/dev/null 2>&1; then
+        size="$(stat -c%s "$NOTIFICATION_LOG" 2>/dev/null || echo 0)"
+    else
+        size="$(stat -f%z "$NOTIFICATION_LOG" 2>/dev/null || echo 0)"
+    fi
     if [ "$size" -ge "$MAX_SIZE" ]; then
         rm -f "${NOTIFICATION_LOG}.old"
         mv "$NOTIFICATION_LOG" "${NOTIFICATION_LOG}.old"
