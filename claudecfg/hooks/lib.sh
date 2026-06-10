@@ -237,6 +237,7 @@ _acquire_state_lock() {
 
         if [ "$attempt" -ge 200 ] && [ "$age" -ge "$stale_after" ]; then
             if [ -z "$metadata_pid" ] || ! kill -0 "$metadata_pid" 2>/dev/null; then
+                rm -f "$lockdir/pid" "$lockdir/created_epoch" 2>/dev/null || true
                 rmdir "$lockdir" 2>/dev/null || true
             fi
             attempt=0
@@ -250,6 +251,7 @@ _acquire_state_lock() {
 
 _release_state_lock() {
     if [ -n "${LOCKDIR_HELD:-}" ]; then
+        rm -f "$LOCKDIR_HELD/pid" "$LOCKDIR_HELD/created_epoch" 2>/dev/null || true
         rmdir "$LOCKDIR_HELD" 2>/dev/null || true
         LOCKDIR_HELD=""
     fi
@@ -260,12 +262,8 @@ _atomic_state_update() {
     file="$(state_file)"
     ensure_dirs
     _acquire_state_lock "$file"
-    # Install a release-only trap immediately so that a failure in mktemp
-    # (set -e) cannot leave the lockdir held. Once tmp exists, replace the
-    # trap with one that also cleans up the staging file.
-    trap '_release_state_lock' RETURN
     tmp="$(mktemp)"
-    trap '_release_state_lock; rm -f "$tmp"' RETURN
+    eval "trap 'rm -f \"$tmp\"; _release_state_lock' RETURN"
     jq "$@" "$file" > "$tmp"
     mv "$tmp" "$file"
 }
@@ -278,7 +276,7 @@ record_loop_block() {
     local prefix="$1"
     local reason="$2"
     local message="$3"
-    local count_key reason_key message_key file tmp previous_reason previous_message previous_count next_count
+    local count_key reason_key message_key file previous_reason previous_message previous_count next_count
 
     case "$prefix" in
         stop)
@@ -373,7 +371,7 @@ emit_loop_aware_block() {
     local prefix="$1"
     local reason="$2"
     local message="$3"
-    local count final_reason checklist_output hard_stop file tmp
+    local count final_reason checklist_output hard_stop file
 
     record_loop_block "$prefix" "$reason" "$message"
     count="$(loop_block_count "$prefix")"
