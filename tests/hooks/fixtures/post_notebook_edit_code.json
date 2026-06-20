@@ -1,0 +1,7 @@
+{
+  "session_id": "case-notebook-edit-code",
+  "tool_name": "NotebookEdit",
+  "tool_input": {
+    "notebook_path": "notebooks/demo.ipynb"
+  }
+}

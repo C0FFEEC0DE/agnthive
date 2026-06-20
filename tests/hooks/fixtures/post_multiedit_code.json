@@ -1,0 +1,13 @@
+{
+  "session_id": "case-multiedit-code",
+  "tool_name": "MultiEdit",
+  "tool_input": {
+    "file_path": "src/app.py",
+    "edits": [
+      {
+        "old_string": "old",
+        "new_string": "new"
+      }
+    ]
+  }
+}

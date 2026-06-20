@@ -212,6 +212,16 @@ def test_matcher_based_events_have_correct_structure():
             )
 
 
+def test_post_tool_use_tracks_all_file_write_tools():
+    """File-writing tools must all update session state for Stop gating."""
+    settings = load_settings_json()
+
+    post_tool_hooks = settings["hooks"].get("PostToolUse", [])
+    matchers = {hook.get("matcher", "") for hook in post_tool_hooks}
+
+    assert "Edit|MultiEdit|Write|NotebookEdit" in matchers
+
+
 def test_notification_hook_targets_notification_script():
     """Notification hook should point at the bundled notification script."""
     settings = load_settings_json()

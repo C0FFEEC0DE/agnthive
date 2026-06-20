@@ -516,6 +516,30 @@
     "state_jq": ".edited == true and .code_changed == true and .docs_changed == false and ((.files | index(\"src/app.py\")) != null)"
   },
   {
+    "name": "post_edit_write_marks_multiedit_code_change",
+    "script": "claudecfg/hooks/post-edit-write.sh",
+    "stdin": "tests/hooks/fixtures/post_multiedit_code.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"PostToolUse\" and (.hookSpecificOutput.additionalContext | contains(\"requires verification\"))",
+    "state_jq": ".edited == true and .code_changed == true and .docs_changed == false and ((.files | index(\"src/app.py\")) != null)"
+  },
+  {
+    "name": "post_edit_write_reads_tool_input_path",
+    "script": "claudecfg/hooks/post-edit-write.sh",
+    "stdin": "tests/hooks/fixtures/post_edit_path_code.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"PostToolUse\" and (.hookSpecificOutput.additionalContext | contains(\"requires verification\"))",
+    "state_jq": ".edited == true and .code_changed == true and .docs_changed == false and ((.files | index(\"src/from-path.py\")) != null)"
+  },
+  {
+    "name": "post_edit_write_reads_notebook_path",
+    "script": "claudecfg/hooks/post-edit-write.sh",
+    "stdin": "tests/hooks/fixtures/post_notebook_edit_code.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"PostToolUse\" and (.hookSpecificOutput.additionalContext | contains(\"requires verification\"))",
+    "state_jq": ".edited == true and .code_changed == true and .docs_changed == false and ((.files | index(\"notebooks/demo.ipynb\")) != null)"
+  },
+  {
     "name": "post_edit_write_marks_docs_change",
     "script": "claudecfg/hooks/post-edit-write.sh",
     "stdin": "tests/hooks/fixtures/post_edit_write_docs.json",

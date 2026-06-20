@@ -8,7 +8,17 @@ source "${SCRIPT_DIR}/lib.sh"
 
 ensure_state
 
-file_path="$(json_get '.tool_input.file_path')"
+file_path="$(
+    jq -r '
+        .tool_input.file_path
+        // .tool_input.path
+        // .tool_input.notebook_path
+        // .file_path
+        // .path
+        // .notebook_path
+        // empty
+    ' <<<"$HOOK_INPUT"
+)"
 docs_changed="false"
 code_changed="true"
 

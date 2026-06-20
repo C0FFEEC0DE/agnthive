@@ -1,0 +1,7 @@
+{
+  "session_id": "case-edit-path-code",
+  "tool_name": "Edit",
+  "tool_input": {
+    "path": "src/from-path.py"
+  }
+}
