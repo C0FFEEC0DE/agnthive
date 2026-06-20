@@ -6,10 +6,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.27] - 2026-06-20
+
+Portfolio-readiness release: drift fixes, a minimal-cognitive-load README, a
+reorganized `docs/` tree, OSS governance files, professional agent personas,
+model-agnostic configuration, harness/hooks best-practice additions, and an
+explicit token-cost optimization story. Also the first CHANGELOG-documented
+release since 0.22; the previously-unreleased hook fixes are recorded here.
+
+### Added
+- OSS governance files: `SECURITY.md` (vulnerability reporting policy), `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1), `.github/ISSUE_TEMPLATE/bug_report.md` and `feature_request.md`, and `.github/PULL_REQUEST_TEMPLATE.md`
+- `docs/` index (`docs/README.md`), `docs/architecture.md` (hooks → state → gates → footers flow with diagram), and `docs/token-cost.md` (the explicit six-lever token-optimization narrative)
+- `claudecfg/statusline.sh` token-aware status line wired through `settings.json`
+- Optional local `scripts/git-hooks/pre-push` secret scanner (grep-based, added-line-only) installable via `scripts/install-git-hooks.sh` as defense-in-depth beyond the Bash deny list
+- `make bench-rerun-failed` and `scripts/rerun-failed-benchmark.sh` to re-run only the unresolved subagent smoke tasks via the workflow's `auto_resume` / `resume` selection modes, saving Ollama credits
+- Log rotation extended to all JSONL telemetry streams (`session-index`, `pre-compact`, `post-compact`, `config-change`, `instructions-loaded`) via the shared `CLAUDE_CREW_LOG_MAX_BYTES` threshold in `claudecfg/hooks/lib.sh`
+- Local benchmark make targets (`bench-mock`, `bench-smoke`, `bench-command`, `bench-assert`, `bench-report`)
+- Hook regression cases for policy edge cases and shared-state scenarios
+
+### Changed
+- Rewrote `README.md` for minimal cognitive load: one-line value proposition, architecture diagram, agent table, and configuration pointer
+- Reorganized documentation to remove the four-way agent/command list duplication across README, GUIDE, and `claudecfg/README.md`; `claudecfg/README.md` is now a directory map and `GUIDE.md` breaks the hook-gated flow into a per-event table
+- Softened agent personas to professional, role-focused descriptions (`code-reviewer.md`, `explorer.md`, `manager.md`, `tester.md`, `docwriter.md`); legacy persona aliases (`nerd`, `toxic-senior`, `paranoid`, `big-boss`) retained as hidden aliases so old transcripts and benchmarks still resolve
+- Made configuration model-agnostic: removed the pinned third-party provider model from `claudecfg/settings.json`, `GUIDE.md`, and the `Makefile`; the runtime model wins and `OLLAMA_MODEL` is documented as the user-tunable knob
+- Lowered the default `effortLevel` from `high` to `medium` and documented it as a spend knob in GUIDE
+- Expanded `Bash` deny list in `settings.json` with `rm -rf /` and `rm -rf ~` for belt-and-suspenders coverage alongside the hook scripts
+
 ### Fixed
+- Removed the dangling `behavior-benchmark.yml` workflow reference (the file did not exist) from the smoke path filter and `scripts/select-benchmark-tasks.py`
+- Removed the dangling `housekeeper` symlink rule and malformed loop fragments from `.claude/settings.local.json`
+- `claudecfg/hooks/lib.sh`: eliminated the stale state-lock spin and PID-reuse hang by breaking stale locks on the first check
 - `claudecfg/hooks/lib.sh`: filtered generic Task tool types (`general-purpose`, `workflow-subagent`) from `effective_started_roles()` so they no longer block agent enforcement when the Task tool records a generic type instead of the actual agent alias
 - `claudecfg/hooks/lib.sh`: added `@alias` transcript pattern inference in `infer_started_roles_from_transcript()` so agent mentions like `@nerd`, `@toxic-senior`, `@paranoid`, `@cr`, `@e` in transcript completion lines are canonicalized via `aliases.json` and satisfy specialist handoff gates
-- `claudecfg/hooks/lib.sh`: replaced GNU `\b` word boundary in `@alias` grep pattern with POSIX-compatible `($|[^a-z0-9-])` for macOS BSD grep portability
+- `claudecfg/hooks/lib.sh`: replaced GNU `\b` word boundary in the `@alias` grep pattern with POSIX-compatible `($|[^a-z0-9-])` for macOS BSD grep portability
+- `scripts/git-hooks/pre-push`: content scan now filters to added lines (`^\+([^+]|$)`) so context/deletion lines no longer trip false-positive secret matches, and removing a secret is no longer blocked
+- `.github/workflows/python-tests.yml`: install `pyyaml` and run the full `tests/` suite (previously a 4-file subset that skipped the YAML-parsing workflow config test)
 
 ## [0.22] - 2026-06-02
 
