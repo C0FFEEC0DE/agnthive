@@ -22,7 +22,7 @@ ifneq ($(strip $(BENCH_TASK_LABEL)),)
 BENCH_LABEL_ARGS = --task-label '$(BENCH_TASK_LABEL)'
 endif
 
-.PHONY: all lint hooks test bench-mock bench-smoke bench-command bench-assert bench-report
+.PHONY: all lint hooks test bench-mock bench-smoke bench-command bench-assert bench-report bench-rerun-failed
 
 # Default: lint + test + hook contract tests.
 all: lint test hooks
@@ -75,3 +75,9 @@ bench-assert:
 
 bench-report:
 	@cat '$(BENCH_OUTPUT_DIR)/benchmark-report.md'
+
+# Re-run only the FAILED subagent smoke tasks in CI (via workflow_dispatch
+# auto_resume), instead of the whole suite — saves Ollama credits. Optional
+# RUN_ID=12345 resumes a specific prior run instead of the last failed one.
+bench-rerun-failed:
+	bash scripts/rerun-failed-benchmark.sh $(if $(RUN_ID),--run-id $(RUN_ID))

@@ -181,6 +181,55 @@ For cheap synthetic checks without the real agent:
 bash scripts/run-benchmark.sh --output-dir /tmp/claude-bench-mock --mode mock
 ```
 
+## Re-running only failed tasks
+
+A full smoke rerun re-executes every canary task and spends Ollama credits on
+the ones that already passed. To re-run only the tasks that did not resolve in
+a prior failed run, use the smoke workflow's `resume` / `auto_resume` selection
+modes — the selector (`scripts/select-benchmark-tasks.py`) loads the previous
+run's summary and selects only its `unresolved_task_ids`.
+
+From your workstation (requires `gh` with workflow permissions):
+
+```bash
+# Re-run the unresolved tasks from the last failed smoke run (<=72h):
+make bench-rerun-failed
+
+# ...or resume a specific prior run by id:
+make bench-rerun-failed RUN_ID=27872932481
+
+# Equivalent direct invocation:
+bash scripts/rerun-failed-benchmark.sh                 # auto_resume
+bash scripts/rerun-failed-benchmark.sh --run-id 27872932481
+bash scripts/rerun-failed-benchmark.sh --ref main       # target a branch
+```
+
+The wrapper dispatches the workflow with `selection_mode=auto_resume` (or
+`resume` with `--run-id`), then prints the new run's URL and a `gh run watch`
+command. `auto_resume` uses `scripts/find-failed-benchmark-run.py` to locate the
+last failed run automatically; if none exists in the last 72 hours it falls back
+to `changed` mode.
+
+For a local (non-CI) re-run of only the failed tasks, select the unresolved
+tasks from a previous summary, then feed that list to the runner:
+
+```bash
+# 1. Select only the unresolved tasks from a previous local summary:
+python3 scripts/select-benchmark-tasks.py --suite subagents_smoke \
+    --selection-mode resume \
+    --previous-summary-file /tmp/claude-bench/summary.json \
+  | python3 -c 'import json,sys; print("\n".join(json.load(sys.stdin)["task_files"]))' \
+  > /tmp/claude-bench-failed.txt
+
+# 2. Re-run only those tasks:
+bash scripts/run-benchmark.sh --output-dir /tmp/claude-bench-resume \
+    --mode command --task-list-file /tmp/claude-bench-failed.txt
+```
+
+(`run-benchmark.sh` itself does not take `--selection-mode`; the selection is
+done by `select-benchmark-tasks.py`, which emits a task list consumed via
+`--task-list-file`.)
+
 ## Output Artifacts
 
 Each task directory contains:
