@@ -22,6 +22,17 @@ export function resolveDataRoot(env = process.env, home = homedir()) {
 }
 
 /**
+ * Resolve the plugin root (for reading bundled assets like aliases.json). The
+ * runtime sets CLAUDE_PLUGIN_ROOT; fall back to this module's directory so the
+ * dispatcher works when invoked directly.
+ */
+export function resolvePluginRoot(env = process.env) {
+  const explicit = env.CLAUDE_PLUGIN_ROOT;
+  if (explicit && typeof explicit === 'string') return explicit;
+  return join(homedir(), '.claude', 'plugins', 'multi-agent-sdlc-crew');
+}
+
+/**
  * Resolve a session id for state addressing. Empty/missing ids fall back to
  * "no-session" (mirroring lib.sh safe_session_id), so a hook never crashes on
  * an absent session_id. safeSessionId in state.mjs sanitizes the result.

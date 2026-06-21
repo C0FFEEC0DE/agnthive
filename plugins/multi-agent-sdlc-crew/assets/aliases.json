@@ -1,0 +1,10 @@
+{
+  "a": ["a", "architect", "the-architect", "design", "plan"],
+  "e": ["e", "explorer", "explore", "nerd"],
+  "bug": ["bug", "bugbuster", "bug-pattern-hunter", "bug-pattern"],
+  "dbg": ["dbg", "debugger", "debugging-specialist"],
+  "t": ["t", "tester", "testing", "paranoid"],
+  "cr": ["cr", "code-reviewer", "code-review", "reviewer", "toxic-senior"],
+  "doc": ["doc", "docwriter", "wiki-wiki", "documentation-writer", "docs-writer", "docs"],
+  "m": ["m", "manager", "big-boss"]
+}

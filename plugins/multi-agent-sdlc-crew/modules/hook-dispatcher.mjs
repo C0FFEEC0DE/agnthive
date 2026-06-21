@@ -9,13 +9,19 @@
 // Phase 1 ships the I/O contract and routing only. Event handlers return a
 // neutral passthrough until Phase 2 ports the real workflow/policy/summary
 // behavior, so the installed plugin is inert but safe.
-import { pathToFileURL } from 'node:url';
+import { pathToFileURL, fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import { parseHookInput, readStdin } from './hook-input.mjs';
 import { additionalContext, passthrough, serialize, terminalCancel } from './hook-output.mjs';
 import { resolveDataRoot, resolveSessionId } from './util.mjs';
-import { statePaths, appendEvent } from './state.mjs';
+import { statePaths, appendEvent, loadState } from './state.mjs';
 import { classifyPrompt, userPromptResetPatch } from './workflow.mjs';
 import { commandClass, verificationOutcome } from './verification.mjs';
+import { extractSubagentLabel, extractSubagentScope, loadAliases } from './agents.mjs';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT || join(here, '..');
+const ALIASES = loadAliases(pluginRoot);
 
 // UserPromptSubmit: classify the prompt, persist the task type / manager mode /
 // required roles / docs flag plus the stop-loop reset to session state, and
@@ -75,6 +81,38 @@ function persistPatch(parsed, patch) {
   }
 }
 
+function statePathsFor(parsed) {
+  return statePaths(resolveDataRoot(), resolveSessionId(parsed.sessionId));
+}
+
+// SubagentStart: record the handoff — increment the start counter, add the role
+// to subagents_started, bump the per-role instance count, append the event log
+// entry — and emit the handoff contract. Mirrors subagent-start.sh.
+function handleSubagentStart(parsed) {
+  const label = extractSubagentLabel(parsed.data, ALIASES);
+  const scope = extractSubagentScope(parsed.data);
+  const paths = statePathsFor(parsed);
+  let index = 1;
+  try { index = (loadState(paths).subagent_start_count || 0) + 1; } catch {}
+  const events = [
+    { type: 'increment', payload: { field: 'subagent_start_count', by: 1 } },
+    { type: 'append', payload: { field: 'subagent_events', value: { index, role: label || '', ...(scope ? { purpose: scope } : {}) } } },
+  ];
+  if (label) {
+    events.push({ type: 'append_unique', payload: { field: 'subagents_started', value: label } });
+    events.push({ type: 'role_increment', payload: { mapField: 'subagent_instance_count_by_role', key: label, by: 1 } });
+  }
+  for (const ev of events) {
+    try { appendEvent(paths, ev.type, ev.payload); } catch (e) {
+      process.stderr.write(`hook-dispatcher: state write failed: ${e?.message ?? e}\n`);
+    }
+  }
+  const message = label
+    ? `Recorded subagent handoff: @${label}. Parallel same-role handoffs are allowed when they have distinct scopes. Return outcome, changed files or 'no changes', verification status, and remaining risks or next step. If you edit code, run or request verification before stopping.`
+    : `Subagent handoff contract: return outcome, changed files or 'no changes', verification status, and remaining risks or next step. If you edit code, run or request verification before stopping.`;
+  return additionalContext(message, 'SubagentStart');
+}
+
 // Event handlers. Each takes the parsed input and returns a JSON-serializable
 // output object (or null/undefined for passthrough). Handlers not yet ported
 // return a neutral passthrough so the installed plugin stays inert but safe.
@@ -87,7 +125,7 @@ const handlers = {
   PermissionDenied: () => passthrough(),
   PostToolUse: handlePostToolUse,
   PostToolUseFailure: handlePostToolUseFailure,
-  SubagentStart: () => passthrough(),
+  SubagentStart: handleSubagentStart,
   SubagentStop: () => passthrough(),
   Stop: () => passthrough(),
   TeammateIdle: () => passthrough(),

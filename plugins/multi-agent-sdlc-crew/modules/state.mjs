@@ -112,6 +112,20 @@ function applyEvent(state, ev) {
       state[ev.payload.field] = arr;
       break;
     }
+    case 'append': {
+      if (!ev.payload) break;
+      const arr = Array.isArray(state[ev.payload.field]) ? state[ev.payload.field] : [];
+      arr.push(ev.payload.value);
+      state[ev.payload.field] = arr;
+      break;
+    }
+    case 'role_increment': {
+      if (!ev.payload) break;
+      const map = (state[ev.payload.mapField] && typeof state[ev.payload.mapField] === 'object') ? state[ev.payload.mapField] : {};
+      map[ev.payload.key] = (Number(map[ev.payload.key]) || 0) + (ev.payload.by || 1);
+      state[ev.payload.mapField] = map;
+      break;
+    }
     case 'set_many':
       if (ev.payload && ev.payload.fields && typeof ev.payload.fields === 'object') {
         Object.assign(state, ev.payload.fields);
@@ -129,7 +143,7 @@ function applyEvent(state, ev) {
 /** Pure reducer: fold event records (in seq order) into a state object. */
 export function reducer(events) {
   const sorted = [...events].sort((a, b) => (a.seq || 0) - (a.seq || 0));
-  const state = { ...DEFAULT_STATE };
+  const state = structuredClone(DEFAULT_STATE);
   for (const ev of sorted) applyEvent(state, ev);
   return state;
 }
@@ -223,7 +237,7 @@ export function loadState(paths) {
     const baseSeq = snap.state._last_seq || 0;
     const replay = events.filter((e) => (e.seq || 0) > baseSeq).sort((a, b) => (a.seq || 0) - (b.seq || 0));
     if (replay.length === 0) return snap.state;
-    const state = { ...snap.state };
+    const state = structuredClone(snap.state);
     for (const ev of replay) applyEvent(state, ev);
     return state;
   }
