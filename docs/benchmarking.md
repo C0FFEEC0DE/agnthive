@@ -63,12 +63,20 @@ The subagent smoke suite under `bench/tasks/subagents/smoke/*.json` keeps one ca
 
 ## Hook Test Layers
 
-Hook behavior is covered by two local harness modes:
+Hook behavior is covered by a single Node runner, `node scripts/test-hooks.mjs`
+(exposed as `make hooks`), which loads `tests/hooks/cases.json` and
+`tests/hooks/scenarios.json` verbatim and feeds each fixture through the Node
+hook dispatcher:
 
-- `bash scripts/test-hooks.sh` runs `tests/hooks/cases.json` and checks isolated hook contracts one event at a time.
-- `bash scripts/test-hooks.sh tests/hooks/scenarios.json` runs shared-state scenarios that chain multiple hooks through a single session `HOME`.
+- **Cases** check isolated hook contracts one event at a time — edge payloads,
+  null/empty field handling, and single-hook `stdout_jq` / `state_jq` assertions.
+- **Scenarios** chain multiple hooks through a single shared session `HOME` and
+  temp dir for end-to-end flows such as prompt classification -> edit tracking ->
+  verification -> completion, plus session lifecycle logging and `file_assertions`.
 
-Use cases for edge payloads, null/empty field handling, and single-hook contracts. Use scenarios for end-to-end flows such as prompt classification -> edit tracking -> verification -> completion, plus session lifecycle logging.
+A small set of intentional bash→Node deltas (the legacy `CLAUDE_ENV_FILE` export
+step, which the Node runtime drops because state is the source of truth) are
+documented in `tests/hooks/DELTA.md` and skipped via `tests/hooks/deltas.json`.
 
 ## GitHub Workflow
 

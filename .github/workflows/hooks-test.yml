@@ -17,6 +17,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 'lts/*'
+
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
@@ -25,14 +30,8 @@ jobs:
       - name: Install test dependencies
         run: pip install pytest
 
-      - name: Run isolated hook cases
-        run: bash scripts/test-hooks.sh
-
-      - name: Run shared-state hook scenarios
-        run: bash scripts/test-hooks.sh tests/hooks/scenarios.json
-
-      - name: Run lib.sh unit tests
-        run: bash tests/hooks/test-lib.sh
+      - name: Run Node hook fixture runner (cases + scenarios)
+        run: node scripts/test-hooks.mjs
 
       - name: Run hook-related pytest checks
-        run: python -m pytest tests/test_settings_hooks.py tests/test_hook_scenarios.py -v
+        run: python -m pytest tests/test_settings_hooks.py -v

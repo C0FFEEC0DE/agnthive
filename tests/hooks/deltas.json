@@ -1,0 +1,18 @@
+[
+  {
+    "case": "session_start_detects_node_scripts",
+    "skip": ["file_assertions"],
+    "reason": "The bash session-start.sh wrote a CLAUDE_ENV_FILE of exports (CLAUDE_SDLC_PROFILE, PROJECT_TEST_CMD, ...). The Node dispatcher intentionally drops that env-file step (state is the source of truth; see hook-dispatcher.mjs handleSessionStart comment). stdout_jq + state_jq still verify command detection works."
+  },
+  {
+    "case": "session_start_prefers_make_targets_for_any_language_project",
+    "skip": ["file_assertions"],
+    "reason": "Same as session_start_detects_node_scripts: CLAUDE_ENV_FILE export writing is intentionally not ported. stdout_jq + state_jq still verify make-target detection."
+  },
+  {
+    "scenario": "feature_shared_state_progression",
+    "step": "session_start_detects_node_scripts",
+    "skip": ["file_assertions"],
+    "reason": "Scenario step shares the intentional CLAUDE_ENV_FILE delta described above."
+  }
+]

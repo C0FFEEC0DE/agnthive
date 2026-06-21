@@ -83,7 +83,7 @@ paths:
 Before submitting:
 - [ ] `make lint` passes (shell syntax, shellcheck, python compile, ruff)
 - [ ] `make test` (or `python3 -m pytest tests/ -v`) passes
-- [ ] `bash scripts/test-hooks.sh` passes
+- [ ] `make hooks` (or `node scripts/test-hooks.mjs`) passes
 - [ ] `bash scripts/validate.sh` passes
 - [ ] JSON files are valid
 - [ ] Agent markdown has proper frontmatter

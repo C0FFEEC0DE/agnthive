@@ -90,4 +90,4 @@ When adding a new agent or tightening an existing one:
 7. Run:
    - `pytest -q tests/bench/test_bench_runner.py`
    - `bash scripts/validate.sh`
-   - `bash scripts/test-hooks.sh`
+   - `node scripts/test-hooks.mjs`

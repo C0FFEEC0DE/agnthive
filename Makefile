@@ -29,18 +29,16 @@ all: lint test hooks
 
 # Lint: shell syntax + shellcheck (if available) + python compile + ruff (if available).
 lint:
-	@bash -n claudecfg/hooks/*.sh scripts/*.sh scripts/git-hooks/pre-push claudecfg/statusline.sh tests/hooks/test-lib.sh
+	@bash -n claudecfg/hooks/*.sh scripts/*.sh scripts/git-hooks/pre-push claudecfg/statusline.sh
 	@if command -v shellcheck >/dev/null 2>&1; then \
-		shellcheck claudecfg/hooks/*.sh scripts/*.sh scripts/git-hooks/pre-push claudecfg/statusline.sh tests/hooks/test-lib.sh; \
+		shellcheck claudecfg/hooks/*.sh scripts/*.sh scripts/git-hooks/pre-push claudecfg/statusline.sh; \
 	else echo "shellcheck not installed, skipping"; fi
 	python -m compileall -q .
 	@if command -v ruff >/dev/null 2>&1; then ruff check .; \
 	else echo "ruff not installed, skipping"; fi
 
 hooks:
-	bash scripts/test-hooks.sh
-	bash scripts/test-hooks.sh tests/hooks/scenarios.json
-	bash tests/hooks/test-lib.sh
+	node scripts/test-hooks.mjs
 
 test:
 	pytest -q
