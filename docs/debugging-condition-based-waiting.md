@@ -29,7 +29,8 @@ Replace `sleep` with a bounded poll on the real condition:
 
 ```bash
 # instead of: sleep 2
-until grep -q "Ready" server.log; do sleep 0.1; done
+timeout 10 sh -c 'until grep -q "Ready" server.log; do sleep 0.1; done' \
+    || { echo "server never became ready within 10s" >&2; exit 1; }
 ```
 
 ```python

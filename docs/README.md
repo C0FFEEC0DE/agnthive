@@ -9,6 +9,9 @@ Start here, then follow the link that matches what you're doing.
 | Spend fewer tokens | [`token-cost.md`](token-cost.md) |
 | Run or extend the benchmarks | [`benchmarking.md`](benchmarking.md) |
 | Add or tighten an agent | [`agent-contracts.md`](agent-contracts.md) · [`../CONTRIBUTING.md`](../CONTRIBUTING.md) |
+| Run the Subagent-Driven Development workflow | [`../claudecfg/workflows/subagent-driven-development.md`](../claudecfg/workflows/subagent-driven-development.md) · [`progress-ledger.md`](progress-ledger.md) |
+| Follow the debugging discipline | [`debugging-root-cause-tracing.md`](debugging-root-cause-tracing.md) · [`debugging-defense-in-depth.md`](debugging-defense-in-depth.md) · [`debugging-condition-based-waiting.md`](debugging-condition-based-waiting.md) |
+| Use plan/spec conventions | [`plans/README.md`](plans/README.md) · [`specs/README.md`](specs/README.md) |
 | Review the coverage audit | [`audit-2026-06-21.md`](audit-2026-06-21.md) |
 | Report a security issue | [`../SECURITY.md`](../SECURITY.md) |
 

@@ -35,6 +35,8 @@ def _base_env(tmp_path: Path, ledger_file: Path | None) -> dict:
 
     env = dict(os.environ)
     env["HOME"] = str(tmp_path / "home")
+    # Isolate from any parent environment override of the ledger size cap.
+    env.pop("CLAUDE_CREW_LEDGER_MAX_BYTES", None)
     if ledger_file is not None:
         env["CLAUDE_CREW_PROGRESS_FILE"] = str(ledger_file)
     else:
@@ -95,3 +97,28 @@ def test_post_compact_still_logs_compact_event(tmp_path):
     last = json.loads(log_file.read_text(encoding="utf-8"))
     assert last["session_id"] == "s-log"
     assert last["trigger"] == "manual"
+
+
+def test_post_compact_truncates_oversized_ledger(tmp_path):
+    ledger = tmp_path / "progress.md"
+    # Build a ledger larger than the 64 KiB default cap. Each line is 12 bytes,
+    # so 6000 lines yields ~72 KiB. Use an ASCII prefix so the first 64 KiB
+    # boundary is predictable and the truncation note is easy to detect.
+    marker = "TASK_START "
+    filler = (marker + "x\n") * 6000
+    oversized = "HEADER LINE\n" + filler
+    ledger.write_text(oversized, encoding="utf-8")
+
+    payload = {"session_id": "s-trunc", "trigger": "manual", "compact_summary": ""}
+    env = _base_env(tmp_path, ledger)
+    result = _run_hook(payload, env)
+    assert result.returncode == 0, result.stderr
+
+    out = json.loads(result.stdout)
+    hso = out["hookSpecificOutput"]
+    ctx = hso["additionalContext"]
+    assert "HEADER LINE" in ctx
+    assert "Ledger truncated" in ctx
+    assert "exceeds 65536 byte limit" in ctx
+    # The full oversized content must NOT be present in its entirety.
+    assert len(ctx.encode("utf-8")) < len(oversized.encode("utf-8"))

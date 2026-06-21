@@ -7,6 +7,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- Subagent-Driven Development workflow (`claudecfg/workflows/subagent-driven-development.md`) with file-based handoff scripts (`scripts/task-brief.sh`, `scripts/review-package.sh`), durable progress ledger (`claudecfg/hooks/lib.sh::progress_ledger_path`, `claudecfg/hooks/post-compact.sh`), and plan/spec conventions (`docs/plans/README.md`, `docs/specs/README.md`)
+- Three debugging discipline reference docs: `docs/debugging-root-cause-tracing.md`, `docs/debugging-defense-in-depth.md`, `docs/debugging-condition-based-waiting.md`
+- 4-status implementer return contract (`DONE`, `DONE_WITH_CONCERNS`, `NEEDS_CONTEXT`, `BLOCKED`) in `claudecfg/agents/m.md` and additive `Status:` outcome recognition in `claudecfg/hooks/lib.sh`
+- Per-task model selection policy in `claudecfg/agents/m.md` and `claudecfg/agents/a.md`; verification-before-completion discipline in `claudecfg/agents/t.md`; systematic root-cause protocol in `claudecfg/agents/dbg.md`
+- Trigger-only skill descriptions (< 200 words) for the five slash skills
 - `pyproject.toml` coverage configuration (branch coverage on `scripts/*.py`, defensive-line exclusions) and a `make cov` target with a ratcheting `--cov-fail-under` gate at 100 (gate applies to `make cov` only, not `make test`)
 - `make hooks` now runs `tests/hooks/test-lib.sh` (~273 direct assertions over the ~49 `lib.sh` enforcement functions)
 - Direct pytest tests for every previously-untested `scripts/*.sh` and for `bench_runner_openrouter.py`, `find-failed-benchmark-run.py`, `bench_runner_claude_code.py` (`classify_task_failures`), `select-benchmark-tasks` logic, and the `wait-for-benchmark-slot` / `download-benchmark-summary` / `merge-benchmark-summaries` / `build-benchmark-matrix` scripts

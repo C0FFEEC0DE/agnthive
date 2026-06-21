@@ -137,8 +137,8 @@ tasks combined).
 ### 8. Finish
 
 Successful verification is required before completion (the hooks enforce it).
-Then document any user-facing behavior change (`@doc`) and run the final
-review gate (`@cr`) per the profile's
+Run the final review gate (`@cr`) — the whole-branch review in step 7 — and
+then document any user-facing behavior change (`@doc`) per the profile's
 [agent contracts](../../docs/agent-contracts.md). Use the normal
 discover → design → implement → verify → review → docs flow for the branch as a
 whole; this workflow governs the **implement** and **review** internals.
