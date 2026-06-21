@@ -22,16 +22,16 @@ ifneq ($(strip $(BENCH_TASK_LABEL)),)
 BENCH_LABEL_ARGS = --task-label '$(BENCH_TASK_LABEL)'
 endif
 
-.PHONY: all lint hooks test bench-mock bench-smoke bench-command bench-assert bench-report bench-rerun-failed
+.PHONY: all lint hooks test cov bench-mock bench-smoke bench-command bench-assert bench-report bench-rerun-failed
 
 # Default: lint + test + hook contract tests.
 all: lint test hooks
 
 # Lint: shell syntax + shellcheck (if available) + python compile + ruff (if available).
 lint:
-	@bash -n claudecfg/hooks/*.sh scripts/*.sh scripts/git-hooks/pre-push claudecfg/statusline.sh
+	@bash -n claudecfg/hooks/*.sh scripts/*.sh scripts/git-hooks/pre-push claudecfg/statusline.sh tests/hooks/test-lib.sh
 	@if command -v shellcheck >/dev/null 2>&1; then \
-		shellcheck claudecfg/hooks/*.sh scripts/*.sh scripts/git-hooks/pre-push claudecfg/statusline.sh; \
+		shellcheck claudecfg/hooks/*.sh scripts/*.sh scripts/git-hooks/pre-push claudecfg/statusline.sh tests/hooks/test-lib.sh; \
 	else echo "shellcheck not installed, skipping"; fi
 	python -m compileall -q .
 	@if command -v ruff >/dev/null 2>&1; then ruff check .; \
@@ -40,9 +40,21 @@ lint:
 hooks:
 	bash scripts/test-hooks.sh
 	bash scripts/test-hooks.sh tests/hooks/scenarios.json
+	bash tests/hooks/test-lib.sh
 
 test:
 	pytest -q
+
+# Coverage with a ratcheting gate (branch coverage on scripts/*.py).
+# COV_MIN defaults to the current baseline (100); raise it as coverage improves.
+# The gate is intentionally NOT applied to `test` so CI on the existing suite
+# is unaffected. Requires pytest-cov.
+COV_MIN ?= 100
+cov:
+	@if command -v pytest >/dev/null 2>&1 && python3 -c "import pytest_cov" >/dev/null 2>&1; then \
+		pytest -q tests/ --cov=scripts --cov-branch \
+			--cov-report=term-missing --cov-fail-under=$(COV_MIN); \
+	else echo "pytest-cov not installed, skipping coverage gate"; fi
 
 bench-mock:
 	bash scripts/run-benchmark.sh \

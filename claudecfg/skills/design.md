@@ -1,6 +1,6 @@
 ---
 name: design
-description: Run an architecture and design specialist in an isolated subagent for solution planning and tradeoff analysis.
+description: Use when planning a new feature, making an architectural decision, or unsure how to start a change — dispatches the Architect in an isolated forked subagent.
 agent: Architect
 context: fork
 disable-model-invocation: true

@@ -34,11 +34,14 @@ jq -n \
         },
         deltas: {
             task_pass_rate: ($c.rates.task_pass_rate - $b.rates.task_pass_rate),
+            clean_pass_rate: ($c.rates.clean_pass_rate - $b.rates.clean_pass_rate),
             completion_rate: ($c.rates.completion_rate - $b.rates.completion_rate),
             verification_pass_rate: ($c.rates.verification_pass_rate - $b.rates.verification_pass_rate),
             review_compliance_rate: ($c.rates.review_compliance_rate - $b.rates.review_compliance_rate),
             docs_compliance_rate: ($c.rates.docs_compliance_rate - $b.rates.docs_compliance_rate),
             execution_coverage_rate: ($c.rates.execution_coverage_rate - $b.rates.execution_coverage_rate),
+            recovered_task_rate: ($c.rates.recovered_task_rate - $b.rates.recovered_task_rate),
+            summary_repair_rate: ($c.rates.summary_repair_rate - $b.rates.summary_repair_rate),
             policy_violations: ($c.totals.policy_violations - $b.totals.policy_violations),
             tool_failures: ($c.totals.tool_failures - $b.totals.tool_failures),
             median_runtime_seconds: ($c.median_runtime_seconds - $b.median_runtime_seconds)

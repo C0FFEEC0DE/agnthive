@@ -39,7 +39,7 @@ narrative. Enforced by `claudecfg/hooks/subagent-stop-guard.sh` and
 ### 3. Policy-stall break
 
 If the stop gate blocks the same summary three times in a row,
-`stop-guard.sh` emits `continue: false` — the runtime signal to stop retrying.
+`stop-guard.sh` emits a terminal `continue: false` response without `decision: "block"` — the runtime signal to stop retrying.
 Without it, a stuck session would loop forever, burning tokens on identical
 summaries. Implemented in `claudecfg/hooks/lib.sh` (`emit_loop_aware_block`,
 `record_loop_block`) and `stop-guard.sh`.

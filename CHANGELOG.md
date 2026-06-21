@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- Subagent-Driven Development workflow (`claudecfg/workflows/subagent-driven-development.md`) with file-based handoff scripts (`scripts/task-brief.sh`, `scripts/review-package.sh`), durable progress ledger (`claudecfg/hooks/lib.sh::progress_ledger_path`, `claudecfg/hooks/post-compact.sh`), and plan/spec conventions (`docs/plans/README.md`, `docs/specs/README.md`)
+- Three debugging discipline reference docs: `docs/debugging-root-cause-tracing.md`, `docs/debugging-defense-in-depth.md`, `docs/debugging-condition-based-waiting.md`
+- 4-status implementer return contract (`DONE`, `DONE_WITH_CONCERNS`, `NEEDS_CONTEXT`, `BLOCKED`) in `claudecfg/agents/m.md` and additive `Status:` outcome recognition in `claudecfg/hooks/lib.sh`
+- Per-task model selection policy in `claudecfg/agents/m.md` and `claudecfg/agents/a.md`; verification-before-completion discipline in `claudecfg/agents/t.md`; systematic root-cause protocol in `claudecfg/agents/dbg.md`
+- Trigger-only skill descriptions (< 200 words) for the five slash skills
+- `pyproject.toml` coverage configuration (branch coverage on `scripts/*.py`, defensive-line exclusions) and a `make cov` target with a ratcheting `--cov-fail-under` gate at 100 (gate applies to `make cov` only, not `make test`)
+- `make hooks` now runs `tests/hooks/test-lib.sh` (~273 direct assertions over the ~49 `lib.sh` enforcement functions)
+- Direct pytest tests for every previously-untested `scripts/*.sh` and for `bench_runner_openrouter.py`, `find-failed-benchmark-run.py`, `bench_runner_claude_code.py` (`classify_task_failures`), `select-benchmark-tasks` logic, and the `wait-for-benchmark-slot` / `download-benchmark-summary` / `merge-benchmark-summaries` / `build-benchmark-matrix` scripts
+- `tests/hooks/test-lib.sh` unit-test harness wired into `make hooks`, `make lint`, `scripts/validate.sh`, and the Hook Contracts CI workflow
+- `tests/test_statusline.py` (10 tests) and `tests/test_install_git_hooks.py` (3 tests)
+- End-to-end compare-benchmarks → render-benchmark-report contract test guarding the delta-key contract
+
+### Changed
+- `claudecfg/hooks/lib.sh`: extracted the `message_has_any_line_prefix` helper and deduplicated the seven `message_mentions_*` functions (behavior-identical, ~90 lines removed)
+- `scripts/bench_runner_claude_code.py`: extracted the pure `classify_task_failures(...)` from `main()`; pre-initialized the `completed` flag before the 429-retry loop in `run_claude`
+- `scripts/find-failed-benchmark-run.py`: moved the `timedelta` import to the top level
+- `COV_MIN` gate ratcheted 45 → 100; `scripts/*.py` at 100% line + branch coverage (648 tests)
+
+### Fixed
+- `scripts/compare-benchmarks.sh`: now emits `clean_pass_rate`, `recovered_task_rate`, and `summary_repair_rate` deltas that `render-benchmark-report.sh` reads (previously missing → the report crashed with jq exit 5 on real compare output)
+- `scripts/bench_runner_claude_code.py`: `forbidden_doc_pattern_hits` was fed a snapshot dict instead of its `.text` string (`TypeError`)
+
 ## [0.28] - 2026-06-20
 
 ### Fixed

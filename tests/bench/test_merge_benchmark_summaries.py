@@ -1,5 +1,8 @@
 import importlib.util
+import json
 from pathlib import Path
+
+import pytest
 
 
 def load_merge_module():
@@ -244,3 +247,107 @@ def test_rate_function():
     assert module.rate(1, 2) == 0.5
     assert module.rate(0, 0) == 0  # avoid divide-by-zero
     assert module.rate(3, 3) == 1.0
+
+
+def test_count_preferred_uses_primary():
+    module = load_merge_module()
+    assert module.count_preferred(["a", "b"], ["c"]) == 2
+
+
+def test_count_preferred_falls_back_to_secondary():
+    module = load_merge_module()
+    assert module.count_preferred([], ["c", "d"]) == 2
+
+
+def test_count_preferred_falls_back_to_default():
+    module = load_merge_module()
+    assert module.count_preferred([], [], fallback=7) == 7
+
+
+def test_normalize_string_list_rejects_non_list_and_non_strings():
+    module = load_merge_module()
+    assert module.normalize_string_list("nope") == []
+    assert module.normalize_string_list(["ok", 3, "  ", "good"]) == ["ok", "good"]
+
+
+def test_merge_string_lists_dedups_across_payloads():
+    module = load_merge_module()
+    payloads = [
+        {"ids": ["a", "b"]},
+        {"ids": ["b", "c"]},
+        {"ids": "not-a-list"},
+    ]
+    assert module.merge_string_lists(payloads, "ids") == ["a", "b", "c"]
+
+
+def test_task_ids_filters_non_string_ids():
+    module = load_merge_module()
+    tasks = [{"task_id": "x"}, {"task_id": 5}, {"other": 1}]
+    assert module.task_ids(tasks) == ["x"]
+
+
+def test_task_paths_collects_path_aliases_and_strips():
+    module = load_merge_module()
+    tasks = [
+        {"task_path": "  a.json  "},
+        {"task_file": "b.json"},
+        {"path": "c.json"},
+        {"path": "   "},
+        {"nope": 1},
+    ]
+    assert module.task_paths(tasks) == ["a.json", "b.json", "c.json"]
+
+
+def test_merge_unique_dedups():
+    module = load_merge_module()
+    assert module.merge_unique(["a", "b"], ["b", "c"]) == ["a", "b", "c"]
+
+
+def test_merge_summaries_empty_raises():
+    module = load_merge_module()
+    with pytest.raises(ValueError, match="at least one summary is required"):
+        module.merge_summaries([])
+
+
+def test_merge_summaries_derives_executed_paths_from_tasks_when_missing():
+    module = load_merge_module()
+    payloads = [
+        make_summary(
+            [make_task("task-a", status="failed", task_path="bench/tasks/smoke/task-a.json")],
+            configured=1,
+            executed=1,
+        )
+    ]
+    merged = module.merge_summaries(payloads)
+    # No explicit executed/unresolved path lists -> derived from tasks.
+    assert merged["executed_task_paths"] == ["bench/tasks/smoke/task-a.json"]
+    assert merged["unresolved_task_paths"] == ["bench/tasks/smoke/task-a.json"]
+    assert merged["unresolved_task_ids"] == ["task-a"]
+
+
+def test_parse_args(monkeypatch, tmp_path):
+    module = load_merge_module()
+    monkeypatch.setattr(
+        "sys.argv",
+        ["merge-benchmark-summaries.py", "--output", str(tmp_path / "out.json"), "a.json", "b.json"],
+    )
+    args = module.parse_args()
+    assert args.output == str(tmp_path / "out.json")
+    assert args.summary_files == ["a.json", "b.json"]
+
+
+def test_main_writes_merged_summary(monkeypatch, tmp_path):
+    module = load_merge_module()
+    a = tmp_path / "a.json"
+    b = tmp_path / "b.json"
+    out = tmp_path / "merged.json"
+    a.write_text(json.dumps(make_summary([make_task("task-a")], configured=1, executed=1)), encoding="utf-8")
+    b.write_text(json.dumps(make_summary([make_task("task-b")], configured=1, executed=1)), encoding="utf-8")
+    monkeypatch.setattr(
+        "sys.argv",
+        ["merge-benchmark-summaries.py", "--output", str(out), str(a), str(b)],
+    )
+    module.main()
+    merged = json.loads(out.read_text(encoding="utf-8"))
+    assert merged["totals"]["configured_tasks"] == 2
+    assert {t["task_id"] for t in merged["tasks"]} == {"task-a", "task-b"}

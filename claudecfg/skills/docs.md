@@ -1,6 +1,6 @@
 ---
 name: docs
-description: Run the docwriter in an isolated subagent for README, docs, and user-facing documentation changes.
+description: Use when README/docs are out of sync, a feature needs user-facing documentation, or code lacks explanation — dispatches the Docwriter in an isolated forked subagent.
 agent: Docwriter
 context: fork
 disable-model-invocation: true

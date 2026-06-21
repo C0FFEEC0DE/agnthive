@@ -82,7 +82,7 @@ done < <(
         printf '%s\n' \
             "$REPO_ROOT/install.sh" \
             "$REPO_ROOT/claudecfg/install.sh"
-        find "$REPO_ROOT/claudecfg" "$REPO_ROOT/scripts" "$REPO_ROOT/tests/install" -type f -name "*.sh"
+        find "$REPO_ROOT/claudecfg" "$REPO_ROOT/scripts" "$REPO_ROOT/tests/install" "$REPO_ROOT/tests/hooks" -type f -name "*.sh"
     } | sort
 )
 echo ""
@@ -107,6 +107,7 @@ if command -v shellcheck >/dev/null 2>&1; then
         "$REPO_ROOT"/claudecfg/hooks/*.sh
         "$REPO_ROOT"/scripts/*.sh
         "$REPO_ROOT"/tests/install/*.sh
+        "$REPO_ROOT"/tests/hooks/test-lib.sh
     )
     if ! shellcheck "${shellcheck_targets[@]}"; then
         report_error "shellcheck reported shell lint issues"

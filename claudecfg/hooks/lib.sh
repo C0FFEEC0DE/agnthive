@@ -148,6 +148,26 @@ state_file() {
     printf "%s/%s.json" "$STATE_ROOT" "$(safe_session_id)"
 }
 
+# Durable progress ledger location. The controller appends one line per
+# completed task during Subagent-Driven Development so work survives context
+# compaction. Override with CLAUDE_CREW_PROGRESS_FILE; otherwise resolve to
+# the git toplevel (or cwd when not in a repo) under .claude-crew/progress.md.
+# That path is gitignored (see .gitignore) so scratch never gets committed.
+progress_ledger_path() {
+    if [ -n "${CLAUDE_CREW_PROGRESS_FILE:-}" ]; then
+        printf '%s' "$CLAUDE_CREW_PROGRESS_FILE"
+        return 0
+    fi
+
+    local toplevel
+    toplevel="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+    if [ -n "$toplevel" ]; then
+        printf '%s/.claude-crew/progress.md' "$toplevel"
+    else
+        printf '%s/.claude-crew/progress.md' "${PWD}"
+    fi
+}
+
 ensure_dirs() {
     mkdir -p "$STATE_ROOT" "$LOG_ROOT"
 }
@@ -434,15 +454,25 @@ emit_loop_aware_block() {
 
     checklist_output="$(build_block_checklist "$prefix" "$final_reason" "$message")"
 
-    jq -n --arg checklist "$checklist_output" --arg reason "$final_reason" --argjson hard_stop "$hard_stop" '{
-        decision: "block",
-        reason: $reason,
-        errorDetails: $checklist,
-        hardStop: $hard_stop
-    } + if $hard_stop then {
-        continue: false,
-        stopReason: $reason
-    } else {} end'
+    # A terminal stop must not also return decision: "block".  The latter asks
+    # Claude Code to continue the conversation, while continue: false ends it.
+    # Although current runtimes give continue: false precedence, emitting both
+    # fields caused older runtimes to keep entering the Stop hook.
+    if [ "$hard_stop" = "true" ]; then
+        jq -n --arg checklist "$checklist_output" --arg reason "$final_reason" '{
+            continue: false,
+            stopReason: $reason,
+            errorDetails: $checklist,
+            hardStop: true
+        }'
+    else
+        jq -n --arg checklist "$checklist_output" --arg reason "$final_reason" '{
+            decision: "block",
+            reason: $reason,
+            errorDetails: $checklist,
+            hardStop: false
+        }'
+    fi
 }
 
 task_type_requires_implementation_summary() {
@@ -632,6 +662,23 @@ message_has_line_prefix() {
         fi
     done <<<"$message"
 
+    return 1
+}
+
+# message_has_any_line_prefix MESSAGE PREFIX... — true if any line of MESSAGE
+# starts with one of the given PREFIX strings. Same semantics as
+# message_has_line_prefix (case-insensitive, leading whitespace trimmed); the
+# first matching prefix wins, mirroring the short-circuit `||` chains this
+# replaces in the message_mentions_* family.
+message_has_any_line_prefix() {
+    local message="$1"
+    shift
+    local prefix=""
+    for prefix in "$@"; do
+        if message_has_line_prefix "$message" "$prefix"; then
+            return 0
+        fi
+    done
     return 1
 }
 
@@ -1105,78 +1152,40 @@ command_is_hard_denied_by_profile() {
 }
 
 message_mentions_verification_status() {
-    local message="$1"
-
-    message_has_line_prefix "$message" "Verification status:" \
-        || message_has_line_prefix "$message" "Verification:" \
-        || message_has_line_prefix "$message" "Verification result:" \
-        || message_has_line_prefix "$message" "Test status:" \
-        || message_has_line_prefix "$message" "Tests:"
+    message_has_any_line_prefix "$1" \
+        "Verification status:" "Verification:" "Verification result:" "Test status:" "Tests:"
 }
 
 message_mentions_review_outcome() {
-    local message="$1"
-
-    message_has_line_prefix "$message" "Review outcome:" \
-        || message_has_line_prefix "$message" "Review status:" \
-        || message_has_line_prefix "$message" "Review:"
+    message_has_any_line_prefix "$1" "Review outcome:" "Review status:" "Review:"
 }
 
 message_mentions_docs_status() {
-    local message="$1"
-
-    message_has_line_prefix "$message" "Docs status:" \
-        || message_has_line_prefix "$message" "Documentation:" \
-        || message_has_line_prefix "$message" "Docs:" \
-        || message_has_line_prefix "$message" "Документация:"
+    message_has_any_line_prefix "$1" "Docs status:" "Documentation:" "Docs:" "Документация:"
 }
 
 message_mentions_changed_files() {
-    local message="$1"
-
-    message_has_line_prefix "$message" "Changed files:" \
-        || message_has_line_prefix "$message" "Key files changed:" \
-        || message_has_line_prefix "$message" "Files changed:" \
-        || message_has_line_prefix "$message" "Updated files:" \
-        || message_has_line_prefix "$message" "Modified files:" \
-        || message_has_line_prefix "$message" "No files changed:"
+    message_has_any_line_prefix "$1" \
+        "Changed files:" "Key files changed:" "Files changed:" "Updated files:" "Modified files:" "No files changed:"
 }
 
 message_mentions_remaining_risks() {
-    local message="$1"
-
-    message_has_line_prefix "$message" "Remaining risks:" \
-        || message_has_line_prefix "$message" "Residual risks:" \
-        || message_has_line_prefix "$message" "Risks:"
+    message_has_any_line_prefix "$1" "Remaining risks:" "Residual risks:" "Risks:"
 }
 
 message_mentions_next_step() {
-    local message="$1"
-
-    message_has_line_prefix "$message" "Next step:" \
-        || message_has_line_prefix "$message" "Next steps:" \
-        || message_has_line_prefix "$message" "Follow-up:" \
-        || message_has_line_prefix "$message" "Follow up:" \
-        || message_has_line_prefix "$message" "Pending next:" \
-        || message_has_line_prefix "$message" "Следующий шаг:" \
-        || message_has_line_prefix "$message" "Следующие шаги:" \
-        || message_has_line_prefix "$message" "Дальше:" \
-        || message_has_line_prefix "$message" "Следующее:"
+    message_has_any_line_prefix "$1" \
+        "Next step:" "Next steps:" "Follow-up:" "Follow up:" "Pending next:" \
+        "Следующий шаг:" "Следующие шаги:" "Дальше:" "Следующее:"
 }
 
 message_mentions_concrete_outcome() {
     local message="$1"
 
     # Prefer exact line prefixes (footer contract)
-    if message_has_line_prefix "$message" "Outcome:" \
-        || message_has_line_prefix "$message" "Result:" \
-        || message_has_line_prefix "$message" "Fix:" \
-        || message_has_line_prefix "$message" "Implemented:" \
-        || message_has_line_prefix "$message" "Updated:" \
-        || message_has_line_prefix "$message" "Completed:" \
-        || message_has_line_prefix "$message" "Done:" \
-        || message_has_line_prefix "$message" "No files changed:" \
-        || message_has_line_prefix "$message" "No changes:"
+    if message_has_any_line_prefix "$message" \
+        "Outcome:" "Result:" "Fix:" "Implemented:" "Updated:" "Completed:" "Done:" \
+        "No files changed:" "No changes:" "Status:"
     then
         return 0
     fi

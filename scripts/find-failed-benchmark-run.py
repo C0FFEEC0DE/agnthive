@@ -9,7 +9,7 @@ import os
 import subprocess
 import sys
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 
 def parse_args() -> argparse.Namespace:
@@ -90,7 +90,6 @@ def find_failed_run(
         return None
 
     cutoff = datetime.now(timezone.utc)
-    from datetime import timedelta
     cutoff = cutoff - timedelta(hours=max_age_hours)
 
     for run in runs:

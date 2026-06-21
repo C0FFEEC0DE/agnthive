@@ -195,7 +195,15 @@ _atomic_state_update \
     | .manager_mode = $manager_mode
     | .docs_required = $docs_required
     | .required_subagents = $required_subagents
-    | .required_subagent_any_of = $required_subagent_any_of'
+    | .required_subagent_any_of = $required_subagent_any_of
+    # A real user prompt starts a new attempt after a terminal stop-hook
+    # failure.  Continuations caused by Stop do not fire UserPromptSubmit, so
+    # this cannot reset an in-flight loop.
+    | .stop_block_count = 0
+    | .stop_block_reason = ""
+    | .stop_block_message = ""
+    | .stalled_by_policy = false
+    | .policy_stall_reason = ""'
 
 if [ -n "$context_message" ]; then
     emit_context "UserPromptSubmit" "$context_message"

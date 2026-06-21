@@ -1,6 +1,6 @@
 ---
 name: review
-description: Run the code reviewer in an isolated read-only subagent for findings-first review and security checks.
+description: Use before committing or merging, or for PR/security/architecture review of changes — dispatches the Code Reviewer in an isolated read-only forked subagent.
 agent: Code Reviewer
 context: fork
 disable-model-invocation: true

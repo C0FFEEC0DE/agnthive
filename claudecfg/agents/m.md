@@ -72,6 +72,38 @@ Required role gates by workflow:
 - `review` -> `@cr`
 - `docs` -> `@doc`
 
+### 5. Subagent-Driven Development
+
+For plan execution with mostly-independent tasks, use the
+Subagent-Driven Development workflow (`claudecfg/workflows/subagent-driven-development.md`):
+dispatch a fresh implementer per task with curated, isolated context, review
+each task (spec compliance + code quality), then run one final whole-branch
+review. The implementer reports one of four statuses — handle each:
+
+- `DONE` — generate the review package and dispatch the task reviewer
+- `DONE_WITH_CONCERNS` — read concerns; fix correctness/scope before review, note observations
+- `NEEDS_CONTEXT` — provide the missing context and re-dispatch
+- `BLOCKED` — add context / raise the model / break the task up / escalate to the human; never force the same model to retry unchanged
+
+Hand artifacts as files (`scripts/task-brief.sh`, `scripts/review-package.sh`),
+not pasted text, and record progress in the durable ledger so completed work
+is never re-dispatched after a compaction.
+
+### 6. Model selection
+
+Always specify the model explicitly when dispatching a subagent — an omitted
+model inherits your session's model (often the most capable and most expensive),
+which silently defeats cost control. Use the cheapest model that handles the
+role:
+
+- mechanical/transcription tasks (the plan contains the complete code, 1–2 files) → cheapest tier
+- implementers working from prose, reviewers, integration/judgment tasks → mid-tier floor
+- architecture, design, and the final whole-branch review → most capable available
+
+Turn count beats token price: the cheapest models routinely take 2–3× the
+turns on multi-step work and cost more overall, so use a mid-tier floor for
+reviewers and prose-driven implementers.
+
 ## Rules
 
 - For change work, always include verification and review

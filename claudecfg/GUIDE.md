@@ -116,7 +116,7 @@ Main checkpoints:
 - Transcript inference matches `@alias` patterns (`@cr`, `@e`, `@code-reviewer`, …, plus legacy persona aliases kept for backward compatibility) and canonicalizes them via `aliases.json`, so agent mentions in completion lines count as valid handoffs.
 - Generic Task tool types (`general-purpose`, `workflow-subagent`) are filtered from role enforcement — they are tool dispatch types, not agent roles.
 - When a runtime backgrounds a live manager-led workflow before any code/config changes, `Stop` defers the specialist-role gate for that turn instead of treating the background handoff as a failed final response.
-- After three identical `Stop` blocks, the hook marks the session policy-stalled and emits `continue: false` — the Claude Code stop signal that prevents retrying the same summary forever.
+- After three identical `Stop` blocks, the hook marks the session policy-stalled and emits only `continue: false` (never a simultaneous `decision: "block"`) so the runtime cannot interpret the terminal response as another continuation. The next user prompt clears that terminal state and starts a new attempt.
 - `TeammateIdle` additionally blocks manager-led workflows that have not yet handed off to any specialist.
 
 **Command detection:** `SessionStart` prefers explicit project task-runner commands (`npm run test` / `npm run lint`, `make test` / `make lint`) before falling back to language-specific defaults, so verification detection works for any language that exposes standard task targets.

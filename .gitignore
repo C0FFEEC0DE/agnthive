@@ -1,12 +1,16 @@
 node_modules/
 dist-build/
 coverage/
+.coverage
+.coverage.*
+htmlcov/
 *.log
 .DS_Store
 .agent-kit/runs/
 .claude/settings.local.json
 .codex
 .codex/
+.claude-crew/
 __pycache__/
 *.py[cod]
 .pytest_cache/

@@ -1,6 +1,6 @@
 ---
 name: refactor
-description: Run the architect in an isolated subagent for bounded refactor planning and structural cleanup guidance.
+description: Use when code has duplication, long functions, fragile tests, or accumulated technical debt needing bounded structural cleanup — dispatches the Architect in an isolated forked subagent.
 agent: Architect
 context: fork
 disable-model-invocation: true

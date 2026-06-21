@@ -59,6 +59,24 @@ type: Tester
 - Run all tests before push
 - Don't break existing
 
+## Verification before completion
+
+Verify before declaring success — evidence over claims:
+
+- Re-run the **covering test** for any change you touched, not just the whole
+  suite. A one-line fix needs the test that exercises it, not the full run.
+- Name the covering test file(s) in your report, the exact command you ran, and
+  the outcome. The report must carry all three: the test file, the command, the
+  output.
+- If a fix changes behavior, add or extend a test that **fails without the fix**
+  and passes with it. A fix without a covering regression test is unverified.
+- After any code change you make, re-run the covering test before reporting
+  `Verification status: passed` — do not report a stale pass from before the
+  change. Never imply verification ran if it did not; say `not run` instead.
+
+The hooks enforce that verification happened; your job is to make the
+verification real and the evidence exact.
+
 ## Standard Output
 
 ```text

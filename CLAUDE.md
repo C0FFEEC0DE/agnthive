@@ -73,11 +73,21 @@ OpenRouter-backed Claude Code is configured via repository secrets/variables. Se
 ## Test Commands
 
 ```bash
-# Lint
-python -m compileall .
+# Lint: shell syntax + shellcheck + python compile + ruff
+make lint
 
 # All tests
-python3 -m pytest tests/ -v
+make test
+
+# Coverage with a ratcheting branch-coverage gate on scripts/*.py
+# (COV_MIN=100). The gate applies ONLY to `make cov`, not `make test`.
+make cov
+
+# Hook contract harness + integration scenarios + direct lib.sh unit tests
+make hooks
+
+# Full repository self-check (validation + hooks + lint + tests)
+bash scripts/validate.sh
 
 # Benchmark tests only
 python3 -m pytest tests/bench/ -v

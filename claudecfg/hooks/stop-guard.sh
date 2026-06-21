@@ -12,6 +12,19 @@ code_changed="$(jq -r '.code_changed // false' "$(state_file)")"
 task_type="$(jq -r '.task_type // "other"' "$(state_file)")"
 last_message=""
 
+# A previous stop-hook loop has already been terminated.  Do not re-enter the
+# normal blocking path if a runtime invokes Stop once more while processing the
+# terminal response; repeat only the unambiguous terminal signal.
+if [ "$(jq -r '.stalled_by_policy // false' "$(state_file)")" = "true" ]; then
+    policy_stall_reason="$(jq -r '.policy_stall_reason // "Stop hook policy stalled the session."' "$(state_file)")"
+    jq -n --arg reason "$policy_stall_reason" '{
+        continue: false,
+        stopReason: $reason,
+        hardStop: true
+    }'
+    exit 0
+fi
+
 load_last_message() {
     if [ -z "$last_message" ]; then
         last_message="$(resolved_last_assistant_message)"

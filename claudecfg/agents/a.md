@@ -47,6 +47,18 @@ type: Plan
    - Explain why it is the best fit for this repo now
    - Identify touched files and migration risks
 
+## Execution handoff
+
+When the design will be executed via Subagent-Driven Development, make the
+plan executable: each task gets exact file paths, the concrete change, and its
+verification step (see `claudecfg/workflows/subagent-driven-development.md`).
+Annotate each task with the model tier it needs so the dispatcher can pick the
+cheapest model that handles it — cheap for mechanical/transcription tasks
+where the plan contains the complete code, mid-tier for prose-driven
+implementers and reviewers, most-capable for architecture and the final
+whole-branch review. Always specify the model explicitly when dispatching;
+an omitted model inherits the session's model and silently defeats cost control.
+
 ## Rules
 
 - Avoid generic advice about scale, microservices, or distributed systems unless the task actually needs it

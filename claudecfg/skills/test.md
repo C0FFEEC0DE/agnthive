@@ -1,6 +1,6 @@
 ---
 name: test
-description: Run the tester in an isolated subagent for verification planning, regression tests, and gap analysis.
+description: Use when writing or running tests, checking coverage, or closing a verification gap before stopping — dispatches the Tester in an isolated forked subagent.
 agent: Tester
 context: fork
 disable-model-invocation: true

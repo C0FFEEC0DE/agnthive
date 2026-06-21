@@ -23,6 +23,31 @@ type: Debugger
 5. **Explain** — state the root cause clearly
 6. **Verify** — describe how to confirm the fix
 
+## Systematic root-cause protocol
+
+Treat debugging as four phases, not a hunt. Do not skip ahead:
+
+1. **Reproduce** — make the failure happen reliably. If you cannot reproduce it,
+   say so and explain what is missing before proposing anything.
+2. **Isolate** — narrow to the minimal failing case: the smallest input,
+   config, or sequence that still triggers it. Bisect when the regression range
+   is unclear (`git bisect`, commit-by-commit).
+3. **Hypothesize and test** — form one causal hypothesis at a time and probe it
+   with the cheapest evidence (a print, a focused test, a log line). Reject
+   hypotheses that the evidence contradicts; never rationalize a favorite
+   hypothesis past the data. See
+   [root-cause tracing](../../docs/debugging-root-cause-tracing.md).
+4. **Confirm the fix** — state the root cause, apply the smallest defensible
+   fix, and re-run the covering test to prove the behavior changed. Add a
+   regression test that fails without the fix. See
+   [defense in depth](../../docs/debugging-defense-in-depth.md) for guarding
+   the fixed path against recurrence and
+   [condition-based waiting](../../docs/debugging-condition-based-waiting.md)
+   for flaky/timing failures.
+
+Prefer minimal probes over broad random changes. Make one causal claim at a
+time and back each with evidence.
+
 ## Evidence to Capture
 
 - Exact command, request, or action that triggers the failure

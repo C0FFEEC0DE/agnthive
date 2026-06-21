@@ -1,4 +1,5 @@
 import importlib.util
+import json
 from pathlib import Path
 
 
@@ -59,3 +60,52 @@ def test_build_matrix_shard_metadata():
 def test_build_matrix_empty():
     module = load_matrix_module()
     assert module.build_matrix([], 2) == []
+
+
+def test_load_task_paths_missing_file(tmp_path):
+    module = load_matrix_module()
+    assert module.load_task_paths(tmp_path / "does-not-exist.txt") == []
+
+
+def test_load_task_paths_strips_and_filters_blanks(tmp_path):
+    module = load_matrix_module()
+    p = tmp_path / "tasks.txt"
+    p.write_text("a.json\n\n  b.json  \n   \n", encoding="utf-8")
+    assert module.load_task_paths(p) == ["a.json", "b.json"]
+
+
+def test_main_prints_matrix_json(monkeypatch, tmp_path, capsys):
+    module = load_matrix_module()
+    p = tmp_path / "tasks.txt"
+    p.write_text("a.json\nb.json\nc.json\n", encoding="utf-8")
+    monkeypatch.setattr(
+        "sys.argv",
+        ["build-benchmark-matrix.py", "--task-list-file", str(p), "--max-shards", "2"],
+    )
+    module.main()
+    out = json.loads(capsys.readouterr().out)
+    assert len(out) == 2
+    assert out[0]["shard_index"] == 1
+    assert out[1]["shard_index"] == 2
+
+
+def test_main_missing_task_list_file(monkeypatch, tmp_path, capsys):
+    module = load_matrix_module()
+    monkeypatch.setattr(
+        "sys.argv",
+        ["build-benchmark-matrix.py", "--task-list-file", str(tmp_path / "nope.txt")],
+    )
+    module.main()
+    assert json.loads(capsys.readouterr().out) == []
+
+
+def test_main_default_max_shards(monkeypatch, tmp_path, capsys):
+    module = load_matrix_module()
+    p = tmp_path / "tasks.txt"
+    p.write_text("a.json\n", encoding="utf-8")
+    monkeypatch.setattr(
+        "sys.argv", ["build-benchmark-matrix.py", "--task-list-file", str(p)]
+    )
+    module.main()
+    out = json.loads(capsys.readouterr().out)
+    assert out == [{"shard_index": 1, "task_files": "a.json", "task_count": 1}]
