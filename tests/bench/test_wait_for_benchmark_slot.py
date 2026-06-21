@@ -127,3 +127,39 @@ def test_is_github_rate_limit_403_no_marker():
         body_bytes=b'{"message": "forbidden"}',
     )
     assert module.is_github_rate_limit(exc) is False
+
+
+def test_read_body_once_caches_on_exc():
+    module = load_slot_module()
+    reads = {"n": 0}
+
+    class Exc:
+        code = 403
+        headers = FakeHeaders({})
+
+        def read(self):
+            reads["n"] += 1
+            return b'{"message": "rate limit exceeded"}'
+
+    exc = Exc()
+    # First call reads the body and caches it; second call returns the cache
+    # without re-reading.
+    assert module._read_body_once(exc) == '{"message": "rate limit exceeded"}'
+    assert module._read_body_once(exc) == '{"message": "rate limit exceeded"}'
+    assert reads["n"] == 1
+
+
+def test_parse_retry_after_parsedate_none(monkeypatch):
+    module = load_slot_module()
+    # parsedate_to_datetime returns None (no exception) -> parse_retry_after None.
+    monkeypatch.setattr(module.email.utils, "parsedate_to_datetime", lambda s: None)
+    assert module.parse_retry_after("some-date") is None
+
+
+def test_parse_retry_after_naive_datetime_assumes_utc(monkeypatch):
+    module = load_slot_module()
+    from datetime import datetime, timedelta, timezone
+    future_naive = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(seconds=120)
+    monkeypatch.setattr(module.email.utils, "parsedate_to_datetime", lambda s: future_naive)
+    # Naive datetime gets tzinfo=utc; delta vs now is positive.
+    assert module.parse_retry_after("some-date") > 0

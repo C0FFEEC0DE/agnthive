@@ -31,5 +31,8 @@ jobs:
       - name: Run shared-state hook scenarios
         run: bash scripts/test-hooks.sh tests/hooks/scenarios.json
 
+      - name: Run lib.sh unit tests
+        run: bash tests/hooks/test-lib.sh
+
       - name: Run hook-related pytest checks
         run: python -m pytest tests/test_settings_hooks.py tests/test_hook_scenarios.py -v

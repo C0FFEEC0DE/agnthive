@@ -401,6 +401,11 @@ def run_claude(
     if effective_max_output_tokens:
         env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = effective_max_output_tokens
 
+    # Default result so the function is well-defined even if the retry loop runs
+    # zero iterations (e.g. OLLAMA_429_MAX_RETRIES configured to 0); previously
+    # `completed` was only assigned inside the loop, which would have raised
+    # NameError in that unreachable configuration.
+    completed = subprocess.CompletedProcess(command, 1, "", "")
     for attempt in range(1, OLLAMA_429_MAX_RETRIES + 1):
         completed = subprocess.run(
             command,
@@ -1135,7 +1140,7 @@ def first_permission_denial_summary(denials: list[dict]) -> str:
 
 
 def forbidden_doc_pattern_hits(
-    task: dict, after: dict[str, str], changed_files: list[str]
+    task: dict, after: dict[str, object], changed_files: list[str]
 ) -> list[str]:
     patterns = task.get("forbidden_doc_patterns", [])
     if not isinstance(patterns, list):
@@ -1145,7 +1150,12 @@ def forbidden_doc_pattern_hits(
     for path in changed_files:
         if not is_docs_path(path):
             continue
-        content = after.get(path, "")
+        # `after` may be a path->text map (dict[str, str]) or a snapshot map
+        # (dict[str, dict]) as produced by snapshot_files(); accept both.
+        entry = after.get(path, "")
+        content = entry.get("text", "") if isinstance(entry, dict) else entry
+        if not isinstance(content, str):
+            content = ""
         for pattern in patterns:
             if not isinstance(pattern, str) or not pattern.strip():
                 continue
@@ -1645,6 +1655,73 @@ def format_agent_group_misses(groups: list[list[str]]) -> str:
     return "; ".join("[" + " | ".join(group) + "]" for group in groups)
 
 
+def classify_task_failures(
+    *,
+    exit_code: int,
+    recovered_nonzero_exit: bool,
+    fatal_error: str,
+    completed: bool,
+    verification_required: bool,
+    tests_run: bool,
+    tests_passed: bool,
+    verification_summary_present: bool,
+    review_required: bool,
+    review_present: bool,
+    risks_present: bool,
+    docs_required: bool,
+    docs_updated: bool,
+    category: str,
+    non_doc_changed_files: list[str],
+    doc_pattern_hits: list[str],
+    transcript_pattern_hits: list[str],
+    effective_transcript_misses: list[str],
+    missing_required_used_agents: list[str],
+    missing_required_used_agent_groups: list[str],
+    payload_hard_stop: bool,
+) -> list[str]:
+    """Pure failure classifier for a benchmark task run.
+
+    Extracted from ``main`` so the defensive summary-prefix guards stay
+    unit-testable even though the inline synth-footer path always fills them.
+    """
+    failures: list[str] = []
+
+    if exit_code != 0 and not recovered_nonzero_exit:
+        failures.append(f"claude_exit_code={exit_code}")
+    if fatal_error and not recovered_nonzero_exit:
+        failures.append(fatal_error)
+    if not completed:
+        failures.append("workspace_changed=false")
+    if verification_required and not tests_run:
+        failures.append("verification_not_run")
+    if verification_required and not tests_passed:
+        failures.append("verification_failed")
+    if verification_required and not verification_summary_present:
+        failures.append("verification_summary_missing")
+    if review_required and not review_present:
+        failures.append("review_summary_missing")
+    if not risks_present:
+        failures.append("risk_summary_missing")
+    if docs_required and not docs_updated:
+        failures.append("docs_not_updated")
+    if category == "docs" and non_doc_changed_files:
+        failures.append("docs_task_changed_non_docs")
+    if doc_pattern_hits:
+        failures.append("docs_forbidden_content")
+    if transcript_pattern_hits:
+        failures.append("transcript_forbidden_content")
+    if effective_transcript_misses:
+        failures.append("transcript_required_content_missing")
+    if missing_required_used_agents:
+        failures.append("required_used_agents_missing")
+    if missing_required_used_agent_groups:
+        failures.append("required_used_agent_groups_missing")
+    if payload_hard_stop:
+        failures.append("hard_stop_triggered")
+
+    return failures
+
+
 def build_task_summary(
     task: dict,
     prompt: str,
@@ -2057,40 +2134,29 @@ def main() -> int:
     )
 
     status = "passed"
-    failures: list[str] = []
-
-    if exit_code != 0 and not recovered_nonzero_exit:
-        failures.append(f"claude_exit_code={exit_code}")
-    if fatal_error and not recovered_nonzero_exit:
-        failures.append(fatal_error)
-    if not completed:
-        failures.append("workspace_changed=false")
-    if verification_required and not tests_run:
-        failures.append("verification_not_run")
-    if verification_required and not tests_passed:
-        failures.append("verification_failed")
-    if verification_required and not verification_summary_present:
-        failures.append("verification_summary_missing")
-    if review_required and not review_present:
-        failures.append("review_summary_missing")
-    if not risks_present:
-        failures.append("risk_summary_missing")
-    if docs_required and not docs_updated:
-        failures.append("docs_not_updated")
-    if task["category"] == "docs" and non_doc_changed_files:
-        failures.append("docs_task_changed_non_docs")
-    if doc_pattern_hits:
-        failures.append("docs_forbidden_content")
-    if transcript_pattern_hits:
-        failures.append("transcript_forbidden_content")
-    if effective_transcript_misses:
-        failures.append("transcript_required_content_missing")
-    if missing_required_used_agents:
-        failures.append("required_used_agents_missing")
-    if missing_required_used_agent_groups:
-        failures.append("required_used_agent_groups_missing")
-    if payload_hard_stop:
-        failures.append("hard_stop_triggered")
+    failures = classify_task_failures(
+        exit_code=exit_code,
+        recovered_nonzero_exit=recovered_nonzero_exit,
+        fatal_error=fatal_error,
+        completed=completed,
+        verification_required=verification_required,
+        tests_run=tests_run,
+        tests_passed=tests_passed,
+        verification_summary_present=verification_summary_present,
+        review_required=review_required,
+        review_present=review_present,
+        risks_present=risks_present,
+        docs_required=docs_required,
+        docs_updated=docs_updated,
+        category=task["category"],
+        non_doc_changed_files=non_doc_changed_files,
+        doc_pattern_hits=doc_pattern_hits,
+        transcript_pattern_hits=transcript_pattern_hits,
+        effective_transcript_misses=effective_transcript_misses,
+        missing_required_used_agents=missing_required_used_agents,
+        missing_required_used_agent_groups=missing_required_used_agent_groups,
+        payload_hard_stop=payload_hard_stop,
+    )
 
     if failures:
         status = "failed"

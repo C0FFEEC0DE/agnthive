@@ -20,6 +20,12 @@ def _git_env(tmp_path: Path) -> dict:
     env = dict(os.environ)
     env["HOME"] = str(tmp_path / "home")
     env["GIT_CONFIG_NOSYSTEM"] = "1"
+    # Pin commit timestamps so synthetic commit hashes are deterministic across
+    # runs. Without this, hashes derive from the wall clock and a `git log
+    # --oneline` short hash can randomly contain a literal like "c1", making
+    # subject-based assertions flaky.
+    env["GIT_AUTHOR_DATE"] = "2020-01-01T00:00:00"
+    env["GIT_COMMITTER_DATE"] = "2020-01-01T00:00:00"
     return env
 
 
@@ -68,7 +74,17 @@ def test_review_package_base_to_head(tmp_path):
     assert "Review package:" in body
     assert "## Commits" in body
     assert "c2" in body
-    assert "c1" not in body.split("## Commits")[1].split("## Diffstat")[0]
+    # base..head must list only the c2 commit, not the base c1. Assert on commit
+    # subjects (the `git log --oneline` message), not raw substrings — a short
+    # hash can coincidentally contain "c1".
+    commits_block = body.split("## Commits")[1].split("## Diffstat")[0]
+    subject_lines = [
+        ln for ln in commits_block.splitlines()
+        if ln.strip() and not ln.strip().startswith("```")
+    ]
+    subjects = {ln.split(" ", 1)[1] if " " in ln else ln for ln in subject_lines}
+    assert "c2" in subjects
+    assert "c1" not in subjects
     assert "## Diffstat" in body
     assert "## Full diff (-U10)" in body
     assert "```diff" in body
