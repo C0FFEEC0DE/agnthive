@@ -15,6 +15,7 @@ import { additionalContext, passthrough, serialize, terminalCancel } from './hoo
 import { resolveDataRoot, resolveSessionId } from './util.mjs';
 import { statePaths, appendEvent } from './state.mjs';
 import { classifyPrompt, userPromptResetPatch } from './workflow.mjs';
+import { commandClass, verificationOutcome } from './verification.mjs';
 
 // UserPromptSubmit: classify the prompt, persist the task type / manager mode /
 // required roles / docs flag plus the stop-loop reset to session state, and
@@ -23,8 +24,6 @@ import { classifyPrompt, userPromptResetPatch } from './workflow.mjs';
 function handleUserPromptSubmit(parsed) {
   const prompt = parsed.data?.prompt ?? '';
   const cls = classifyPrompt(prompt);
-  const sid = resolveSessionId(parsed.sessionId);
-  const paths = statePaths(resolveDataRoot(), sid);
   const fields = {
     session_id: parsed.sessionId ?? '',
     cwd: parsed.cwd ?? '',
@@ -36,12 +35,44 @@ function handleUserPromptSubmit(parsed) {
     required_subagent_any_of: cls.requiredSubagentAnyOf,
     ...userPromptResetPatch(),
   };
-  try { appendEvent(paths, 'set_many', { fields }); } catch (e) {
-    // State write failure must not block the prompt; report to stderr only.
-    process.stderr.write(`hook-dispatcher: state write failed: ${e?.message ?? e}\n`);
-  }
+  persistPatch(parsed, fields);
   if (cls.contextMessage) return additionalContext(cls.contextMessage, 'UserPromptSubmit');
   return passthrough();
+}
+
+// PostToolUse (Bash matcher): classify the command and record a successful
+// test/lint/build outcome. Edit/Write family matchers record file changes and
+// are ported with summary-contract.mjs (Task 10); until then they passthrough.
+// The active matcher is passed via --matcher (the runtime fires one
+// registration per matcher; tool_name in stdin is used as a fallback).
+function handlePostToolUse(parsed) {
+  const isBash = parsed.matcher === 'Bash' || parsed.toolName === 'Bash';
+  if (!isBash) return passthrough();
+  const command = parsed.toolInput?.command ?? '';
+  const outcome = verificationOutcome(commandClass(command), command, { failed: false });
+  if (!outcome) return passthrough();
+  persistPatch(parsed, outcome.patch);
+  return additionalContext(outcome.message, 'PostToolUse');
+}
+
+// PostToolUseFailure: record a failed test/lint/build outcome.
+function handlePostToolUseFailure(parsed) {
+  const isBash = parsed.matcher === 'Bash' || parsed.toolName === 'Bash';
+  if (!isBash) return passthrough();
+  const command = parsed.toolInput?.command ?? '';
+  const error = parsed.data?.error ?? '';
+  const outcome = verificationOutcome(commandClass(command), command, { failed: true, error });
+  if (!outcome) return passthrough();
+  persistPatch(parsed, outcome.patch);
+  return additionalContext(outcome.message, 'PostToolUseFailure');
+}
+
+function persistPatch(parsed, patch) {
+  const sid = resolveSessionId(parsed.sessionId);
+  const paths = statePaths(resolveDataRoot(), sid);
+  try { appendEvent(paths, 'set_many', { fields: patch }); } catch (e) {
+    process.stderr.write(`hook-dispatcher: state write failed: ${e?.message ?? e}\n`);
+  }
 }
 
 // Event handlers. Each takes the parsed input and returns a JSON-serializable
@@ -54,8 +85,8 @@ const handlers = {
   PreToolUse: () => passthrough(),
   PermissionRequest: () => passthrough(),
   PermissionDenied: () => passthrough(),
-  PostToolUse: () => passthrough(),
-  PostToolUseFailure: () => passthrough(),
+  PostToolUse: handlePostToolUse,
+  PostToolUseFailure: handlePostToolUseFailure,
   SubagentStart: () => passthrough(),
   SubagentStop: () => passthrough(),
   Stop: () => passthrough(),
@@ -73,10 +104,11 @@ const handlers = {
  * input, return the output object. A handler crash or an unknown event never
  * blocks the runtime — it degrades to passthrough.
  */
-export function dispatch(event, parsed) {
+export function dispatch(event, parsed, matcher = null) {
   const fn = handlers[event];
   if (typeof fn !== 'function') return passthrough();
   try {
+    parsed.matcher = matcher;
     return fn(parsed) ?? passthrough();
   } catch {
     // Never block or stop the runtime on a handler bug; degrade to passthrough.
@@ -90,8 +122,15 @@ export function eventFromArgs(argv) {
   return i >= 0 && argv[i + 1] ? argv[i + 1] : null;
 }
 
+/** Extract the --matcher argument from argv (used to disambiguate PostToolUse). */
+export function matcherFromArgs(argv) {
+  const i = argv.indexOf('--matcher');
+  return i >= 0 && argv[i + 1] ? argv[i + 1] : null;
+}
+
 async function main() {
   const argEvent = eventFromArgs(process.argv.slice(2));
+  const argMatcher = matcherFromArgs(process.argv.slice(2));
   const buf = await readStdin();
   const parsed = parseHookInput(buf);
 
@@ -105,7 +144,7 @@ async function main() {
     process.stderr.write('hook-dispatcher: no event (missing --event and hook_event_name)\n');
   }
 
-  const out = dispatch(event, parsed);
+  const out = dispatch(event, parsed, argMatcher);
   process.stdout.write(serialize(out));
 }
 

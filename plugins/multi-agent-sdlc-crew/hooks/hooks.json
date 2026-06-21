@@ -81,7 +81,7 @@
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/modules/hook-dispatcher.mjs", "--event", "PostToolUse"]
+            "args": ["${CLAUDE_PLUGIN_ROOT}/modules/hook-dispatcher.mjs", "--event", "PostToolUse", "--matcher", "EditWrite"]
           }
         ]
       },
@@ -91,7 +91,7 @@
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/modules/hook-dispatcher.mjs", "--event", "PostToolUse"]
+            "args": ["${CLAUDE_PLUGIN_ROOT}/modules/hook-dispatcher.mjs", "--event", "PostToolUse", "--matcher", "Bash"]
           }
         ]
       }
