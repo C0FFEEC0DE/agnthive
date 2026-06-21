@@ -185,6 +185,13 @@ class TestFindFailedRun:
 # ---- main ----
 
 class TestMain:
+    @pytest.fixture(autouse=True)
+    def _no_github_output(self, monkeypatch):
+        # main() writes to $GITHUB_OUTPUT (a file) instead of stdout when that
+        # env var is set — and GitHub Actions always sets it. Strip it so these
+        # tests are hermetic and assert on stdout regardless of the host env.
+        monkeypatch.delenv("GITHUB_OUTPUT", raising=False)
+
     def _patch_argv(self, monkeypatch, *extra):
         monkeypatch.setattr("sys.argv", ["find-failed-benchmark-run.py", *extra])
 
