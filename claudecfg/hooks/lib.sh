@@ -1477,7 +1477,7 @@ session_agent_enforcement_reason() {
 
         satisfied="false"
         for alias in "${group[@]}"; do
-            if array_contains "$alias" "${started[@]}"; then
+            if array_contains "$alias" ${started[@]+"${started[@]}"}; then
                 satisfied="true"
                 break
             fi
@@ -1492,11 +1492,11 @@ session_agent_enforcement_reason() {
         return 1
     fi
 
-    for alias in "${required[@]}"; do
+    for alias in ${required[@]+"${required[@]}"}; do
         if [ "$alias" = "t" ] && [ "$successful_verification" = "true" ]; then
             continue
         fi
-        if ! array_contains "$alias" "${started[@]}"; then
+        if ! array_contains "$alias" ${started[@]+"${started[@]}"}; then
             missing+=("$alias")
         fi
     done
@@ -1505,7 +1505,7 @@ session_agent_enforcement_reason() {
         return 1
     fi
 
-    started_json="$(format_subagent_list "${started[@]}")"
+    started_json="$(format_subagent_list ${started[@]+"${started[@]}"})"
     printf "Agent-enforced workflow requires specific subagent handoffs before completion for %s work." "$task_type"
     if [ "$manager_mode" = "orchestrate" ]; then
         printf " Manager-led orchestration is active."

@@ -10,7 +10,7 @@
 // via spawnSync with an explicit argv — no shell, no exec, no eval.
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { join, relative, dirname, basename, extname } from 'node:path';
+import { join, relative, dirname, basename, extname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkNoLegacyRuntime } from './check-no-legacy-runtime.mjs';
 
@@ -537,9 +537,10 @@ function checkBenchmarkTasks() {
   const taskIds = [];
   const smokeAliasesSeen = [];
   for (const tf of taskFiles) {
-    // bash used the absolute task path for subagent path matching; mirror that
-    // so the leading path separator is preserved on POSIX.
-    const pathStr = tf;
+    // Normalize path separators to '/' so the subagent/smoke path checks below
+    // work on Windows (where join()/walk() produce backslash paths) as well as
+    // POSIX. POSIX paths have no backslashes, so this is a no-op there.
+    const pathStr = tf.split(sep).join('/');
     let task;
     try { task = JSON.parse(readFileSync(tf, 'utf-8')); } catch { reportError(`Benchmark task is invalid JSON: ${tf}`); continue; }
     const taskId = task.id || '';
