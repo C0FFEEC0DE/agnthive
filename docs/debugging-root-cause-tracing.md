@@ -41,4 +41,4 @@ hypothesis past the data.
 
 - [Defense in depth](debugging-defense-in-depth.md)
 - [Condition-based waiting](debugging-condition-based-waiting.md)
-- [Debugger agent](../claudecfg/agents/dbg.md)
+- [Debugger agent](../plugins/multi-agent-sdlc-crew/agents/debugger.md)

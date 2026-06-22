@@ -4,12 +4,12 @@ Start here, then follow the link that matches what you're doing.
 
 | If you want to… | Read this |
 |---|---|
-| Install and use the profile | [`../README.md`](../README.md) · [`../claudecfg/GUIDE.md`](../claudecfg/GUIDE.md) |
+| Install and use the profile | [`../README.md`](../README.md) · [`../plugins/multi-agent-sdlc-crew/README.md`](../plugins/multi-agent-sdlc-crew/README.md) |
 | Understand how the hooks fit together | [`architecture.md`](architecture.md) |
 | Spend fewer tokens | [`token-cost.md`](token-cost.md) |
 | Run or extend the benchmarks | [`benchmarking.md`](benchmarking.md) |
 | Add or tighten an agent | [`agent-contracts.md`](agent-contracts.md) · [`../CONTRIBUTING.md`](../CONTRIBUTING.md) |
-| Run the Subagent-Driven Development workflow | [`../claudecfg/workflows/subagent-driven-development.md`](../claudecfg/workflows/subagent-driven-development.md) · [`progress-ledger.md`](progress-ledger.md) |
+| Run the Subagent-Driven Development workflow | [`../plugins/multi-agent-sdlc-crew/references/subagent-driven-development.md`](../plugins/multi-agent-sdlc-crew/references/subagent-driven-development.md) · [`progress-ledger.md`](progress-ledger.md) |
 | Follow the debugging discipline | [`debugging-root-cause-tracing.md`](debugging-root-cause-tracing.md) · [`debugging-defense-in-depth.md`](debugging-defense-in-depth.md) · [`debugging-condition-based-waiting.md`](debugging-condition-based-waiting.md) |
 | Use plan/spec conventions | [`plans/README.md`](plans/README.md) · [`specs/README.md`](specs/README.md) |
 | Review the coverage audit | [`audit-2026-06-21.md`](audit-2026-06-21.md) |
@@ -23,4 +23,4 @@ Start here, then follow the link that matches what you're doing.
 - `agent-contracts.md` — the prompt ↔ hook ↔ benchmark contract matrix
 - `audit-2026-06-21.md` — code-coverage audit: baseline (45.29% / 255 tests) through completion (100% / 648 tests)
 
-User-facing cheatsheet lives at [`../claudecfg/GUIDE.md`](../claudecfg/GUIDE.md).
+User-facing cheatsheet lives at [`../plugins/multi-agent-sdlc-crew/README.md`](../plugins/multi-agent-sdlc-crew/README.md).

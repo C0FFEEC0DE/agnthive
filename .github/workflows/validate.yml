@@ -101,16 +101,13 @@ jobs:
         run: python -m compileall scripts bench/fixtures tests
 
       # POSIX-only steps run under git-bash on Windows (present on Windows
-      # runners via Git for Windows) so the bash/jq/find/git invocations are
-      # identical across all three operating systems.
-      - name: Check shell syntax
-        shell: bash
-        run: bash -n install.sh claudecfg/install.sh claudecfg/hooks/*.sh claudecfg/statusline.sh tests/install/*.sh
-
+      # runners via Git for Windows) so the jq/find/git invocations are
+      # identical across all three operating systems. The hook runtime is now a
+      # platform-independent Node plugin, so there are no shell scripts to
+      # syntax-check.
       - name: Check key JSON files
         shell: bash
         run: |
-          jq empty claudecfg/settings.json
           jq empty tests/hooks/cases.json
           jq empty tests/hooks/scenarios.json
           find bench/tasks -type f -name '*.json' -exec jq empty {} +

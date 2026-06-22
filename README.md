@@ -5,20 +5,25 @@
 [![Python Tests](https://github.com/C0FFEEC0DE/multi-agent-sdlc-crew/actions/workflows/python-tests.yml/badge.svg?branch=main)](https://github.com/C0FFEEC0DE/multi-agent-sdlc-crew/actions/workflows/python-tests.yml)
 [![Security Checks](https://github.com/C0FFEEC0DE/multi-agent-sdlc-crew/actions/workflows/security-scan.yml/badge.svg?branch=main)](https://github.com/C0FFEEC0DE/multi-agent-sdlc-crew/actions/workflows/security-scan.yml)
 
-A **hook-gated SDLC profile for Claude Code**: shell hooks enforce a
-discover → design → implement → verify → review → docs flow, eight specialist
-agents do the work, and a benchmark suite catches agent regressions on every PR.
+A **hook-gated SDLC profile for Claude Code**: a platform-independent Node hook
+runtime enforces a discover → design → implement → verify → review → docs flow,
+eight specialist agents do the work, and a benchmark suite catches agent
+regressions on every PR.
 
 It gives you: deterministic handoff/stop contracts, token-spend discipline, and
-defense-in-depth command blocking — all as a drop-in `~/.claude` profile.
+defense-in-depth command blocking — all as a distributable Claude Code plugin.
 
 ## Install
 
+Install the plugin from a local checkout:
+
 ```bash
-./install.sh
+claude plugin install ./plugins/multi-agent-sdlc-crew
 ```
 
-Backs up your current `~/.claude` config, then installs this one. Restart Claude Code.
+Restart Claude Code. See `plugins/multi-agent-sdlc-crew/README.md` for
+requirements, configuration, the optional status line, and legacy-migration
+notes (if you previously installed the old `~/.claude` profile via `./install.sh`).
 
 ## How it works
 
@@ -86,7 +91,7 @@ These are the documented entry points; the hooks enforce the actual handoff and 
 
 ## Configuration
 
-- **Model:** none pinned — your runtime default applies. Set `"model": "…"` in `claudecfg/settings.json` to fix one.
+- **Model:** none pinned — your runtime default applies. Set `"model": "…"` in your Claude Code settings to fix one.
 - **`effortLevel`:** defaults to `medium` (lower spend); raise to `high` for hard design/verify/judge stages.
 - **Safety:** `permissions.deny` blocks `sudo`, `mkfs`, `dd`, `rm -rf /`, `rm -rf ~`, force-push, and secret reads. Auto-execution only inside project folders.
 - **Observability:** `Notification` and other runtime events log to `~/.claude/logs/*.jsonl` (rotated at 1 MB).
@@ -94,7 +99,7 @@ These are the documented entry points; the hooks enforce the actual handoff and 
 
 ## Docs
 
-- [`claudecfg/GUIDE.md`](claudecfg/GUIDE.md) — cheatsheet
+- [`plugins/multi-agent-sdlc-crew/README.md`](plugins/multi-agent-sdlc-crew/README.md) — plugin cheatsheet
 - [`docs/architecture.md`](docs/architecture.md) — how the hooks fit together
 - [`docs/token-cost.md`](docs/token-cost.md) — minimal token spend
 - [`docs/benchmarking.md`](docs/benchmarking.md) — benchmark setup

@@ -40,7 +40,7 @@ const { statePaths, loadState } = await import(join(pluginRoot, 'modules', 'stat
 // --- legacy-script -> dispatcher event (+ matcher) mapping ------------------
 // Each legacy claudecfg/hooks/<name>.sh maps to one dispatcher event. Matchers
 // mirror the registrations in plugins/multi-agent-sdlc-crew/hooks/hooks.json.
-const SCRIPT_TO_EVENT = {
+export const SCRIPT_TO_EVENT = {
   'pre-tool-use.sh': { event: 'PreToolUse', matcher: 'Bash' },
   'permission-request.sh': { event: 'PermissionRequest', matcher: 'Bash' },
   'permission-denied.sh': { event: 'PermissionDenied', matcher: 'Bash' },
@@ -512,7 +512,10 @@ function validateCaseEntry(entry, seenNames) {
   assertIs(entry.name, 'nonempty_string', 'case name');
   assertIs(entry.script, 'nonempty_string', `${entry.name}: script`);
   assertIs(entry.stdin, 'nonempty_string', `${entry.name}: stdin`);
-  fileExists(entry.script, `${entry.name} script`);
+  // `script` is an event label (the basename of the legacy hook it exercises),
+  // mapped via SCRIPT_TO_EVENT to a dispatcher event — it is NOT a file path the
+  // harness executes (the single Node dispatcher is spawned instead). Only the
+  // fixture (stdin) and optional seed_state/cwd are real files.
   fileExists(entry.stdin, `${entry.name} stdin`);
   if (entry.seed_state) fileExists(entry.seed_state, `${entry.name} seed_state`);
   if (entry.cwd) fileExists(entry.cwd, `${entry.name} cwd`);
@@ -539,8 +542,7 @@ function validateScenarioEntry(scen, seenNames) {
     if (stepNames.has(step.name)) throw new Error(`${scen.name}: duplicate step name ${step.name}`);
     stepNames.add(step.name);
     assertIs(step.script, 'nonempty_string', `${scen.name}::${step.name}: script`);
-    assertIs(step.stdin, 'nonempty_string', `${scen.name}::${step.name}: stdin`);
-    fileExists(step.script, `${scen.name}::${step.name} script`);
+    assertIs(step.stdin, 'nonempty_string', `${scen.name}::${step.name} stdin`);
     fileExists(step.stdin, `${scen.name}::${step.name} stdin`);
     if (step.seed_state) fileExists(step.seed_state, `${scen.name}::${step.name} seed_state`);
     if (step.cwd) fileExists(step.cwd, `${scen.name}::${step.name} cwd`);

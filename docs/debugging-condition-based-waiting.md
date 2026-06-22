@@ -52,4 +52,4 @@ a hang, not a fix.
 
 - [Root-cause tracing](debugging-root-cause-tracing.md)
 - [Defense in depth](debugging-defense-in-depth.md)
-- [Debugger agent](../claudecfg/agents/dbg.md)
+- [Debugger agent](../plugins/multi-agent-sdlc-crew/agents/debugger.md)

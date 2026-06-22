@@ -1,18 +1,21 @@
 #!/usr/bin/env node
 // validate.mjs — Node ESM port of scripts/validate.sh.
-// Checks: JSON validity, shell syntax, workflow syntax, shellcheck, Python
-// syntax, agent/skill frontmatter, slash-command inventory, settings/workflow
-// policy invariants, GitHub Actions Node.js 24 readiness, notification docs,
-// hook test manifests, installer smoke/idempotency, benchmark task structure,
-// internal markdown links, and the no-legacy-runtime gate.
+// Checks: JSON validity, workflow syntax, Python syntax, agent/skill
+// frontmatter (plugin two-shape skill model), slash-command inventory,
+// workflow policy invariants, GitHub Actions Node.js 24 readiness, notification
+// docs, hook test manifests, benchmark task structure, internal markdown links,
+// and the no-legacy-runtime gate.
 //
-// External linters (shellcheck, ruff, python3, actionlint, bash) are invoked
-// via spawnSync with an explicit argv — no shell, no exec, no eval.
+// External linters (ruff, python3, actionlint) are invoked via spawnSync with an
+// explicit argv — no shell, no exec, no eval. The plugin runtime is Node-only and
+// platform-independent, so shell-syntax/shellcheck/installer-smoke checks (which
+// targeted the removed legacy bash profile) are no longer relevant.
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join, relative, dirname, basename, extname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkNoLegacyRuntime } from './check-no-legacy-runtime.mjs';
+import { SCRIPT_TO_EVENT } from './test-hooks.mjs';
 
 const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url));
 process.chdir(REPO_ROOT);
@@ -147,25 +150,6 @@ function checkJson() {
   console.log('');
 }
 
-// ---------- shell syntax ----------
-function checkShellSyntax() {
-  console.log('--- Checking shell syntax ---');
-  const targets = [
-    join(REPO_ROOT, 'install.sh'),
-    join(REPO_ROOT, 'claudecfg', 'install.sh'),
-  ];
-  for (const d of ['claudecfg', 'scripts', 'tests/install', 'tests/hooks']) {
-    for (const f of walkGlob(join(REPO_ROOT, d), '.sh')) targets.push(f);
-  }
-  const bashBin = existsSync('/bin/bash') ? '/bin/bash' : 'bash';
-  for (const f of targets.sort()) {
-    const r = spawnSync(bashBin, ['-n', f], { stdio: 'pipe' });
-    if (r.status !== 0) reportError(`Shell syntax error: ${f}`);
-    else console.log(`OK: ${f}`);
-  }
-  console.log('');
-}
-
 // ---------- workflow syntax ----------
 function checkWorkflowSyntax() {
   console.log('--- Checking workflow syntax ---');
@@ -176,26 +160,6 @@ function checkWorkflowSyntax() {
     else console.log('OK: actionlint');
   } else {
     console.log('SKIP: actionlint not installed');
-  }
-  console.log('');
-}
-
-// ---------- shellcheck ----------
-function checkShellcheck() {
-  console.log('--- Checking shellcheck lint ---');
-  if (hasCmd('shellcheck')) {
-    const targets = [
-      join(REPO_ROOT, 'install.sh'),
-      join(REPO_ROOT, 'claudecfg', 'install.sh'),
-    ];
-    for (const f of walkGlob(join(REPO_ROOT, 'claudecfg', 'hooks'), '.sh')) targets.push(f);
-    for (const f of walkGlob(join(REPO_ROOT, 'scripts'), '.sh')) targets.push(f);
-    for (const f of walkGlob(join(REPO_ROOT, 'tests', 'install'), '.sh')) targets.push(f);
-    const r = spawnSync('shellcheck', targets, { stdio: 'pipe' });
-    if (r.status !== 0) reportError('shellcheck reported shell lint issues');
-    else console.log('OK: shellcheck');
-  } else {
-    console.log('SKIP: shellcheck not installed');
   }
   console.log('');
 }
@@ -219,7 +183,7 @@ function checkPythonSyntax() {
 // ---------- agent frontmatter ----------
 function checkAgentFrontmatter() {
   console.log('--- Checking agent frontmatter ---');
-  const agentDir = join(REPO_ROOT, 'claudecfg', 'agents');
+  const agentDir = join(REPO_ROOT, 'plugins', 'multi-agent-sdlc-crew', 'agents');
   if (!existsSync(agentDir)) { reportError(`Agent directory not found: ${agentDir}`); console.log(''); return; }
   const files = globDir(agentDir, '.md').sort();
   for (const af of files) {
@@ -243,58 +207,90 @@ function checkAgentFrontmatter() {
   console.log('');
 }
 
-// ---------- skill frontmatter ----------
+// ---------- skill frontmatter (plugin two-shape model) ----------
+// The plugin ships skills as nested dirs: skills/<name>/SKILL.md. There are two
+// shapes, enforced here so they cannot silently drift:
+//   - Agent-backed skills (design, docs, refactor, review, test) declare the
+//     full agent-dispatch contract: name, description, agent, context: fork,
+//     disable-model-invocation: true, non-empty allowed-tools, non-empty paths.
+//     The `agent` value must match a known plugin agent name or alias.
+//   - Command skills (bug, debug, explore, manager) are minimal: name +
+//     description only. They must NOT carry agent/context/allowed-tools/paths
+//     (that would make them a third, ambiguous shape).
 function checkSkillFrontmatter() {
   console.log('--- Checking skill frontmatter ---');
-  const skillDir = join(REPO_ROOT, 'claudecfg', 'skills');
-  const agentDir = join(REPO_ROOT, 'claudecfg', 'agents');
-  if (!existsSync(skillDir)) { reportError(`Skill directory not found: ${skillDir}`); console.log(''); return; }
-  const files = globDir(skillDir, '.md').sort();
-  for (const sf of files) {
-    const filename = basename(sf);
+  const skillsDir = join(REPO_ROOT, 'plugins', 'multi-agent-sdlc-crew', 'skills');
+  const agentDir = join(REPO_ROOT, 'plugins', 'multi-agent-sdlc-crew', 'agents');
+  if (!existsSync(skillsDir)) { reportError(`Skill directory not found: ${skillsDir}`); console.log(''); return; }
+
+  // Known plugin agent names + aliases (for agent-backed skill `agent:` matching).
+  const knownAgents = new Set();
+  for (const af of globDir(agentDir, '.md')) {
+    const afm = extractFrontmatterLines(readLines(af), basename(af));
+    if (afm) { knownAgents.add(extractScalar(afm, 'name')); knownAgents.add(extractScalar(afm, 'alias')); }
+  }
+
+  const skillDirs = readdirSync(skillsDir, { withFileTypes: true })
+    .filter((e) => e.isDirectory())
+    .map((e) => e.name)
+    .sort();
+  for (const skillName of skillDirs) {
+    const sf = join(skillsDir, skillName, 'SKILL.md');
+    const filename = relative(REPO_ROOT, sf).split(sep).join('/');
+    if (!existsSync(sf)) { reportError(`Skill dir missing SKILL.md: ${filename}`); continue; }
     const lines = readLines(sf);
     const fm = extractFrontmatterLines(lines, filename);
     if (fm === null) continue;
-    let failed = false;
     const fmText = fm.join('\n');
-    for (const field of ['name', 'description', 'agent', 'context', 'disable-model-invocation', 'allowed-tools', 'paths']) {
+    let failed = false;
+    for (const field of ['name', 'description']) {
       if (!fm.some((l) => l.startsWith(`${field}:`))) {
         reportError(`Missing '${field}' in ${filename} frontmatter`);
         failed = true;
       }
     }
-    if (!/^disable-model-invocation:\s*true$/m.test(fmText)) {
-      reportError(`Skill frontmatter must pin disable-model-invocation: true in ${filename}`);
-      failed = true;
-    }
-    if (!/^context:\s*fork$/m.test(fmText)) {
-      reportError(`Skill frontmatter must pin context: fork in ${filename}`);
-      failed = true;
-    }
-    const tools = extractListItems(fm, 'allowed-tools');
-    if (tools.length === 0) {
-      reportError(`Skill frontmatter must declare non-empty allowed-tools in ${filename}`);
-      failed = true;
-    }
-    const paths = extractListItems(fm, 'paths');
-    if (paths.length === 0) {
-      reportError(`Skill frontmatter must declare non-empty paths in ${filename}`);
+    const skillSelfName = extractScalar(fm, 'name');
+    if (skillSelfName && skillSelfName !== skillName) {
+      reportError(`Skill name '${skillSelfName}' must match its directory name '${skillName}' in ${filename}`);
       failed = true;
     }
     const skillAgent = extractScalar(fm, 'agent');
-    if (skillAgent) {
-      const agentFiles = globDir(agentDir, '.md');
-      const known = new Set();
-      for (const af of agentFiles) {
-        const afm = extractFrontmatterLines(readLines(af), basename(af));
-        if (afm) {
-          known.add(extractScalar(afm, 'name'));
-          known.add(extractScalar(afm, 'alias'));
+    const hasAgent = fm.some((l) => l.startsWith('agent:'));
+    if (hasAgent) {
+      // Agent-backed skill: full dispatch contract.
+      for (const field of ['agent', 'context', 'disable-model-invocation', 'allowed-tools', 'paths']) {
+        if (!fm.some((l) => l.startsWith(`${field}:`))) {
+          reportError(`Agent-backed skill missing '${field}' in ${filename} frontmatter`);
+          failed = true;
         }
       }
-      if (!known.has(skillAgent)) {
-        reportError(`Skill frontmatter agent does not match a known agent name or alias in ${filename}`);
+      if (!/^disable-model-invocation:\s*true$/m.test(fmText)) {
+        reportError(`Agent-backed skill must pin disable-model-invocation: true in ${filename}`);
         failed = true;
+      }
+      if (!/^context:\s*fork$/m.test(fmText)) {
+        reportError(`Agent-backed skill must pin context: fork in ${filename}`);
+        failed = true;
+      }
+      if (extractListItems(fm, 'allowed-tools').length === 0) {
+        reportError(`Agent-backed skill must declare non-empty allowed-tools in ${filename}`);
+        failed = true;
+      }
+      if (extractListItems(fm, 'paths').length === 0) {
+        reportError(`Agent-backed skill must declare non-empty paths in ${filename}`);
+        failed = true;
+      }
+      if (skillAgent && !knownAgents.has(skillAgent)) {
+        reportError(`Skill frontmatter agent does not match a known plugin agent name or alias in ${filename}`);
+        failed = true;
+      }
+    } else {
+      // Command skill: must stay minimal — no dispatch-contract fields.
+      for (const field of ['agent', 'context', 'disable-model-invocation', 'allowed-tools', 'paths']) {
+        if (fm.some((l) => l.startsWith(`${field}:`))) {
+          reportError(`Command skill must not declare '${field}' (only name+description) in ${filename}`);
+          failed = true;
+        }
       }
     }
     if (!failed) console.log(`OK: ${filename}`);
@@ -303,6 +299,9 @@ function checkSkillFrontmatter() {
 }
 
 // ---------- slash command inventory ----------
+// In the plugin model the slash commands ARE the bundled skills: each
+// skills/<name>/SKILL.md is invocable as /<name>. The 5 agent-backed skills are
+// the "skill" subset; the 4 command skills complete the 9-command inventory.
 function checkSlashCommandInventory() {
   console.log('--- Checking slash command inventory ---');
   const COMMAND_NAMES = ['manager', 'explore', 'bug', 'debug', 'design', 'test', 'refactor', 'review', 'docs'];
@@ -315,38 +314,49 @@ function checkSlashCommandInventory() {
   };
   const cmp = (a, b) => a < b ? -1 : a > b ? 1 : 0;
 
-  // File inventory: claudecfg/commands/*.md
+  const skillsDir = join(REPO_ROOT, 'plugins', 'multi-agent-sdlc-crew', 'skills');
+  const agentDir = join(REPO_ROOT, 'plugins', 'multi-agent-sdlc-crew', 'agents');
+  const skillDirs = existsSync(skillsDir)
+    ? readdirSync(skillsDir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name)
+    : [];
+
+  // Command inventory: the 9 skill dirs must equal the bundled command set.
   {
-    const cmdDir = join(REPO_ROOT, 'claudecfg', 'commands');
-    const actual = globDir(cmdDir, '.md').map((f) => basename(f, '.md')).sort(cmp);
+    const actual = skillDirs.slice().sort(cmp);
     const expected = EXPECTED_COMMANDS.slice().sort(cmp);
     if (JSON.stringify(actual) !== JSON.stringify(expected))
-      reportError('claudecfg/commands file inventory does not match the bundled slash-command inventory');
-    else console.log('OK: claudecfg/commands file inventory');
+      reportError('Plugin skills/ directory inventory does not match the bundled slash-command inventory');
+    else console.log('OK: plugin skills/ command inventory');
   }
-  // File inventory: claudecfg/skills/*.md
+  // Skill (agent-backed) inventory: dirs whose SKILL.md declares `agent:`.
   {
-    const skillDir = join(REPO_ROOT, 'claudecfg', 'skills');
-    const actual = globDir(skillDir, '.md').map((f) => basename(f, '.md')).sort(cmp);
+    const agentBacked = skillDirs.filter((n) => {
+      const fm = extractFrontmatterLines(readLines(join(skillsDir, n, 'SKILL.md')), `skills/${n}/SKILL.md`);
+      return fm ? fm.some((l) => l.startsWith('agent:')) : false;
+    }).sort(cmp);
     const expected = EXPECTED_SKILLS.slice().sort(cmp);
-    if (JSON.stringify(actual) !== JSON.stringify(expected))
-      reportError('claudecfg/skills file inventory does not match the bundled skill inventory');
-    else console.log('OK: claudecfg/skills file inventory');
+    if (JSON.stringify(agentBacked) !== JSON.stringify(expected))
+      reportError('Plugin agent-backed skill inventory does not match the bundled skill inventory');
+    else console.log('OK: plugin agent-backed skill inventory');
   }
 
+  // Each command's SKILL.md exists, and the agent carrying its alias exists.
   for (const command of EXPECTED_COMMANDS) {
-    const commandFile = join(REPO_ROOT, 'claudecfg', 'commands', `${command}.md`);
+    const skillFile = join(skillsDir, command, 'SKILL.md');
     const expectedAlias = aliasFor(command);
-    const agentFile = join(REPO_ROOT, 'claudecfg', 'agents', `${expectedAlias}.md`);
-    if (!existsSync(commandFile)) { reportError(`Missing slash command doc: ${commandFile}`); continue; }
-    const hdr = readLines(commandFile)[0];
-    if (!hdr || hdr.trim() !== `# /${command}`)
-      reportError(`Slash command doc header mismatch: ${commandFile}`);
-    if (!existsSync(agentFile)) { reportError(`Missing agent file for slash command /${command}: ${agentFile}`); continue; }
-    const afm = extractFrontmatterLines(readLines(agentFile), basename(agentFile));
-    const agentAlias = afm ? extractScalar(afm, 'alias') : '';
-    if (agentAlias !== expectedAlias)
-      reportError(`Agent alias mismatch for /${command}: expected ${expectedAlias}, found ${agentAlias} in ${agentFile}`);
+    if (!existsSync(skillFile)) { reportError(`Missing skill for slash command /${command}: ${skillFile}`); continue; }
+    const sfm = extractFrontmatterLines(readLines(skillFile), `skills/${command}/SKILL.md`);
+    const skillName = sfm ? extractScalar(sfm, 'name') : '';
+    if (skillName !== command)
+      reportError(`Skill name mismatch for /${command}: expected '${command}', found '${skillName}'`);
+    // The command's mapped agent alias must be present on a plugin agent file.
+    const agentFiles = globDir(agentDir, '.md');
+    const aliasPresent = agentFiles.some((af) => {
+      const afm = extractFrontmatterLines(readLines(af), basename(af));
+      return afm ? extractScalar(afm, 'alias') === expectedAlias : false;
+    });
+    if (!aliasPresent)
+      reportError(`No plugin agent carries alias '${expectedAlias}' for slash command /${command}`);
   }
 
   function compareCommandLists(file, label, start, end) {
@@ -368,20 +378,6 @@ function checkSlashCommandInventory() {
     else console.log(`OK: ${label}`);
   }
   compareCommandLists(join(REPO_ROOT, 'README.md'), 'README slash-command list', '### Slash commands', '### Required handoffs');
-  compareCommandLists(join(REPO_ROOT, 'claudecfg', 'GUIDE.md'), 'GUIDE slash-command list', '## Slash Commands', '## Auto-Execution');
-  compareCommandLists(join(REPO_ROOT, 'claudecfg', 'README.md'), 'claudecfg README slash-command list', '## Bundled slash commands', '## Installation');
-  console.log('');
-}
-
-// ---------- settings policy invariants ----------
-function checkSettingsPolicy() {
-  console.log('--- Checking settings policy invariants ---');
-  const settings = JSON.parse(readFileSync(join(REPO_ROOT, 'claudecfg', 'settings.json'), 'utf-8'));
-  if (settings.outputStyle === 'Default') console.log('OK: outputStyle stays Default');
-  else reportError('claudecfg/settings.json must keep outputStyle set to Default');
-  const notif = settings.hooks?.Notification?.[0]?.hooks?.[0]?.command;
-  if (notif === '"$HOME"/.claude/hooks/notification.sh') console.log('OK: Notification hook command');
-  else reportError('Notification hook must point to "$HOME"/.claude/hooks/notification.sh');
   console.log('');
 }
 
@@ -422,12 +418,11 @@ function checkWorkflowPolicy() {
     bb.includes('scripts/download-benchmark-summary.mjs') &&
     bb.includes('render-benchmark-summary.mjs bench-output/summary.json') &&
     bb.includes('bench-output/benchmark-report.md') &&
-    bb.includes("'install.sh'") &&
-    bb.includes("'claudecfg/install.sh'") &&
+    bb.includes("'plugins/multi-agent-sdlc-crew/**'") &&
     bb.includes('--ref-name "${REF_NAME:-}"') &&
     !bb.includes("if: github.event_name != 'workflow_dispatch'");
   if (bbOk) console.log('OK: Behavior Benchmark Subagents Smoke PR selector');
-  else reportError('Behavior Benchmark Subagents Smoke workflow must keep installer-trigger coverage, support manual changed-file collection, and publish markdown benchmark tables');
+  else reportError('Behavior Benchmark Subagents Smoke workflow must keep plugin-trigger coverage, support manual changed-file collection, and publish markdown benchmark tables');
   console.log('');
 }
 
@@ -447,9 +442,8 @@ function checkNode24Readiness() {
 function checkNotificationDocs() {
   console.log('--- Checking docs consistency for notification hook ---');
   const readme = readFileSync(join(REPO_ROOT, 'README.md'), 'utf-8');
-  const guide = readFileSync(join(REPO_ROOT, 'claudecfg', 'GUIDE.md'), 'utf-8');
-  if (readme.includes('`Notification`') && guide.includes('`Notification`')) console.log('OK: Notification hook documented');
-  else reportError('Notification hook must be documented in README.md and claudecfg/GUIDE.md');
+  if (readme.includes('`Notification`')) console.log('OK: Notification hook documented in README.md');
+  else reportError('Notification hook must be documented in README.md');
   console.log('');
 }
 
@@ -468,7 +462,10 @@ function checkHookManifests() {
           const name = c.name;
           const script = c.script;
           const stdin = c.stdin;
-          if (!script || !existsSync(join(REPO_ROOT, script))) reportError(`Hook case '${name}' has missing or non-existent script: ${script || '<empty>'}`);
+          // `script` is an event label (basename of the legacy hook), not a file
+          // the harness runs — the Node dispatcher is spawned instead. Validate
+          // it is a recognized event label; only the fixture (stdin) is a file.
+          if (!script || !SCRIPT_TO_EVENT[basename(script)]) reportError(`Hook case '${name}' has missing or unmapped event-script label: ${script || '<empty>'}`);
           if (!stdin || !existsSync(join(REPO_ROOT, stdin))) reportError(`Hook case '${name}' has missing or non-existent fixture: ${stdin || '<empty>'}`);
         }
         console.log(`OK: ${relative(REPO_ROOT, casesFile)}`);
@@ -487,8 +484,8 @@ function checkHookManifests() {
             reportError(`Hook scenario '${sname}' references missing seed_state: ${s.seed_state}`);
           for (const step of (s.steps || [])) {
             const stepName = step.name;
-            if (!step.script || !existsSync(join(REPO_ROOT, step.script)))
-              reportError(`Hook scenario '${sname}::${stepName}' has missing or non-existent script: ${step.script || '<empty>'}`);
+            if (!step.script || !SCRIPT_TO_EVENT[basename(step.script)])
+              reportError(`Hook scenario '${sname}::${stepName}' has missing or unmapped event-script label: ${step.script || '<empty>'}`);
             if (!step.stdin || !existsSync(join(REPO_ROOT, step.stdin)))
               reportError(`Hook scenario '${sname}::${stepName}' has missing or non-existent fixture: ${step.stdin || '<empty>'}`);
             if (step.cwd) {
@@ -504,23 +501,6 @@ function checkHookManifests() {
       }
     }
   } else console.log('No hook scenario manifest found');
-  console.log('');
-}
-
-// ---------- installer smoke ----------
-function checkInstallerSmoke() {
-  console.log('--- Checking installer smoke test ---');
-  if (process.platform === 'win32') {
-    // install-smoke.sh uses POSIX checksum probing that is not reliable under
-    // git-bash on Windows runners; the validate.yml matrix runs a separate
-    // `python -m compileall` step for Windows coverage. Skip here on win32.
-    console.log('SKIP: installer smoke is POSIX-only (skipped on Windows)\n');
-    return;
-  }
-  const smoke = join(REPO_ROOT, 'tests', 'install', 'install-smoke.sh');
-  const r = spawnSync('bash', [smoke], { stdio: 'pipe', cwd: REPO_ROOT });
-  if (r.status !== 0) reportError('Installer smoke/idempotency test failed');
-  else console.log('OK: installer smoke/idempotency');
   console.log('');
 }
 
@@ -668,19 +648,15 @@ function main() {
   console.log(`Repository: ${REPO_ROOT}`);
   console.log('');
   checkJson();
-  checkShellSyntax();
   checkWorkflowSyntax();
-  checkShellcheck();
   checkPythonSyntax();
   checkAgentFrontmatter();
   checkSkillFrontmatter();
   checkSlashCommandInventory();
-  checkSettingsPolicy();
   checkWorkflowPolicy();
   checkNode24Readiness();
   checkNotificationDocs();
   checkHookManifests();
-  checkInstallerSmoke();
   checkBenchmarkTasks();
   checkInternalLinks();
   checkLegacyRuntime();

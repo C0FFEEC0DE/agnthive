@@ -21,14 +21,12 @@ Hook enforcement is shared across agents and workflows:
 - `Stop`, `TaskCompleted`, and `TeammateIdle` block incomplete workflow completion
 - `PostToolUse` and `PostToolUseFailure` track edit and verification state
 
-Relevant files:
+Relevant files (plugin Node runtime — the single `hook-dispatcher.mjs` handles every event that the legacy per-hook shell scripts used to):
 
-- [`claudecfg/hooks/user-prompt-submit.sh`](../claudecfg/hooks/user-prompt-submit.sh)
-- [`claudecfg/hooks/subagent-start.sh`](../claudecfg/hooks/subagent-start.sh)
-- [`claudecfg/hooks/subagent-stop-guard.sh`](../claudecfg/hooks/subagent-stop-guard.sh)
-- [`claudecfg/hooks/stop-guard.sh`](../claudecfg/hooks/stop-guard.sh)
-- [`claudecfg/hooks/task-completed.sh`](../claudecfg/hooks/task-completed.sh)
-- [`claudecfg/hooks/lib.sh`](../claudecfg/hooks/lib.sh)
+- [`plugins/multi-agent-sdlc-crew/modules/hook-dispatcher.mjs`](../plugins/multi-agent-sdlc-crew/modules/hook-dispatcher.mjs) — event dispatch entrypoint (UserPromptSubmit, SubagentStart/Stop, Stop, TaskCompleted, PostToolUse, …)
+- [`plugins/multi-agent-sdlc-crew/modules/summary-contract.mjs`](../plugins/multi-agent-sdlc-crew/modules/summary-contract.mjs) — handoff/stop-footer recognition (replaces the legacy `lib.sh` footer functions)
+- [`plugins/multi-agent-sdlc-crew/modules/workflow.mjs`](../plugins/multi-agent-sdlc-crew/modules/workflow.mjs) — workflow-gate enforcement (required-role groups, stop/TaskCompleted blocks)
+- [`plugins/multi-agent-sdlc-crew/hooks/hooks.json`](../plugins/multi-agent-sdlc-crew/hooks/hooks.json) — event → command manifest
 
 ## Bench Runner Assertions
 

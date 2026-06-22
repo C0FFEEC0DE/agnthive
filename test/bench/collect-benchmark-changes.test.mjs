@@ -48,8 +48,8 @@ test('workflow_dispatch on feature branch collects diff vs base', () => {
   run('git', ['push', '-u', 'origin', 'main'], { cwd: worktree });
 
   run('git', ['switch', '-c', 'feature'], { cwd: worktree });
-  writeFile(join(worktree, 'claudecfg/agents/manager.md'), 'changed\n');
-  run('git', ['add', 'claudecfg/agents/manager.md'], { cwd: worktree });
+  writeFile(join(worktree, 'plugins/multi-agent-sdlc-crew/agents/manager.md'), 'changed\n');
+  run('git', ['add', 'plugins/multi-agent-sdlc-crew/agents/manager.md'], { cwd: worktree });
   run('git', ['commit', '-m', 'feature change'], { cwd: worktree });
 
   const output = join(d, 'feature-changes.txt');
@@ -58,7 +58,7 @@ test('workflow_dispatch on feature branch collects diff vs base', () => {
     '--base-ref', 'main', '--ref-name', 'feature',
   ], { cwd: worktree, encoding: 'utf-8' });
   assert.equal(r.status, 0, r.stderr);
-  assert.deepEqual(readFileSync(output, 'utf-8').split('\n').filter(Boolean), ['claudecfg/agents/manager.md']);
+  assert.deepEqual(readFileSync(output, 'utf-8').split('\n').filter(Boolean), ['plugins/multi-agent-sdlc-crew/agents/manager.md']);
 });
 
 test('workflow_dispatch on main collects recent history', () => {

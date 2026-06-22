@@ -5,7 +5,7 @@
     "steps": [
       {
         "name": "session_start_detects_node_scripts",
-        "script": "claudecfg/hooks/session-start.sh",
+        "script": "session-start.sh",
         "stdin": "tests/hooks/fixtures/session_start_node.json",
         "cwd": "tests/hooks/projects/node-app",
         "env": {
@@ -35,7 +35,7 @@
       },
       {
         "name": "user_prompt_submit_classifies_feature",
-        "script": "claudecfg/hooks/user-prompt-submit.sh",
+        "script": "user-prompt-submit.sh",
         "stdin": "tests/hooks/fixtures/user_prompt_feature.json",
         "expect_exit": 0,
         "stdout_jq": ".hookSpecificOutput.hookEventName == \"UserPromptSubmit\" and (.hookSpecificOutput.additionalContext | contains(\"successful verification or @t\"))",
@@ -43,7 +43,7 @@
       },
       {
         "name": "post_edit_write_marks_code_change",
-        "script": "claudecfg/hooks/post-edit-write.sh",
+        "script": "post-edit-write.sh",
         "stdin": "tests/hooks/fixtures/post_edit_write_code.json",
         "expect_exit": 0,
         "stdout_jq": ".hookSpecificOutput.hookEventName == \"PostToolUse\" and (.hookSpecificOutput.additionalContext | contains(\"requires verification\"))",
@@ -51,14 +51,14 @@
       },
       {
         "name": "task_completed_blocks_without_successful_verification",
-        "script": "claudecfg/hooks/task-completed.sh",
+        "script": "task-completed.sh",
         "stdin": "tests/hooks/fixtures/task_completed_incomplete.json",
         "expect_exit": 2,
         "stderr_regex": "no successful test command"
       },
       {
         "name": "post_bash_marks_tests_ok",
-        "script": "claudecfg/hooks/post-bash.sh",
+        "script": "post-bash.sh",
         "stdin": "tests/hooks/fixtures/post_bash_test_success.json",
         "expect_exit": 0,
         "stdout_jq": ".hookSpecificOutput.hookEventName == \"PostToolUse\" and (.hookSpecificOutput.additionalContext | contains(\"Successful verification command\"))",
@@ -66,7 +66,7 @@
       },
       {
         "name": "subagent_start_code_reviewer",
-        "script": "claudecfg/hooks/subagent-start.sh",
+        "script": "subagent-start.sh",
         "stdin": "tests/hooks/fixtures/subagent_start_code_reviewer.json",
         "expect_exit": 0,
         "stdout_jq": ".hookSpecificOutput.hookEventName == \"SubagentStart\" and (.hookSpecificOutput.additionalContext | contains(\"@cr\"))",
@@ -74,7 +74,7 @@
       },
       {
         "name": "subagent_start_explorer_scope",
-        "script": "claudecfg/hooks/subagent-start.sh",
+        "script": "subagent-start.sh",
         "stdin": "tests/hooks/fixtures/subagent_start_second_explorer_scope.json",
         "expect_exit": 0,
         "stdout_jq": ".hookSpecificOutput.hookEventName == \"SubagentStart\" and (.hookSpecificOutput.additionalContext | contains(\"Parallel same-role handoffs are allowed\"))",
@@ -82,13 +82,13 @@
       },
       {
         "name": "task_completed_allows_with_verification_and_roles",
-        "script": "claudecfg/hooks/task-completed.sh",
+        "script": "task-completed.sh",
         "stdin": "tests/hooks/fixtures/task_completed_feature_roles_satisfied.json",
         "expect_exit": 0
       },
       {
         "name": "stop_guard_allows_with_complete_summary",
-        "script": "claudecfg/hooks/stop-guard.sh",
+        "script": "stop-guard.sh",
         "stdin": "tests/hooks/fixtures/stop_guard_key_files_changed_label.json",
         "expect_exit": 0,
         "state_jq": ".stop_block_count == 0 and .stop_block_reason == \"\" and .stop_block_message == \"\""
@@ -101,7 +101,7 @@
     "steps": [
       {
         "name": "config_change_minimal",
-        "script": "claudecfg/hooks/config-change.sh",
+        "script": "config-change.sh",
         "stdin": "tests/hooks/fixtures/config_change_minimal.json",
         "expect_exit": 0,
         "file_assertions": [
@@ -121,7 +121,7 @@
       },
       {
         "name": "instructions_loaded_minimal",
-        "script": "claudecfg/hooks/instructions-loaded.sh",
+        "script": "instructions-loaded.sh",
         "stdin": "tests/hooks/fixtures/instructions_loaded_minimal.json",
         "expect_exit": 0,
         "file_assertions": [
@@ -141,7 +141,7 @@
       },
       {
         "name": "notification_minimal",
-        "script": "claudecfg/hooks/notification.sh",
+        "script": "notification.sh",
         "stdin": "tests/hooks/fixtures/notification_minimal.json",
         "expect_exit": 0,
         "file_assertions": [
@@ -161,7 +161,7 @@
       },
       {
         "name": "pre_compact_minimal",
-        "script": "claudecfg/hooks/pre-compact.sh",
+        "script": "pre-compact.sh",
         "stdin": "tests/hooks/fixtures/pre_compact_minimal.json",
         "expect_exit": 0,
         "file_assertions": [
@@ -177,7 +177,7 @@
       },
       {
         "name": "post_compact_minimal",
-        "script": "claudecfg/hooks/post-compact.sh",
+        "script": "post-compact.sh",
         "stdin": "tests/hooks/fixtures/post_compact_minimal.json",
         "expect_exit": 0,
         "file_assertions": [
@@ -193,7 +193,7 @@
       },
       {
         "name": "session_end_minimal",
-        "script": "claudecfg/hooks/session-end.sh",
+        "script": "session-end.sh",
         "stdin": "tests/hooks/fixtures/session_end_minimal.json",
         "expect_exit": 0,
         "file_assertions": [

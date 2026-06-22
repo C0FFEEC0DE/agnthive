@@ -1,6 +1,6 @@
 # Project Context
 
-This directory contains Claude Code configuration for the multi-agent-sdlc-crew repository — a hook-gated SDLC profile with benchmark-driven agent regression coverage.
+This repository ships the `multi-agent-sdlc-crew` Claude Code plugin (`plugins/multi-agent-sdlc-crew/`) — a hook-gated SDLC profile with a platform-independent Node ESM hook runtime and benchmark-driven agent regression coverage.
 
 ## Profile
 
@@ -9,7 +9,7 @@ This profile is hook-gated:
 - release/deploy automation is intentionally disabled
 - session metadata is logged to `~/.claude/logs/` for audit/dataset indexing
 - runtime notification events are logged to `notification.jsonl` with automatic log rotation (1MB threshold) to prevent unbounded growth
-- final completion and subagent handoff are enforced by shell hooks using shared session state for test/lint/build results and summary requirements
+- final completion and subagent handoff are enforced by the plugin's Node hooks using shared session state for test/lint/build results and summary requirements
 - stop-safe no-op replies are only valid when the session made no code or config changes; after code/config edits, keep reporting the actual verification, review outcome, changed files, and remaining risks
 - final implementation summaries after code/config changes must include exact stop-safe lines for `Verification status:`, `Review outcome:`, `Changed files:` or `No files changed:`, and `Remaining risks:`
 - subagent handoffs must include exact handoff-footer lines for `Outcome:`, `Changed files:` or `No files changed:`, `Verification status:`, and one closure line: `Remaining risks:` or `Next step:`
@@ -22,9 +22,13 @@ This profile is hook-gated:
 
 ## Quick Start
 
+Install the plugin from a local checkout:
+
 ```bash
-./install.sh
+claude plugin install ./plugins/multi-agent-sdlc-crew
 ```
+
+See `plugins/multi-agent-sdlc-crew/README.md` for requirements, configuration, and the optional status line.
 
 ## Commands
 
@@ -48,12 +52,12 @@ Transcript fallback also recognizes slash-skill loads, agent launch lines like `
 
 ## Docs
 
-- `claudecfg/GUIDE.md` — quick reference for agents, commands, and navigation
-- `claudecfg/README.md` — agent definitions and philosophy
+- `plugins/multi-agent-sdlc-crew/README.md` — plugin quick reference: requirements, installation, configuration, status line, privacy
+- `plugins/multi-agent-sdlc-crew/references/subagent-driven-development.md` — the SDD workflow and reference docs
 - `docs/benchmarking.md` — benchmark architecture, slot-gate mechanism, local usage, and required GitHub setup
 - `docs/agent-contracts.md` — contract matrix for benchmark/hook layers per agent role
 
-Slash skills under `claudecfg/skills/` use YAML frontmatter for routing/tool constraints.
+Plugin skills under `plugins/multi-agent-sdlc-crew/skills/` use YAML frontmatter for routing/tool constraints. Agent-backed skills (`design`, `docs`, `refactor`, `review`, `test`) carry the full dispatch contract; command skills (`bug`, `debug`, `explore`, `manager`) are minimal name+description entry points.
 
 ## Repository Automation
 
@@ -73,7 +77,7 @@ OpenRouter-backed Claude Code is configured via repository secrets/variables. Se
 ## Test Commands
 
 ```bash
-# Lint: shell syntax + shellcheck + python compile + ruff
+# Lint: Node ESM syntax + python compile + ruff
 make lint
 
 # All tests
@@ -83,7 +87,7 @@ make test
 # (COV_MIN=100). The gate applies ONLY to `make cov`, not `make test`.
 make cov
 
-# Hook contract harness + integration scenarios + direct lib.sh unit tests
+# Hook contract harness + integration scenarios (Node dispatcher driven)
 make hooks
 
 # Full repository self-check (validation + hooks + lint + tests)

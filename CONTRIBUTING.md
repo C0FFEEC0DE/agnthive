@@ -15,20 +15,19 @@ Thank you for your interest in contributing!
 ## Project Structure
 
 ```
-install.sh        # Repository-level installer entrypoint
-claudecfg/
-├── agents/         # Agent definitions (*.md)
-├── commands/       # Slash command documentation
-├── skills/         # Skill definitions (commands that invoke agents)
-├── workflows/      # Workflow definitions
-├── settings.json   # Main configuration
-├── GUIDE.md        # User guide
-└── install.sh      # Compatibility wrapper to ../install.sh
+plugins/multi-agent-sdlc-crew/   # The distributable Claude Code plugin
+├── agents/         # Agent definitions (*.md, flat)
+├── skills/         # Skills (nested <name>/SKILL.md): agent-backed + command skills
+├── references/     # Workflow + reference docs
+├── modules/        # Node ESM hook runtime (hook-dispatcher, state, policy, ...)
+├── hooks/hooks.json  # Hook event → command manifest
+├── assets/         # Bundled alias map + static assets
+└── .claude-plugin/plugin.json  # Plugin manifest
 ```
 
 ## Adding a New Agent
 
-1. Create `claudecfg/agents/[alias].md`
+1. Create `plugins/multi-agent-sdlc-crew/agents/[alias].md`
 2. Use the template:
 
 ```yaml
@@ -48,14 +47,14 @@ type: AgentType
 ...
 ```
 
-3. Update `claudecfg/agents/m.md` to include new agent
+3. Update `plugins/multi-agent-sdlc-crew/agents/manager.md` to include new agent
 4. Update README.md agent table
-5. Update GUIDE.md subagents section
 
 ## Adding a New Command
 
-1. Create `claudecfg/commands/[command].md`
-2. If it invokes an agent, also create `claudecfg/skills/[command].md` with YAML frontmatter:
+1. Create `plugins/multi-agent-sdlc-crew/skills/[command]/SKILL.md`. For an
+   agent-backed command (one that dispatches a specialist), use the full
+   agent-dispatch frontmatter:
 
 ```yaml
 ---
@@ -69,7 +68,9 @@ paths:
   - "**/*"
 ---
 ```
-3. Update CLAUDE.md commands list
+
+   For a minimal command skill (no agent dispatch), use only `name` + `description`.
+2. Update CLAUDE.md commands list
 
 ## Code Style
 

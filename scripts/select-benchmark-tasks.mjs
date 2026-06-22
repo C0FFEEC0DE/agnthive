@@ -11,9 +11,16 @@ import { isMain, normalizeStringList, frontmatterField } from './bench/lib.mjs';
 export const SUITE_DEFAULTS = { subagents_smoke: 'bench/tasks/subagents/smoke/*.json' };
 export const PRIORITY_PROFILES = {};
 
+// The legacy claudecfg/ profile was removed when the repo migrated to the
+// distributable plugin; a change to the plugin runtime core (modules, hooks
+// manifest, plugin manifest, or bundled alias map) is a global behavior change
+// that should re-run the whole behavior smoke suite.
 export const GLOBAL_BEHAVIOR_PREFIXES = [
-  'claudecfg/hooks/',
-  'claudecfg/settings.json',
+  'plugins/multi-agent-sdlc-crew/modules/',
+  'plugins/multi-agent-sdlc-crew/hooks/hooks.json',
+  'plugins/multi-agent-sdlc-crew/.claude-plugin/plugin.json',
+  'plugins/multi-agent-sdlc-crew/assets/aliases.json',
+  'plugins/multi-agent-sdlc-crew/package.json',
   'scripts/assert-benchmark-summary.mjs',
   'scripts/bench/lib.mjs',
   'scripts/bench_runner_claude_code.py',
@@ -35,8 +42,6 @@ export const GLOBAL_BEHAVIOR_PREFIXES = [
 
 export const GLOBAL_BEHAVIOR_FILES = new Set([
   'CLAUDE.md',
-  'install.sh',
-  'claudecfg/install.sh',
   '.github/workflows/behavior-benchmark-subagents-smoke.yml',
 ]);
 
@@ -50,9 +55,15 @@ export const SKILL_TO_ALIAS = {};
 
 export function tasksRoot() { return join(config.repoRoot, 'bench', 'tasks'); }
 
+// The agent/skill source-of-truth moved from claudecfg/ to the bundled plugin.
+// Plugin agents are flat: plugins/multi-agent-sdlc-crew/agents/<name>.md.
+// Plugin skills are nested: plugins/multi-agent-sdlc-crew/skills/<skill>/SKILL.md.
+function pluginAgentsDir() { return join(config.repoRoot, 'plugins', 'multi-agent-sdlc-crew', 'agents'); }
+function pluginSkillsDir() { return join(config.repoRoot, 'plugins', 'multi-agent-sdlc-crew', 'skills'); }
+
 export function buildAgentFileMap() {
   const mapping = {};
-  const dir = join(config.repoRoot, 'claudecfg', 'agents');
+  const dir = pluginAgentsDir();
   let entries = [];
   try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return mapping; }
   for (const ent of entries.sort((a, b) => a.name.localeCompare(b.name))) {
@@ -65,7 +76,7 @@ export function buildAgentFileMap() {
 
 export function buildAgentNameMap() {
   const mapping = {};
-  const dir = join(config.repoRoot, 'claudecfg', 'agents');
+  const dir = pluginAgentsDir();
   let entries = [];
   try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return mapping; }
   for (const ent of entries.sort((a, b) => a.name.localeCompare(b.name))) {
@@ -79,13 +90,16 @@ export function buildAgentNameMap() {
 }
 
 export function buildSkillMap() {
+  // Plugin skills are nested: skills/<skill>/SKILL.md. The map is keyed by the
+  // skill directory name (e.g. "review") so impactedAgents can look up a changed
+  // .../skills/<skill>/SKILL.md by its parent directory.
   const mapping = {};
-  const dir = join(config.repoRoot, 'claudecfg', 'skills');
+  const dir = pluginSkillsDir();
   let entries = [];
   try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return mapping; }
   for (const ent of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-    if (!ent.isFile() || !ent.name.endsWith('.md')) continue;
-    const agent = frontmatterField(join(dir, ent.name), 'agent');
+    if (!ent.isDirectory()) continue;
+    const agent = frontmatterField(join(dir, ent.name, 'SKILL.md'), 'agent');
     const alias = agent ? AGENT_NAME_TO_ALIAS[agent.toLowerCase()] : undefined;
     if (alias) mapping[ent.name] = alias;
   }
@@ -143,15 +157,20 @@ export { FileNotFoundError };
 
 export function impactedAgents(changedFiles) {
   const aliases = new Set();
+  const AGENTS_PREFIX = 'plugins/multi-agent-sdlc-crew/agents/';
+  const SKILLS_PREFIX = 'plugins/multi-agent-sdlc-crew/skills/';
   for (const changed of changedFiles) {
     const parts = changed.split(/[\\/]/);
     const name = parts[parts.length - 1];
-    if (changed.startsWith('claudecfg/agents/')) {
+    if (changed.startsWith(AGENTS_PREFIX)) {
       const alias = AGENT_FILE_TO_ALIAS[name];
       if (alias) aliases.add(alias);
     }
-    if (changed.startsWith('claudecfg/skills/')) {
-      const alias = SKILL_TO_ALIAS[name];
+    if (changed.startsWith(SKILLS_PREFIX)) {
+      // Nested skill layout: .../skills/<skill>/SKILL.md -> key by <skill>.
+      const skillsIdx = parts.indexOf('skills');
+      const skillName = skillsIdx >= 0 ? parts[skillsIdx + 1] : undefined;
+      const alias = skillName ? SKILL_TO_ALIAS[skillName] : undefined;
       if (alias) aliases.add(alias);
     }
   }

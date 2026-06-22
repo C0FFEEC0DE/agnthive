@@ -31,4 +31,4 @@ again.
 
 - [Root-cause tracing](debugging-root-cause-tracing.md)
 - [Condition-based waiting](debugging-condition-based-waiting.md)
-- [Debugger agent](../claudecfg/agents/dbg.md)
+- [Debugger agent](../plugins/multi-agent-sdlc-crew/agents/debugger.md)

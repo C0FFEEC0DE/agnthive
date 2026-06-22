@@ -33,15 +33,11 @@ all: lint test hooks
 node-test:
 	node --test 'test/**/*.test.mjs'
 
-# Lint: Node ESM syntax check + shell syntax + shellcheck (if available) +
-# python compile + ruff (if available). Dev/CI tooling under scripts/ is now
-# Node ESM (.mjs); only the dev-profile hooks and installers remain shell.
+# Lint: Node ESM syntax check + python compile + ruff (if available). The hook
+# runtime is now a platform-independent Node plugin (no Bash/shell scripts
+# remain in the repo), so shell-syntax/shellcheck steps are no longer needed.
 lint:
 	node scripts/lint.mjs
-	@bash -n install.sh claudecfg/install.sh claudecfg/hooks/*.sh claudecfg/statusline.sh tests/install/*.sh tests/hooks/*.sh
-	@if command -v shellcheck >/dev/null 2>&1; then \
-		shellcheck install.sh claudecfg/install.sh claudecfg/hooks/*.sh claudecfg/statusline.sh tests/install/*.sh; \
-	else echo "shellcheck not installed, skipping"; fi
 	python -m compileall -q .
 	@if command -v ruff >/dev/null 2>&1; then ruff check .; \
 	else echo "ruff not installed, skipping"; fi

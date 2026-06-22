@@ -42,7 +42,7 @@ test('isGlobalBehaviorChange global file', () => {
   assert.equal(isGlobalBehaviorChange(['CLAUDE.md']), true);
 });
 test('isGlobalBehaviorChange global prefix', () => {
-  assert.equal(isGlobalBehaviorChange(['claudecfg/hooks/lib.sh']), true);
+  assert.equal(isGlobalBehaviorChange(['plugins/multi-agent-sdlc-crew/modules/hook-dispatcher.mjs']), true);
 });
 test('isGlobalBehaviorChange unrelated', () => {
   assert.equal(isGlobalBehaviorChange(['docs/readme.md']), false);
@@ -64,17 +64,17 @@ test('impactedFixtures no match', () => {
 
 test('impactedAgents resolves and skips unknown', () => {
   AGENT_FILE_TO_ALIAS['known_agent.md'] = 'k';
-  SKILL_TO_ALIAS['known_skill.md'] = 's';
+  SKILL_TO_ALIAS['known_skill'] = 's';
   const aliases = impactedAgents([
-    'claudecfg/agents/known_agent.md',
-    'claudecfg/agents/unknown_agent.md',
-    'claudecfg/skills/known_skill.md',
-    'claudecfg/skills/unknown_skill.md',
+    'plugins/multi-agent-sdlc-crew/agents/known_agent.md',
+    'plugins/multi-agent-sdlc-crew/agents/unknown_agent.md',
+    'plugins/multi-agent-sdlc-crew/skills/known_skill/SKILL.md',
+    'plugins/multi-agent-sdlc-crew/skills/unknown_skill/SKILL.md',
     'docs/unrelated.md',
   ]);
   assert.deepEqual([...aliases], ['k', 's']);
   delete AGENT_FILE_TO_ALIAS['known_agent.md'];
-  delete SKILL_TO_ALIAS['known_skill.md'];
+  delete SKILL_TO_ALIAS['known_skill'];
 });
 
 // ---- taskOverlapKey ----
@@ -142,13 +142,13 @@ test('selectTasks fixture hit', () => {
 });
 
 test('selectTasks agent hit', () => {
-  SKILL_TO_ALIAS['test.md'] = 't';
+  SKILL_TO_ALIAS['test'] = 't';
   try {
     const tasks = [task('t1', SUITE, { related_agents: ['t'] }), task('t2', SUITE, { related_agents: ['cr'] })];
-    const [sel, reasons] = selectTasks(tasks, SUITE, ['claudecfg/skills/test.md'], 'changed');
+    const [sel, reasons] = selectTasks(tasks, SUITE, ['plugins/multi-agent-sdlc-crew/skills/test/SKILL.md'], 'changed');
     assert.deepEqual(sel.map((t) => t.id), ['t1']);
     assert.ok(reasons.includes('agent_or_skill_change'));
-  } finally { delete SKILL_TO_ALIAS['test.md']; }
+  } finally { delete SKILL_TO_ALIAS['test']; }
 });
 
 test('selectTasks overlap exclusion', () => {
@@ -285,7 +285,7 @@ test('writeGithubOutput file empty tasks', () => {
 
 test('buildAgentFileMap skips no alias', () => {
   const d = mkdtempSync(join(tmpdir(), 'sel-'));
-  const agentsDir = join(d, 'claudecfg', 'agents');
+  const agentsDir = join(d, 'plugins', 'multi-agent-sdlc-crew', 'agents');
   mkdirSync(agentsDir, { recursive: true });
   writeFileSync(join(agentsDir, 'noalias.md'), '---\nname: NoAlias\n---\nbody');
   writeFileSync(join(agentsDir, 'has.md'), '---\nname: Has\nalias: h\n---\nbody');
@@ -297,15 +297,17 @@ test('buildAgentFileMap skips no alias', () => {
 
 test('buildSkillMap skips unmapped agent', () => {
   const d = mkdtempSync(join(tmpdir(), 'sel-'));
-  const skillsDir = join(d, 'claudecfg', 'skills');
+  const skillsDir = join(d, 'plugins', 'multi-agent-sdlc-crew', 'skills');
   mkdirSync(skillsDir, { recursive: true });
-  writeFileSync(join(skillsDir, 'noagent.md'), '---\n---\nbody');
-  writeFileSync(join(skillsDir, 'unknown.md'), '---\nagent: Ghost\n---\nbody');
-  writeFileSync(join(skillsDir, 'known.md'), '---\nagent: Tester\n---\nbody');
+  // Plugin skills are nested: skills/<name>/SKILL.md.
+  for (const [name, body] of [['noagent', '---\n---\nbody'], ['unknown', '---\nagent: Ghost\n---\nbody'], ['known', '---\nagent: Tester\n---\nbody']]) {
+    mkdirSync(join(skillsDir, name), { recursive: true });
+    writeFileSync(join(skillsDir, name, 'SKILL.md'), body);
+  }
   const origRoot = config.repoRoot;
   config.repoRoot = d;
   AGENT_NAME_TO_ALIAS['tester'] = 't';
-  try { assert.deepEqual(buildSkillMap(), { 'known.md': 't' }); }
+  try { assert.deepEqual(buildSkillMap(), { 'known': 't' }); }
   finally { config.repoRoot = origRoot; delete AGENT_NAME_TO_ALIAS['tester']; }
 });
 
