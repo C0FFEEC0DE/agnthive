@@ -8,7 +8,7 @@
   "review_required": false,
   "docs_required": false,
   "verification_required": true,
-  "prompt": "Launch @architect/@a immediately and let that specialist scope the refactor before you touch the code. Do not refactor the code yourself before the handoff. Use @architect/@a to drive the smallest safe refactor that removes duplicated normalization logic in render_title() and render_subtitle() without changing behavior. Run pytest -q. Finish with required footer.",
+  "prompt": "Use @a to extract the duplicated strip+uppercase normalization from render_title() and render_subtitle() into a shared helper. Do not edit any file yourself — only @a touches the code. @a must run pytest -q and confirm 4 passed. Finish with required footer.",
   "success_criteria": [
     "Duplication reduced",
     "Behavior unchanged",
