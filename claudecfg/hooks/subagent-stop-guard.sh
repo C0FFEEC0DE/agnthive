@@ -6,6 +6,12 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=/dev/null
 source "${SCRIPT_DIR}/lib.sh"
 
+# Claude sets this while re-running a Stop hook after it returned a block.
+# Do not re-enter the guard or perform any state writes in that recursion.
+if [ "$(json_get_bool '.stop_hook_active')" = "true" ]; then
+    exit 0
+fi
+
 ensure_state
 
 last_message=""

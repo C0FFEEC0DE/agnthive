@@ -8,6 +8,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   hook-contracts:
     name: Hook Contracts
@@ -33,5 +36,5 @@ jobs:
       - name: Run Node hook fixture runner (cases + scenarios)
         run: node scripts/test-hooks.mjs
 
-      - name: Run hook-related pytest checks
-        run: python -m pytest tests/test_settings_hooks.py -v
+      - name: Run hook-related Node checks
+        run: node --test test/unit/settings-hooks.test.mjs

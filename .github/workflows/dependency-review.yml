@@ -1,0 +1,37 @@
+name: Dependency Review
+
+# Flags vulnerable, out-of-date, and unresolved-license dependencies on PRs
+# via github/dependency-review-action. Complements CodeQL (code analysis) and
+# the existing TruffleHog secret scan.
+
+on:
+  pull_request:
+    branches:
+      - main
+
+env:
+  # Repo convention: opt reusable Actions into Node.js 24.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # pull-requests: write lets the action post review comments on failure.
+      pull-requests: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v4
+        with:
+          # Fail on high/critical vulnerabilities and unresolved license issues.
+          fail-on-severity: high
+          deny-licenses: AGPL-3.0, AGPL-3.0-only, AGPL-3.0-or-later, GPL-3.0, GPL-3.0-only, GPL-3.0-or-later, CC-BY-NC-4.0

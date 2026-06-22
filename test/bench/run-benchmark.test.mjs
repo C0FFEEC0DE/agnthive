@@ -2,7 +2,8 @@
 // Uses a Node-based fake runner (no jq/bash dependency in test fixtures).
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { writeFileSync, mkdirSync, readFileSync, chmodSync } from 'node:fs';
+import { writeFileSync, mkdirSync, readFileSync, chmodSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { run } from '../../scripts/run-benchmark.mjs';
@@ -40,8 +41,14 @@ writeFileSync(join(outDir, 'result.json'), JSON.stringify({
   chmodSync(p, 0o755);
 }
 
-test('run-benchmark records unexecuted tasks after fail-fast', () => {
-  const d = join('/tmp', 'rb-' + Date.now());
+function createTestDirectory(t, prefix) {
+  const d = mkdtempSync(join(tmpdir(), prefix));
+  t.after(() => rmSync(d, { recursive: true, force: true }));
+  return d;
+}
+
+test('run-benchmark records unexecuted tasks after fail-fast', (t) => {
+  const d = createTestDirectory(t, 'rb-');
   const outputDir = join(d, 'bench-output');
   const profileDir = join(d, 'claude-profile');
   const firstTask = join(d, 'first.json');
@@ -76,8 +83,8 @@ test('run-benchmark records unexecuted tasks after fail-fast', () => {
   assert.equal(summary.totals.unresolved_tasks, 2);
 });
 
-test('run() mock mode unit produces passing summary', () => {
-  const d = join('/tmp', 'rb-mock-' + Date.now());
+test('run() mock mode unit produces passing summary', (t) => {
+  const d = createTestDirectory(t, 'rb-mock-');
   const outputDir = join(d, 'out');
   mkdirSync(d, { recursive: true });
   const summary = run({

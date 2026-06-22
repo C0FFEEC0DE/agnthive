@@ -62,6 +62,15 @@ on:
         default: "768"
         type: string
 
+# Minimal token scopes: contents: read for checkout; actions: read for the
+# two-slot gate (wait-for-benchmark-slot polls the Actions API), shard-artifact
+# download, and resume/auto_resume run lookup. The bench runners do not use
+# GITHUB_TOKEN for PR comments or check runs (they call the OpenRouter API via
+# ANTHROPIC_AUTH_TOKEN), so no write scopes are required.
+permissions:
+  contents: read
+  actions: read
+
 jobs:
   precheck:
     name: Behavior Benchmark Subagents Smoke Precheck

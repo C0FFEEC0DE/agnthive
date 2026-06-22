@@ -89,6 +89,11 @@ make hooks
 # Full repository self-check (validation + hooks + lint + tests)
 node scripts/validate.mjs
 
+# Remove regenerable test/benchmark artifacts (coverage data, pytest + python
+# caches, benchmark per-task logs under BENCH_OUTPUT_DIR). Run after repeated
+# test/bench cycles so accumulated output does not exhaust disk quota.
+make clean
+
 # Benchmark tests only
 python3 -m pytest tests/bench/ -v
 ```

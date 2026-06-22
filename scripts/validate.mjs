@@ -67,6 +67,18 @@ function hasCmd(cmd) {
   return r.status === 0 && (r.stdout?.toString().trim().length > 0);
 }
 
+/** Resolve a Python interpreter: prefer `python3`, fall back to `python` (Windows
+ *  setup-python exposes `python`, not `python3`). Returns null if neither runs. */
+function probePython() {
+  for (const c of ['python3', 'python']) {
+    try {
+      const r = spawnSync(c, ['--version'], { stdio: 'pipe' });
+      if (r.status === 0) return c;
+    } catch { /* try next */ }
+  }
+  return null;
+}
+
 // ---------- frontmatter helpers ----------
 function readLines(p) {
   return readFileSync(p, 'utf-8').split('\n');
@@ -191,11 +203,13 @@ function checkShellcheck() {
 // ---------- Python syntax ----------
 function checkPythonSyntax() {
   console.log('--- Checking Python syntax ---');
+  const py = probePython();
+  if (!py) { console.log('SKIP: no python/python3 interpreter on PATH\n'); return; }
   const dirs = ['scripts', 'bench/fixtures', 'tests'];
   const files = [];
   for (const d of dirs) for (const f of walkGlob(join(REPO_ROOT, d), '.py')) files.push(f);
   for (const f of files.sort()) {
-    const r = spawnSync('python3', ['-m', 'py_compile', f], { stdio: 'pipe' });
+    const r = spawnSync(py, ['-m', 'py_compile', f], { stdio: 'pipe' });
     if (r.status !== 0) reportError(`Python syntax error: ${f}`);
     else console.log(`OK: ${f}`);
   }
@@ -496,6 +510,13 @@ function checkHookManifests() {
 // ---------- installer smoke ----------
 function checkInstallerSmoke() {
   console.log('--- Checking installer smoke test ---');
+  if (process.platform === 'win32') {
+    // install-smoke.sh uses POSIX checksum probing that is not reliable under
+    // git-bash on Windows runners; the validate.yml matrix runs a separate
+    // `python -m compileall` step for Windows coverage. Skip here on win32.
+    console.log('SKIP: installer smoke is POSIX-only (skipped on Windows)\n');
+    return;
+  }
   const smoke = join(REPO_ROOT, 'tests', 'install', 'install-smoke.sh');
   const r = spawnSync('bash', [smoke], { stdio: 'pipe', cwd: REPO_ROOT });
   if (r.status !== 0) reportError('Installer smoke/idempotency test failed');

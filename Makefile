@@ -22,7 +22,7 @@ ifneq ($(strip $(BENCH_TASK_LABEL)),)
 BENCH_LABEL_ARGS = --task-label '$(BENCH_TASK_LABEL)'
 endif
 
-.PHONY: all lint hooks test node-test cov validate bench-mock bench-smoke bench-command bench-assert bench-report bench-rerun-failed
+.PHONY: all lint hooks test node-test cov validate clean bench-mock bench-smoke bench-command bench-assert bench-report bench-rerun-failed
 
 # Default: lint + test + hook contract tests.
 all: lint test hooks
@@ -66,6 +66,18 @@ cov:
 		pytest -q tests/ --cov=scripts --cov-branch \
 			--cov-report=term-missing --cov-fail-under=$(COV_MIN); \
 	else echo "pytest-cov not installed, skipping coverage gate"; fi
+
+# Remove regenerable test/benchmark artifacts so repeated runs do not exhaust
+# disk quota. Safe: every file/dir removed here is recreated by the target that
+# produced it. Covers: coverage data, pytest + python caches, and benchmark
+# per-task logs/output (BENCH_OUTPUT_DIR defaults to /tmp/claude-bench, but a
+# caller may point it inside the repo, so clean both).
+clean:
+	rm -rf .coverage .coverage.* htmlcov coverage.xml
+	rm -rf .pytest_cache
+	find . -name __pycache__ -type d -not -path '*/.git/*' -prune -exec rm -rf {} + 2>/dev/null || true
+	rm -rf '$(BENCH_OUTPUT_DIR)' bench-output bench-output-*
+	@echo "clean: removed coverage data, python caches, and benchmark output"
 
 bench-mock:
 	node scripts/run-benchmark.mjs \
