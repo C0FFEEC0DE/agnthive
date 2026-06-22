@@ -91,7 +91,7 @@ This workflow:
 3. copies the repository `.claude/` directory into each isolated fixture workdir so project-local config is exercised during the benchmark
 4. collects the PR diff and maps it to affected agents, fixtures, task files, and shared workflow logic
 5. selects the impacted tasks from `bench/tasks/subagents/smoke/*.json`, which contains focused canary tasks for each canonical specialist role plus a few workflow-shape tasks
-6. runs `scripts/run-benchmark.sh` in `command` mode with the selected task list
+6. runs `node scripts/run-benchmark.mjs` in `command` mode with the selected task list
 7. uses `scripts/bench_runner_claude_code.py` as the per-task runner
 8. uploads per-task Claude artifacts plus `summary.json`
 9. fails the workflow unless every selected benchmark task passes
@@ -173,20 +173,20 @@ export ANTHROPIC_API_KEY=
 export OLLAMA_MODEL="${OLLAMA_MODEL:-your-model-id}"
 export CLAUDE_CODE_MAX_OUTPUT_TOKENS="${CLAUDE_CODE_MAX_OUTPUT_TOKENS:-768}"
 export BENCH_RUNNER_CMD="python3 scripts/bench_runner_claude_code.py"
-bash scripts/run-benchmark.sh --output-dir /tmp/claude-bench --mode command
-bash scripts/assert-benchmark-summary.sh /tmp/claude-bench/summary.json
+node scripts/run-benchmark.mjs --output-dir /tmp/claude-bench --mode command
+node scripts/assert-benchmark-summary.mjs /tmp/claude-bench/summary.json
 ```
 
 To run the subagent smoke suite manually:
 
 ```bash
-bash scripts/run-benchmark.sh --output-dir /tmp/claude-bench-subagents-smoke --mode command --task-glob 'bench/tasks/subagents/smoke/*.json'
+node scripts/run-benchmark.mjs --output-dir /tmp/claude-bench-subagents-smoke --mode command --task-glob 'bench/tasks/subagents/smoke/*.json'
 ```
 
 For cheap synthetic checks without the real agent:
 
 ```bash
-bash scripts/run-benchmark.sh --output-dir /tmp/claude-bench-mock --mode mock
+node scripts/run-benchmark.mjs --output-dir /tmp/claude-bench-mock --mode mock
 ```
 
 ## Re-running only failed tasks
@@ -194,7 +194,7 @@ bash scripts/run-benchmark.sh --output-dir /tmp/claude-bench-mock --mode mock
 A full smoke rerun re-executes every canary task and spends Ollama credits on
 the ones that already passed. To re-run only the tasks that did not resolve in
 a prior failed run, use the smoke workflow's `resume` / `auto_resume` selection
-modes — the selector (`scripts/select-benchmark-tasks.py`) loads the previous
+modes — the selector (`scripts/select-benchmark-tasks.mjs`) loads the previous
 run's summary and selects only its `unresolved_task_ids`.
 
 From your workstation (requires `gh` with workflow permissions):
@@ -207,14 +207,14 @@ make bench-rerun-failed
 make bench-rerun-failed RUN_ID=27872932481
 
 # Equivalent direct invocation:
-bash scripts/rerun-failed-benchmark.sh                 # auto_resume
-bash scripts/rerun-failed-benchmark.sh --run-id 27872932481
-bash scripts/rerun-failed-benchmark.sh --ref main       # target a branch
+node scripts/rerun-failed-benchmark.mjs                 # auto_resume
+node scripts/rerun-failed-benchmark.mjs --run-id 27872932481
+node scripts/rerun-failed-benchmark.mjs --ref main       # target a branch
 ```
 
 The wrapper dispatches the workflow with `selection_mode=auto_resume` (or
 `resume` with `--run-id`), then prints the new run's URL and a `gh run watch`
-command. `auto_resume` uses `scripts/find-failed-benchmark-run.py` to locate the
+command. `auto_resume` uses `scripts/find-failed-benchmark-run.mjs` to locate the
 last failed run automatically; if none exists in the last 72 hours it falls back
 to `changed` mode.
 
@@ -223,19 +223,19 @@ tasks from a previous summary, then feed that list to the runner:
 
 ```bash
 # 1. Select only the unresolved tasks from a previous local summary:
-python3 scripts/select-benchmark-tasks.py --suite subagents_smoke \
+node scripts/select-benchmark-tasks.mjs --suite subagents_smoke \
     --selection-mode resume \
     --previous-summary-file /tmp/claude-bench/summary.json \
   | python3 -c 'import json,sys; print("\n".join(json.load(sys.stdin)["task_files"]))' \
   > /tmp/claude-bench-failed.txt
 
 # 2. Re-run only those tasks:
-bash scripts/run-benchmark.sh --output-dir /tmp/claude-bench-resume \
+node scripts/run-benchmark.mjs --output-dir /tmp/claude-bench-resume \
     --mode command --task-list-file /tmp/claude-bench-failed.txt
 ```
 
-(`run-benchmark.sh` itself does not take `--selection-mode`; the selection is
-done by `select-benchmark-tasks.py`, which emits a task list consumed via
+(`run-benchmark.mjs` itself does not take `--selection-mode`; the selection is
+done by `select-benchmark-tasks.mjs`, which emits a task list consumed via
 `--task-list-file`.)
 
 ## Output Artifacts
