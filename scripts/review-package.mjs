@@ -14,6 +14,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 function git(args, opts = {}) {
   const r = spawnSync('git', args, { stdio: 'pipe', encoding: 'utf-8', ...opts });
@@ -95,5 +96,6 @@ function main() {
   process.stdout.write(`${reviewFile}\n`);
 }
 
-const isMain = import.meta.url === `file://${process.argv[1]}`;
+// Cross-platform main-module detection (see scripts/bench/lib.mjs isMain).
+const isMain = (() => { try { return pathToFileURL(process.argv[1]).href === import.meta.url; } catch { return false; } })();
 if (isMain) main();

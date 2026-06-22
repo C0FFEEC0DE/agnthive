@@ -10,6 +10,7 @@
 //   <local ref> <local sha> <remote ref> <remote sha>
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
 
 // Patterns that almost always indicate a real secret. Kept short and
 // high-signal to avoid noisy false positives on a pre-push gate.
@@ -90,5 +91,6 @@ function main() {
   process.exit(status);
 }
 
-const isMain = import.meta.url === `file://${process.argv[1]}`;
+// Cross-platform main-module detection (see scripts/bench/lib.mjs isMain).
+const isMain = (() => { try { return pathToFileURL(process.argv[1]).href === import.meta.url; } catch { return false; } })();
 if (isMain) main();

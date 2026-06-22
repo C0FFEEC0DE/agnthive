@@ -39,7 +39,7 @@ import {
   rmSync,
   mkdtempSync,
 } from 'node:fs';
-import { join, basename, relative, sep } from 'node:path';
+import { join, basename, relative, sep, isAbsolute } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -110,7 +110,10 @@ function resolvePluginPath(declared, pluginDir) {
     p = p.replaceAll('${CLAUDE_PLUGIN_ROOT}', pluginDir);
   }
   // Relative paths are resolved against the plugin root (manifest convention).
-  if (!p.startsWith('/')) p = join(pluginDir, p);
+  // Use isAbsolute (not startsWith('/')) so Windows drive-absolute paths
+  // (C:\...) are not mistakenly re-joined under pluginDir, which would produce
+  // an invalid concatenated path like <pluginDir>\C:\...\modules\hook-dispatcher.mjs.
+  if (!isAbsolute(p)) p = join(pluginDir, p);
   return p;
 }
 

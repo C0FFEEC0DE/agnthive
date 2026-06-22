@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { mkdirSync, writeFileSync, chmodSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, basename } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 
@@ -30,7 +30,7 @@ test('full input with style', () => {
     const payload = JSON.stringify({ model: { display_name: 'Sonnet 4.6', id: 'claude-sonnet-4-6' }, workspace: { current_dir: d }, output_style: { name: 'Explanatory' } });
     const { status, stdout } = run(payload);
     assert.equal(status, 0);
-    assert.equal(stdout, `${join(d).split('/').pop()} | Sonnet 4.6 | Explanatory`);
+    assert.equal(stdout, `${basename(d)} | Sonnet 4.6 | Explanatory`);
   } finally { rmSync(d, { recursive: true, force: true }); }
 });
 
@@ -40,7 +40,7 @@ test('Default style is elided', () => {
     const payload = JSON.stringify({ model: { display_name: 'Opus 4.8' }, workspace: { current_dir: d }, output_style: { name: 'Default' } });
     const { status, stdout } = run(payload);
     assert.equal(status, 0);
-    assert.equal(stdout, `${join(d).split('/').pop()} | Opus 4.8`);
+    assert.equal(stdout, `${basename(d)} | Opus 4.8`);
   } finally { rmSync(d, { recursive: true, force: true }); }
 });
 
@@ -50,7 +50,7 @@ test('model.id fallback when no display_name', () => {
     const payload = JSON.stringify({ model: { id: 'claude-haiku-4-5' }, workspace: { current_dir: d } });
     const { status, stdout } = run(payload);
     assert.equal(status, 0);
-    assert.equal(stdout, `${join(d).split('/').pop()} | claude-haiku-4-5`);
+    assert.equal(stdout, `${basename(d)} | claude-haiku-4-5`);
   } finally { rmSync(d, { recursive: true, force: true }); }
 });
 
@@ -60,7 +60,7 @@ test('cwd fallback when no workspace', () => {
     const payload = JSON.stringify({ model: { display_name: 'M' }, cwd: d });
     const { status, stdout } = run(payload);
     assert.equal(status, 0);
-    assert.equal(stdout, `${join(d).split('/').pop()} | M`);
+    assert.equal(stdout, `${basename(d)} | M`);
   } finally { rmSync(d, { recursive: true, force: true }); }
 });
 
@@ -69,7 +69,7 @@ test('empty input falls back to PWD basename', () => {
   try {
     const { status, stdout } = run('', { cwd: d });
     assert.equal(status, 0);
-    assert.equal(stdout, join(d).split('/').pop());
+    assert.equal(stdout, basename(d));
   } finally { rmSync(d, { recursive: true, force: true }); }
 });
 
@@ -79,7 +79,7 @@ test('no model no style — just dir', () => {
     const payload = JSON.stringify({ workspace: { current_dir: d } });
     const { status, stdout } = run(payload, { cwd: d });
     assert.equal(status, 0);
-    assert.equal(stdout, join(d).split('/').pop());
+    assert.equal(stdout, basename(d));
   } finally { rmSync(d, { recursive: true, force: true }); }
 });
 
@@ -95,7 +95,7 @@ test('empty JSON object uses PWD basename', () => {
   try {
     const { status, stdout } = run('{}', { cwd: d });
     assert.equal(status, 0);
-    assert.equal(stdout, join(d).split('/').pop());
+    assert.equal(stdout, basename(d));
   } finally { rmSync(d, { recursive: true, force: true }); }
 });
 
@@ -104,7 +104,7 @@ test('malformed JSON does not crash', () => {
   try {
     const { status, stdout } = run('not-json', { cwd: d });
     assert.equal(status, 0);
-    assert.equal(stdout, join(d).split('/').pop());
+    assert.equal(stdout, basename(d));
   } finally { rmSync(d, { recursive: true, force: true }); }
 });
 
@@ -120,6 +120,6 @@ test('jq failing falls back to PWD basename', () => {
     const work = join(d, 'work'); mkdirSync(work);
     const r = spawnSync('bash', [SCRIPT], { input: payload, encoding: 'utf-8', env, cwd: work });
     assert.equal(r.status, 0);
-    assert.equal(r.stdout, join(work).split('/').pop());
+    assert.equal(r.stdout, basename(work));
   } finally { rmSync(d, { recursive: true, force: true }); }
 });

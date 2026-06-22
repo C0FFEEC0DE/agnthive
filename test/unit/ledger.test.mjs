@@ -24,8 +24,10 @@ test('progressLedgerPath: CLAUDE_CREW_PROGRESS_FILE override wins', () => {
 });
 
 test('progressLedgerPath: defaults to <projectDir>/.claude-crew/progress.md', () => {
-  assert.equal(progressLedgerPath('/repo'), '/repo/.claude-crew/progress.md');
-  assert.equal(progressLedgerPath(''), '.claude-crew/progress.md');
+  // Build the expected with the same platform join() the SUT uses, so the
+  // assertion holds on Windows (backslash) as well as POSIX (forward slash).
+  assert.equal(progressLedgerPath('/repo'), join('/repo', '.claude-crew', 'progress.md'));
+  assert.equal(progressLedgerPath(''), join('.claude-crew', 'progress.md'));
 });
 
 // --- truncateUtf8 ---------------------------------------------------------

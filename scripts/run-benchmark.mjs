@@ -4,7 +4,7 @@
 // (split into an explicit argv — never a shell string).
 // Node port of scripts/run-benchmark.sh — no Bash, no jq.
 import { mkdirSync, rmSync, cpSync, existsSync, readFileSync, writeFileSync, readdirSync, statSync } from 'node:fs';
-import { join, relative as relPath } from 'node:path';
+import { join, relative as relPath, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { isMain, readJson, writeJson, median, rate } from './bench/lib.mjs';
@@ -190,7 +190,10 @@ export function run(args) {
     for (let line of raw.split('\n')) {
       line = line.trim();
       if (!line) continue;
-      taskFiles.push(line.startsWith('/') ? line : join(REPO_ROOT, line));
+      // isAbsolute (not startsWith('/')) so Windows drive-absolute task paths
+      // (C:\...) are used as-is instead of re-joined under REPO_ROOT, which
+      // would yield an invalid concatenated path.
+      taskFiles.push(isAbsolute(line) ? line : join(REPO_ROOT, line));
     }
   } else {
     taskFiles = globMatch(opts.taskGlob, REPO_ROOT);

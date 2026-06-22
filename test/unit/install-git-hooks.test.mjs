@@ -44,7 +44,12 @@ test('installs a working, executable pre-push hook wrapper', () => {
     assert.equal(r.status, 0, r.stderr);
     const dest = join(repo, '.git', 'hooks', 'pre-push');
     assert.ok(existsSync(dest));
-    assert.ok(isExecutable(dest));
+    // The Unix exec bit and a direct spawnSync(dest) of the shebang wrapper are
+    // POSIX-only: Windows has no Unix exec bit (mode & 0o111 is always 0), and
+    // Node cannot exec a `#!/usr/bin/env node` shebang script directly without
+    // a shell. On Windows git invokes hooks via git-bash (sh), so the hook
+    // works in real use; we just cannot assert those two facts here.
+    if (process.platform !== 'win32') assert.ok(isExecutable(dest));
     const destText = readFileSync(dest, 'utf-8');
     // Wrapper is a Node script that execs the real .mjs hook source.
     assert.ok(destText.startsWith('#!/usr/bin/env node'));
@@ -52,16 +57,18 @@ test('installs a working, executable pre-push hook wrapper', () => {
     assert.ok(r.stdout.includes('Installed pre-push secret-scan hook'));
     assert.ok(r.stdout.includes('To remove:'));
 
-    // The installed hook must actually work: clean push exits 0.
-    writeFileSync(join(repo, 'a.txt'), 'a\n');
-    assert.equal(spawnSync('git', ['add', 'a.txt'], { cwd: repo, env }).status, 0);
-    assert.equal(spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'c1'], { cwd: repo, env }).status, 0);
-    const head = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: 'utf-8', env }).stdout.trim();
-    const push = spawnSync(dest, [], {
-      input: `refs/heads/main ${head} refs/heads/main 0000000000000000000000000000000000000000\n`,
-      encoding: 'utf-8', env, cwd: repo,
-    });
-    assert.equal(push.status, 0, push.stderr);
+    if (process.platform !== 'win32') {
+      // The installed hook must actually work: clean push exits 0.
+      writeFileSync(join(repo, 'a.txt'), 'a\n');
+      assert.equal(spawnSync('git', ['add', 'a.txt'], { cwd: repo, env }).status, 0);
+      assert.equal(spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'c1'], { cwd: repo, env }).status, 0);
+      const head = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: 'utf-8', env }).stdout.trim();
+      const push = spawnSync(dest, [], {
+        input: `refs/heads/main ${head} refs/heads/main 0000000000000000000000000000000000000000\n`,
+        encoding: 'utf-8', env, cwd: repo,
+      });
+      assert.equal(push.status, 0, push.stderr);
+    }
   } finally { rmSync(tmp, { recursive: true, force: true }); }
 });
 

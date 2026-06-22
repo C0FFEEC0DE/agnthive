@@ -10,6 +10,7 @@
 // Exports checkNoLegacyRuntime(repoRoot) for unit testing; CLI main() uses it.
 import { readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 // Scripts allowed to remain as Python because they are CI-only agent runners,
 // invoked by the benchmark workflow — not part of the shipped plugin runtime.
@@ -97,5 +98,6 @@ function main() {
   }
 }
 
-const isMain = import.meta.url === `file://${process.argv[1]}`;
+// Cross-platform main-module detection (see scripts/bench/lib.mjs isMain).
+const isMain = (() => { try { return pathToFileURL(process.argv[1]).href === import.meta.url; } catch { return false; } })();
 if (isMain) main();

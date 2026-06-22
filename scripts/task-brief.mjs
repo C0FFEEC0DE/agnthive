@@ -17,6 +17,7 @@
 import { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync, statSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 function fail(msg, code) {
   process.stderr.write(`task-brief: ${msg}\n`);
@@ -103,5 +104,8 @@ function main() {
   process.stdout.write(`${briefFile}\n`);
 }
 
-const isMain = import.meta.url === `file://${process.argv[1]}`;
+// Cross-platform main-module detection. `file://${process.argv[1]}` does not
+// match import.meta.url on Windows (drive letter + backslashes vs file:///C:/),
+// so main() would never run there. Normalize argv[1] to a file:// URL first.
+const isMain = (() => { try { return pathToFileURL(process.argv[1]).href === import.meta.url; } catch { return false; } })();
 if (isMain) main();

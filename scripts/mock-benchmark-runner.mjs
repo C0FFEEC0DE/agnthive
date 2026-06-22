@@ -2,13 +2,17 @@
 // mock-benchmark-runner: synthetic passing result for CI smoke tests.
 // Node port of scripts/mock-benchmark-runner.sh — no jq, no Bash.
 import { mkdirSync, writeFileSync } from 'node:fs';
+import { sep } from 'node:path';
 import { isMain, readJson } from './bench/lib.mjs';
 
 export function buildMockResult(taskFile, repoRoot) {
   const task = readJson(taskFile);
   let taskPath = taskFile;
-  if (repoRoot && taskFile.startsWith(repoRoot + '/')) {
-    taskPath = taskFile.slice(repoRoot.length + 1);
+  // Match the repo-root prefix with the platform separator (backslash on
+  // Windows), then normalize to '/' so task_path is stable across OSes — the
+  // benchmark renders it in JSON/markdown and git itself emits forward slashes.
+  if (repoRoot && taskFile.startsWith(repoRoot + sep)) {
+    taskPath = taskFile.slice(repoRoot.length + 1).split(sep).join('/');
   }
   const category = task.category;
   let runtimeSeconds = 15;

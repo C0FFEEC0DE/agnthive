@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { collectChangedFiles } from '../../scripts/collect-benchmark-changes.mjs';
 
@@ -36,7 +37,7 @@ function makeRepo(d) {
 }
 
 test('workflow_dispatch on feature branch collects diff vs base', () => {
-  const d = join('/tmp', 'cbc-' + Date.now());
+  const d = join(tmpdir(), 'cbc-' + Date.now());
   mkdirSync(d, { recursive: true });
   const { origin, worktree } = makeRepo(d);
 
@@ -61,7 +62,7 @@ test('workflow_dispatch on feature branch collects diff vs base', () => {
 });
 
 test('workflow_dispatch on main collects recent history', () => {
-  const d = join('/tmp', 'cbc2-' + Date.now());
+  const d = join(tmpdir(), 'cbc2-' + Date.now());
   mkdirSync(d, { recursive: true });
   const { origin, worktree } = makeRepo(d);
 
@@ -87,7 +88,7 @@ test('workflow_dispatch on main collects recent history', () => {
 
 test('collectChangedFiles unit sortedUnique', () => {
   // Direct unit test of the export with a real repo (pull_request event).
-  const d = join('/tmp', 'cbc3-' + Date.now());
+  const d = join(tmpdir(), 'cbc3-' + Date.now());
   mkdirSync(d, { recursive: true });
   const { origin, worktree } = makeRepo(d);
   run('git', ['switch', '-c', 'main'], { cwd: worktree });
