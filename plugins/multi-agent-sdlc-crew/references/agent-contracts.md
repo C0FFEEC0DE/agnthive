@@ -33,7 +33,7 @@ Relevant files (plugin Node runtime — the single `hook-dispatcher.mjs` handles
 The behavioral runner checks more than pass/fail:
 
 - `required_transcript_patterns` must appear in assistant-like transcript entries when the task is asserting a stable handoff shape
-- `required_used_agents` and `required_used_agent_groups` must match actual `SubagentStart` / recorded handoff activity parsed from the debug log when the task is asserting role usage
+- `required_used_agents` and `required_used_agent_groups` must match actual `SubagentStart` / recorded handoff activity parsed from the debug log when the task is asserting role usage; explicit `Handoff evidence: @alias ...` transcript lines are treated as canonical handoff evidence for tasks that need a visible role-usage marker
 - `forbidden_transcript_patterns` must not appear in assistant-like transcript entries
 - changed-file scope, docs scope, and verification requirements are enforced per task
 - verification-required benchmark tasks can use the fixture-appropriate local test command detected by the runner, so the contract covers both Python and non-Python fixtures

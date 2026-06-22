@@ -19,6 +19,7 @@ Current task assertions include:
 - transcript-sensitive tasks verify handoff markers only when the benchmark is explicitly about stable output shape
 - workflow-combination tasks prefer `required_used_agents` and `required_used_agent_groups` so CI checks which specialist roles actually ran instead of brittle `Task:` headings
 - role-sensitive tasks resolve actual subagent usage from `SubagentStart` and recorded handoff lines in the debug log; `@alias` patterns in transcript entries (e.g. `@code-reviewer`, `@explorer`, `@cr`) are canonicalized to canonical role aliases
+- when a task needs a stable visible marker for role usage, the runner also accepts explicit `Handoff evidence: @alias ...` transcript lines as canonical handoff evidence
 - docs-required tasks changed documentation
 - docs-only tasks did not change non-doc files
 
@@ -49,7 +50,7 @@ Benchmark tasks may also declare `forbidden_transcript_patterns`; the runner sca
 Benchmark tasks may also declare `required_transcript_patterns`; the runner scans assistant/result transcript entries and fails the task if those regexes never appear. This is useful when the benchmark is specifically about a stable handoff shape or review/debug/testing structure without matching the user prompt itself.
 
 **Note on forbidden patterns:** Keep `forbidden_transcript_patterns` minimal (e.g., `["footer repair", "shell guard"]`) to avoid false positives.
-Benchmark tasks may also declare `required_used_agents` and `required_used_agent_groups`; the runner parses actual `SubagentStart` and recorded handoff lines from the effective debug log of the attempt that produced the final result and fails the task if the expected role usage never happened. Use this for workflow-combination, docs, or manager-led orchestration workflows where the right behavioral signal is "which role actually ran", not "did the final visible reply preserve one exact heading block".
+Benchmark tasks may also declare `required_used_agents` and `required_used_agent_groups`; the runner parses actual `SubagentStart`, recorded handoff lines, and explicit `Handoff evidence: @alias ...` transcript entries from the effective debug log of the attempt that produced the final result and fails the task if the expected role usage never happened. Use this for workflow-combination, docs, or manager-led orchestration workflows where the right behavioral signal is "which role actually ran", not "did the final visible reply preserve one exact heading block".
 The repository validator now requires every subagent task to declare at least one required-behavior assertion through transcript patterns or used-agent expectations. If a subagent task still relies on transcript requirements, validation also enforces the shared footer-marker subset so those regexes do not drift away from the hook contract.
 For prompt-behavior regressions, keep a reusable forbidden pattern set in [`../bench/patterns/forbidden-meta-chatter.json`](../bench/patterns/forbidden-meta-chatter.json). Use it to block internal-enforcement leakage such as `I see the issue`, `prefix match`, `shell guard`, or other footer-repair chatter from appearing in assistant output. The runner evaluates forbidden transcript patterns against assistant-like transcript entries only, so user prompts quoting those phrases do not create false failures.
 

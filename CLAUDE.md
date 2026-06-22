@@ -13,6 +13,7 @@ This profile is hook-gated:
 - stop-safe no-op replies are only valid when the session made no code or config changes; after code/config edits, keep reporting the actual verification, review outcome, changed files, and remaining risks
 - final implementation summaries after code/config changes must include exact stop-safe lines for `Verification status:`, `Review outcome:`, `Changed files:` or `No files changed:`, and `Remaining risks:`
 - subagent handoffs must include exact handoff-footer lines for `Outcome:`, `Changed files:` or `No files changed:`, `Verification status:`, and one closure line: `Remaining risks:` or `Next step:`
+- benchmark tasks that need a visible role-usage marker may also require `Handoff evidence: @alias ...` in the transcript; the runner treats that as canonical role evidence alongside `SubagentStart`
 - feature work requires successful verification or `@t`, plus `@cr` and one of `@e|@a`
 - bugfix work requires successful verification or `@t`, plus `@cr` and one of `@bug|@e|@dbg`
 - refactor work requires successful verification or `@t`, plus `@cr` and one of `@a|@e`
