@@ -8,7 +8,7 @@
   "review_required": false,
   "docs_required": false,
   "verification_required": true,
-  "prompt": "Use @t to add one regression test for add() with negative operand. Run pytest -q. Do not modify calculator.py. Finish with required footer.",
+  "prompt": "Use @t to add one regression test for add() with negative operand. Do not edit any file yourself — only @t touches the code. @t must run pytest -q and confirm 3 passed. Do not modify calculator.py. Finish with required footer.",
   "success_criteria": [
     "One regression test added for add()",
     "pytest -q passes",

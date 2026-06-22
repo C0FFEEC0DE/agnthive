@@ -8,7 +8,7 @@
   "review_required": false,
   "docs_required": false,
   "verification_required": true,
-  "prompt": "Use @bug to find and fix the division by zero in calculator.py. Add a test. Run pytest -q. Finish with required footer.",
+  "prompt": "Use @bug to find and fix the division by zero in calculator.py. Do not edit any file yourself — only @bug touches the code. @bug must add a test and run pytest -q confirming 3 passed. Finish with required footer.",
   "success_criteria": [
     "Division by zero fixed",
     "One test added",
