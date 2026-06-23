@@ -8,7 +8,7 @@
   "review_required": false,
   "docs_required": false,
   "verification_required": true,
-  "prompt": "Use @t to add one regression test for add() with negative operand. Do not edit any file yourself — only @t touches the code. @t must run pytest -q and confirm 3 passed. Do not modify calculator.py. Finish with required footer.",
+  "prompt": "CRITICAL: You MUST launch @t as a real subagent handoff using the Agent tool — not just a mention in text. The benchmark validates actual SubagentStart hooks. Use @t to add one regression test for add() with negative operand. Do not edit any file yourself — only @t touches the code. @t must run pytest -q and confirm 3 passed. Do not modify calculator.py. Finish with required footer.",
   "success_criteria": [
     "One regression test added for add()",
     "pytest -q passes",

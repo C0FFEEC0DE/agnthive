@@ -9,7 +9,7 @@
   "fixture": "python-math",
   "review_required": false,
   "docs_required": false,
-  "verification_required": true,
+  "verification_required": false,
   "prompt": "Use @dbg to diagnose the division by zero in calculator.py. Identify root cause. Do not fix. Finish with required footer.",
   "success_criteria": [
     "Root cause identified",

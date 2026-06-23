@@ -6,7 +6,7 @@
   "related_agents": [
     "e"
   ],
-  "fixture": "python-math",
+  "fixture": "troubleshoot-only",
   "review_required": false,
   "docs_required": false,
   "verification_required": false,
