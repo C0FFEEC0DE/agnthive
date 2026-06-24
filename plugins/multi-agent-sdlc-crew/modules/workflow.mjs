@@ -22,7 +22,10 @@ const RE_WORKFLOW_CATEGORY = /workflow_category:\s*(feature|bugfix|refactor|revi
 // When present, the plugin requires exactly the listed specialist(s) instead of
 // the category-default role set, so a tiny task is not forced to also dispatch
 // @t/@cr/one-of groups that the runner does not ask for.
-const RE_DISPATCH_CONTRACT = /BENCHMARK_DISPATCH_CONTRACT:\s*(root_only;)?\s*mode=(observed|enforced|standard);\s*roles=([A-Za-z0-9_,-]+)/i;
+// Fixed single-space form: dispatchContractMarker() always emits
+// "BENCHMARK_DISPATCH_CONTRACT: [root_only; ]mode=…; roles=…". Literal spaces
+// (not \s*) avoid the polynomial backtracking CodeQL flags on long \t runs.
+const RE_DISPATCH_CONTRACT = /BENCHMARK_DISPATCH_CONTRACT: (root_only; )?mode=(observed|enforced|standard); roles=([A-Za-z0-9_,-]{1,64})/i;
 
 const RE_MODEL_TERMS = /(model|models|llm|ollama|openrouter|qwen|llama|deepseek|mistral|claude|gpt|gemini|command r|модел|модели|модель)/iu;
 const RE_QUESTION_TERMS = /(which|what|recommend|recommendation|compare|best|better|vs|versus|open source|opensource|closed model|api|creative|creativity|style|storytelling|какую|какой|посовет|совет|рекоменд|сравн|лучш|выбрат|подскажи|подбери|нужн|креатив|стиль|сторител|иде[йи])/iu;
