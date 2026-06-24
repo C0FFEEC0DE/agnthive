@@ -7,7 +7,7 @@ import { mkdtempSync, rmSync, writeFileSync, readdirSync, existsSync } from 'nod
 import { tmpdir } from 'node:os';
 import {
   safeSessionId, statePaths, ensureStateDir, appendEvent, readEvents,
-  reducer, writeSnapshot, readSnapshot, loadState, trimEvents,
+  reducer, writeSnapshot, readSnapshot, loadState, trimEvents, DEFAULT_STATE,
 } from '../../plugins/multi-agent-sdlc-crew/modules/state.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -18,6 +18,13 @@ test.before(() => { root = mkdtempSync(join(tmpdir(), 'state-stress-')); });
 test.after(() => { rmSync(root, { recursive: true, force: true }); });
 
 // --- path traversal rejection ---------------------------------------------
+
+test('DEFAULT_STATE carries the dispatch-contract mode default for the PreToolUse guard', () => {
+  assert.equal(DEFAULT_STATE.dispatch_contract_mode, '');
+  // The guard keys off required_subagents + subagents_started; both default empty.
+  assert.deepEqual(DEFAULT_STATE.required_subagents, []);
+  assert.deepEqual(DEFAULT_STATE.subagents_started, []);
+});
 
 test('safeSessionId accepts simple ids and sanitizes allowed chars', () => {
   assert.equal(safeSessionId('abc-123_DEF'), 'abc-123_DEF');

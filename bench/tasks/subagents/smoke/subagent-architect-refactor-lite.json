@@ -29,5 +29,10 @@
     "Verification status:",
     "Remaining risks:|Next step:"
   ],
-  "required_used_agents": ["a"]
+  "required_used_agents": ["a"],
+  "dispatch_contract": {
+    "mode": "enforced",
+    "required_agents": ["a"],
+    "root_only": true
+  }
 }

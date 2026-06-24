@@ -68,6 +68,7 @@ function handleUserPromptSubmit(parsed) {
     docs_required: cls.docsRequired,
     required_subagents: cls.requiredSubagents,
     required_subagent_any_of: cls.requiredSubagentAnyOf,
+    dispatch_contract_mode: cls.dispatchContractMode,
     ...userPromptResetPatch(),
   };
   persistPatch(parsed, fields);
@@ -77,11 +78,22 @@ function handleUserPromptSubmit(parsed) {
 
 // PreToolUse: classify the Bash command against the portable command policy
 // and emit an allow/deny permission decision. Mirrors pre-tool-use.sh, extended
-// to PowerShell/CMD and the advisory/enforce mode split. Non-Bash tools pass
-// through (the policy only inspects shell commands).
+// to PowerShell/CMD and the advisory/enforce mode split. For the EditWrite
+// matcher, enforce the benchmark dispatch contract: when a task is in
+// 'enforced' dispatch mode (stashed at UserPromptSubmit from the
+// BENCHMARK_DISPATCH_CONTRACT marker), block root edits until at least one
+// required specialist has started (recorded in subagents_started by
+// SubagentStart). Non-bench sessions never set the mode, so the guard is inert;
+// observed/standard modes pass through. Other (non-Bash, non-EditWrite) tools
+// pass through.
+const RE_EDIT_WRITE_TOOL = /^(Edit|MultiEdit|Write|NotebookEdit)$/;
+
 function handlePreToolUse(parsed) {
   const matcher = parsed.matcher;
   const isBash = matcher === 'Bash' || (!matcher && parsed.toolName === 'Bash');
+  const isEditWrite = matcher === 'EditWrite'
+    || (!matcher && RE_EDIT_WRITE_TOOL.test(parsed.toolName || ''));
+  if (isEditWrite) return enforceDispatchContract(parsed);
   if (!isBash) return passthrough();
   const command = parsed.toolInput?.command ?? '';
   const cls = classifyCommand(command, resolvePolicyMode());
@@ -89,6 +101,30 @@ function handlePreToolUse(parsed) {
     return pretoolPermission('deny', cls.reason, pretoolErrorDetails('deny', cls.reason));
   }
   return pretoolPermission('allow', cls.reason, pretoolErrorDetails('allow', cls.reason));
+}
+
+// Dispatch-contract hard guard for Edit/Write/MultiEdit/NotebookEdit. In
+// 'enforced' mode, deny the edit until a required specialist role has started,
+// forcing the root agent to dispatch via the Agent tool before touching code.
+// Once a required role is in subagents_started (set by SubagentStart), edits
+// flow — including the specialist subagent's own edits. Inert for every other
+// mode so normal sessions and observed/standard canaries are unaffected.
+function enforceDispatchContract(parsed) {
+  const state = loadStateFor(parsed);
+  if (!state) return passthrough();
+  if (state.dispatch_contract_mode !== 'enforced') return passthrough();
+  const required = Array.isArray(state.required_subagents) ? state.required_subagents : [];
+  if (!required.length) return passthrough();
+  const started = new Set(Array.isArray(state.subagents_started) ? state.subagents_started : []);
+  const satisfied = required.some((role) => started.has(role));
+  if (satisfied) return passthrough();
+  const roles = required.map((r) => `@${r}`).join(', ');
+  const reason =
+    `Dispatch contract enforced: this task requires a real specialist handoff before any code edit. ` +
+    `Launch the required specialist (${roles}) via the Agent tool first. ` +
+    `Do not Edit, Write, or MultiEdit any file yourself until ${roles} has started (SubagentStart). ` +
+    `After the specialist starts, edits are allowed.`;
+  return pretoolPermission('deny', reason, pretoolErrorDetails('deny', reason));
 }
 
 // PermissionRequest: deny known-dangerous commands with a decision object; allow

@@ -43,6 +43,18 @@ Relevant files:
 
 - repository benchmark runner, test suite, and forbidden-pattern corpus
 
+## Dispatch Contract Modes
+
+A benchmark task may declare a `dispatch_contract` (`mode`, `required_agents`, `root_only`) to pin an exact specialist set and select how dispatch is enforced:
+
+- **`standard`** (default, absent) — dispatch is union-credited: a real `SubagentStart` *or* a prose `Handoff evidence:` claim satisfies `required_used_agents`. A dispatch failure here is a real functional gap (the model did not even claim the role) and stays on the merge-blocking functional line.
+- **`observed`** — strict: only a real `SubagentStart` (hook source) satisfies the contract; prose claims do not. A dispatch failure is an honest, non-blocking capability signal reported on the separate `dispatch-observed` line and excluded from the functional line.
+- **`enforced`** — strict like `observed` for pass/fail, **and** backed by a harness `PreToolUse` hard guard. The plugin's `UserPromptSubmit` classifier parses the `BENCHMARK_DISPATCH_CONTRACT` marker and stashes `dispatch_contract_mode` to session state; the `PreToolUse` handler for `Edit|MultiEdit|Write|NotebookEdit` then denies any root edit until at least one required role has a `SubagentStart` recorded — forcing dispatch as a harness constraint rather than prompt discipline. Once the specialist starts (and is recorded in `subagents_started`), edits flow, including the specialist's own edits. Non-bench sessions never carry the marker, so the guard is inert for normal usage.
+
+The `dispatch-enforced` CI line reports whether the model actually dispatched after the guard — a visible, non-blocking capability signal, never masked.
+
+Relevant files: `plugins/multi-agent-sdlc-crew/modules/workflow.mjs` (`parseDispatchContractMarker`, `classifyPrompt`), `modules/hook-dispatcher.mjs` (`handleUserPromptSubmit`, `enforceDispatchContract`), `modules/state.mjs` (`dispatch_contract_mode`), `hooks/hooks.json` (PreToolUse `EditWrite` registration). See `docs/benchmarking.md` for the full evidence-split and gate-line semantics.
+
 ## Role Benchmark Suite
 
 The per-agent suite lives in:

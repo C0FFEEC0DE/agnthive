@@ -21,6 +21,30 @@
     "stdout_jq": ".hookSpecificOutput.permissionDecision == \"deny\" and (.hookSpecificOutput.permissionDecisionReason | contains(\"current directory\"))"
   },
   {
+    "name": "pre_tool_use_editwrite_denied_before_dispatch",
+    "script": "pre-tool-use.sh",
+    "stdin": "test/hooks/fixtures/pre_tool_use_edit_dispatch.json",
+    "seed_state": "test/hooks/fixtures/state_dispatch_enforced_pending.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.permissionDecision == \"deny\" and (.hookSpecificOutput.permissionDecisionReason | contains(\"Dispatch contract enforced\")) and (.hookSpecificOutput.permissionDecisionReason | contains(\"@a\"))"
+  },
+  {
+    "name": "pre_tool_use_editwrite_allowed_after_dispatch",
+    "script": "pre-tool-use.sh",
+    "stdin": "test/hooks/fixtures/pre_tool_use_edit_dispatch.json",
+    "seed_state": "test/hooks/fixtures/state_dispatch_enforced_satisfied.json",
+    "expect_exit": 0,
+    "stdout_jq": "has(\"hookSpecificOutput\") | not"
+  },
+  {
+    "name": "pre_tool_use_editwrite_inert_under_standard_mode",
+    "script": "pre-tool-use.sh",
+    "stdin": "test/hooks/fixtures/pre_tool_use_edit_dispatch.json",
+    "seed_state": "test/hooks/fixtures/state_dispatch_standard_inert.json",
+    "expect_exit": 0,
+    "stdout_jq": "has(\"hookSpecificOutput\") | not"
+  },
+  {
     "name": "pre_tool_use_blocks_rm_fr_root",
     "script": "pre-tool-use.sh",
     "stdin": "test/hooks/fixtures/pre_tool_use_rm_fr_root.json",

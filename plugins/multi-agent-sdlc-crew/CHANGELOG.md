@@ -8,6 +8,25 @@ profile (the `claudecfg/` layout installed via `./install.sh`) to a distributabl
 Node.js ESM plugin runtime. The repository-root `CHANGELOG.md` covers the older
 profile history; entries here begin with the plugin.
 
+## [Unreleased]
+
+### Added
+
+- Stage 5 `dispatch_enforced` hard guard. A benchmark task with
+  `dispatch_contract.mode: "enforced"` now forces dispatch at the harness level:
+  `UserPromptSubmit` stashes `dispatch_contract_mode` to session state from the
+  `BENCHMARK_DISPATCH_CONTRACT` marker, and a new `PreToolUse` registration for
+  `Edit|MultiEdit|Write|NotebookEdit` denies root edits until at least one
+  required specialist role has a real `SubagentStart` recorded. Once the
+  specialist starts, edits flow (including the specialist's own). The guard is
+  inert for non-bench sessions and for `observed`/`standard` modes. The
+  `subagent-architect-refactor-lite` smoke canary is converted to `enforced`,
+  unblocking the merge-blocking functional gate (dispatch failures are excluded
+  from the functional line under `enforced`/`observed`) while the separate
+  `dispatch-enforced` line honestly reports whether the guard produced a real
+  dispatch. Hook cases and unit assertions cover deny-before-dispatch,
+  allow-after-dispatch, and inert-under-standard.
+
 ## [0.1.0-beta.1] - 2026-06-22
 
 First beta of the distributable Claude Code plugin. The hook-gated

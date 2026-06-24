@@ -48,6 +48,16 @@
             "args": ["${CLAUDE_PLUGIN_ROOT}/modules/hook-dispatcher.mjs", "--event", "PreToolUse"]
           }
         ]
+      },
+      {
+        "matcher": "Edit|MultiEdit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/modules/hook-dispatcher.mjs", "--event", "PreToolUse", "--matcher", "EditWrite"]
+          }
+        ]
       }
     ],
     "PermissionRequest": [

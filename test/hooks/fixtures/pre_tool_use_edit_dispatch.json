@@ -1,0 +1,9 @@
+{
+  "session_id": "case-pretool-edit-dispatch",
+  "tool_name": "Edit",
+  "tool_input": {
+    "file_path": "src/render.py",
+    "old_string": "def render_title():",
+    "new_string": "def render_title(label):"
+  }
+}

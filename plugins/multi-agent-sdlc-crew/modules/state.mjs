@@ -56,6 +56,12 @@ export const DEFAULT_STATE = Object.freeze({
   subagent_instance_count_by_role: {},
   required_subagents: [],
   required_subagent_any_of: [],
+  // Benchmark dispatch-contract mode stashed at UserPromptSubmit from the
+  // BENCHMARK_DISPATCH_CONTRACT marker (observed|enforced|standard). Only
+  // 'enforced' activates the PreToolUse EditWrite hard guard that blocks root
+  // edits until the required specialist has started; '' / 'standard' /
+  // 'observed' leave the guard inert so non-bench sessions are unaffected.
+  dispatch_contract_mode: '',
   stop_block_count: 0,
   stop_block_reason: '',
   stop_block_message: '',

@@ -85,7 +85,7 @@ Per-task `result.json` gains four additive fields (existing fields are unchanged
 
 - **`standard`** (default, absent) — credits the union of hook + transcript + claimed. Pass/fail behavior is unchanged from the legacy contract.
 - **`observed`** — strict: only a real `SubagentStart` (the hook source) satisfies `required_used_agents`; prose `Handoff evidence:` claims and transcript launch-text do **not**. `effectiveUsedAliasesForEnforcement` returns `observed_agent_aliases` (hook-only) instead of the union, so a role mentioned only in prose still triggers `required_used_agents_missing`.
-- **`enforced`** — parsed and surfaced identically to `observed` for pass/fail, but reserved for a later harness guard (Stage 5) that would force dispatch via a `PreToolUse` hook. No task declares it yet and no extra harness guard is wired beyond the observed-mode check.
+- **`enforced`** — parsed and surfaced identically to `observed` for pass/fail, **and** backed by a hard `PreToolUse` harness guard (Stage 5, wired). When a task is in `enforced` mode, the plugin's `PreToolUse` handler for `Edit|MultiEdit|Write|NotebookEdit` denies any root edit until at least one of the required roles has a real `SubagentStart` recorded in session state — forcing dispatch as a harness constraint rather than relying on prompt discipline. Non-bench sessions never carry the marker, so `dispatch_contract_mode` stays `''` and the guard is inert; `observed`/`standard` modes pass through unchanged.
 
 Under `observed`/`enforced`, the runner's `requiredUsedAgentMisses` is fed `enforceUsed` (hook-only aliases), so `classifyTaskFailures` fails the task when a required role has no real `SubagentStart`. Under `standard` the union is still credited unchanged. The `observed_*` / `claimed_*` / `agent_evidence_by_alias` fields remain diagnostic in all modes; the strict wiring only narrows which aliases count toward `required_used_agents_missing`.
 
@@ -117,12 +117,13 @@ BENCHMARK_DISPATCH_CONTRACT: root_only; mode=observed; roles=bug
 
 The marker does **not** override `docs_required`; that flag still follows category classification. A bugfix task that changes behavior still needs `docs_required: false` set explicitly if it should not be gated on a docs update.
 
-When a task declares a `dispatch_contract`, `buildPrompt` also appends a **"Dispatch contract discipline"** note to the root prompt: the first substantive action must be launching the required specialist via the Agent tool (a real `SubagentStart`); the root agent must not `Edit`/`Write`/`MultiEdit` any file before that specialist starts; and the specialist owns the substantive work while the root coordinates, verifies, and reports. This is **advisory prompt discipline only** — there is no harness `PreToolUse` guard enforcing it yet (that is the not-yet-shipped Stage 5 `enforced` mode). Today the hard gate is the `observed`-mode evidence check, which fails the task when a required role has no real `SubagentStart`.
+When a task declares a `dispatch_contract`, `buildPrompt` also appends a **"Dispatch contract discipline"** note to the root prompt: the first substantive action must be launching the required specialist via the Agent tool (a real `SubagentStart`); the root agent must not `Edit`/`Write`/`MultiEdit` any file before that specialist starts; and the specialist owns the substantive work while the root coordinates, verifies, and reports. For **`observed`** and **`standard`** modes this is **advisory prompt discipline only** — the hard gate is the `observed`-mode evidence check, which fails the task when a required role has no real `SubagentStart`. For **`enforced`** mode the discipline is **backed by a harness `PreToolUse` guard** (Stage 5, wired): the plugin stashes `dispatch_contract_mode` to session state at `UserPromptSubmit`, and the `PreToolUse` `EditWrite` handler denies root edits until the required role has started, so the model is forced to dispatch before it can touch code.
 
-Two smoke tasks now declare `observed` contracts (both `root_only: true`):
+Three smoke tasks now declare dispatch contracts (all `root_only: true`):
 
 - `bench/tasks/subagents/smoke/subagent-bugbuster-zero-division-lite.json` — `mode: observed`, `required_agents: ["bug"]`.
 - `bench/tasks/subagents/smoke/subagent-tester-regression-lite.json` — `mode: observed`, `required_agents: ["t"]`.
+- `bench/tasks/subagents/smoke/subagent-architect-refactor-lite.json` — `mode: enforced`, `required_agents: ["a"]`. This is the Stage 5 canary: the `PreToolUse` guard forces a real `@a` dispatch before any code edit.
 
 ## CI Gate-Line Split (functional / dispatch-observed / dispatch-enforced)
 
@@ -132,7 +133,7 @@ The three lines:
 
 - **`functional`** — fix + verification + review/docs + structural execution coverage (`configured_tasks > 0`, `executed_tasks === configured_tasks`, `tasks === executed_tasks`, `policy_violations === 0`, and every task has no functional failures). This is the **MERGE-BLOCKING** check: `assert-benchmark-summary.mjs` exits non-zero only on this line.
 - **`dispatch-observed`** — whether the model itself called the Agent tool (a real `SubagentStart`, the hook source from the [Agent-Dispatch Evidence Split](#agent-dispatch-evidence-split)) on `observed`-mode tasks. This is a **VISIBLE, NON-BLOCKING** capability signal. It is never masked or "repaired" through final text; a red `dispatch-observed` line is an honest model-capability signal, not a CI failure.
-- **`dispatch-enforced`** — separate line for the hard-guard harness (Stage 5, not yet wired). With no `enforced`-mode tasks in the suite it reports `n/a (no enforced-mode tasks; Stage 5 not wired)`.
+- **`dispatch-enforced`** — whether the model dispatched after the hard `PreToolUse` guard on `enforced`-mode tasks (the architect-refactor canary). This is a **VISIBLE, NON-BLOCKING** capability signal: a red `dispatch-enforced` line means the guard fired but the model still did not dispatch, reported honestly rather than masked.
 
 ### How it is computed
 

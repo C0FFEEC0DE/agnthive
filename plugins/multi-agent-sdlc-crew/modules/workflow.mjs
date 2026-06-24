@@ -190,6 +190,10 @@ export function classifyPrompt(prompt) {
     contextMessage,
     informationalModelQuery,
     overrideTaskType,
+    // Benchmark dispatch-contract mode from the BENCHMARK_DISPATCH_CONTRACT
+    // marker ('' when absent). Persisted to session state so the PreToolUse
+    // EditWrite guard can enforce 'enforced' without re-reading the prompt.
+    dispatchContractMode: dispatchContract ? dispatchContract.mode : '',
   };
 }
 

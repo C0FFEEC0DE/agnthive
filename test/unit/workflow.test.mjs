@@ -77,6 +77,21 @@ test('classifyPrompt: dispatch-contract marker overrides category-default roles'
   assert.deepEqual(r.requiredSubagentAnyOf, []);
   assert.ok(r.contextMessage.includes('Required specialist handoff before completion: @bug'), r.contextMessage);
   assert.ok(r.contextMessage.includes('do not add category-default'), r.contextMessage);
+  // The marker mode is surfaced for persistence to session state.
+  assert.equal(r.dispatchContractMode, 'observed');
+});
+
+test('classifyPrompt: enforced dispatch-contract mode is surfaced for the hard guard', () => {
+  const prompt = 'BENCHMARK_DISPATCH_CONTRACT: root_only; mode=enforced; roles=a\n'
+    + 'Use @a to extract the duplicated normalization into a shared helper.';
+  const r = classifyPrompt(prompt);
+  assert.equal(r.dispatchContractMode, 'enforced');
+  assert.deepEqual(r.requiredSubagents, ['a']);
+});
+
+test('classifyPrompt: no marker yields empty dispatchContractMode (guard inert)', () => {
+  const r = classifyPrompt(loadPrompt('user_prompt_feature'));
+  assert.equal(r.dispatchContractMode, '');
 });
 
 test('parseDispatchContractMarker parses well-formed markers and rejects malformed ones', () => {
