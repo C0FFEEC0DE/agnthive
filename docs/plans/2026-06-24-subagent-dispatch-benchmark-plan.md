@@ -1,5 +1,7 @@
 # План: стабилизация benchmark dispatch без смены модели
 
+Note (2026-06-25): The benchmark fixtures have since been ported from Python to Node; they now run via node --test against calculator.mjs and reporter.mjs under bench/fixtures/. The pytest and calculator.py references below describe the state at the time this plan was written and are preserved as history.
+
 ## Цель и границы
 
 Улучшить наблюдаемость и вероятность реального agent dispatch для

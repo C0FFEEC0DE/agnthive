@@ -5,8 +5,7 @@
 // result.json + claude-result.json + summary files here), BENCH_WORKDIR (cwd for
 // `claude`), BENCH_FIXTURE_DIR, BENCH_REPO_ROOT, plus OLLAMA_MODEL,
 // CLAUDE_CODE_MAX_OUTPUT_TOKENS, ANTHROPIC_BASE_URL/AUTH_TOKEN/API_KEY,
-// BENCH_CLAUDE_PROFILE_DIR, CLAUDE_BIN, MAX_TURNS, CLAUDE_TIMEOUT_SECONDS,
-// BENCH_PYTHON_BIN (interpreter used for the pytest verification fallback).
+// BENCH_CLAUDE_PROFILE_DIR, CLAUDE_BIN, MAX_TURNS, CLAUDE_TIMEOUT_SECONDS.
 //
 // Node standard library only. No child_process.exec, no shell:true, no npm deps.
 // `claude` is spawned via spawnSync with an explicit argv array (no shell).
@@ -53,7 +52,6 @@ const MODEL_NAME = envOrDefault('OLLAMA_MODEL', '');
 const MAX_TURNS = envOrDefault('MAX_TURNS', '16');
 const CLAUDE_TIMEOUT_SECONDS = Number(envOrDefault('CLAUDE_TIMEOUT_SECONDS', '300'));
 const CLAUDE_CODE_MAX_OUTPUT_TOKENS = envOrDefault('CLAUDE_CODE_MAX_OUTPUT_TOKENS', '');
-const PYTHON_BIN = envOrDefault('BENCH_PYTHON_BIN', 'python3');
 
 const OUTPUT_TOKEN_BUDGET_RETRIES = 3;
 const PROVIDER_ERROR_RETRIES = 2;
@@ -201,7 +199,7 @@ export function isDocsPath(pathStr) {
 }
 
 export function isIgnoredRuntimePath(p) {
-  const ignoredParts = new Set(['__pycache__', '.pytest_cache', '.mypy_cache', '.ruff_cache']);
+  const ignoredParts = new Set(['__pycache__', 'node_modules', '.git']);
   const parts = p.split(sep);
   if (parts.some((part) => ignoredParts.has(part))) return true;
   return basename(p) === '.coverage';
@@ -692,7 +690,7 @@ export function transcriptCandidateScore(text) {
   if (hasLinePrefix(text, 'Verification status:')) score += 4;
   if (hasLinePrefix(text, 'Review outcome:')) score += 4;
   if (hasLinePrefix(text, 'Remaining risks:')) score += 4;
-  if (lowered.includes('verification') || lowered.includes('pytest') || lowered.includes('test')) score += 1;
+  if (lowered.includes('verification') || lowered.includes('node --test') || lowered.includes('test')) score += 1;
   if (lowered.includes('review')) score += 1;
   if (lowered.includes('risk')) score += 1;
   return score;
@@ -1045,11 +1043,16 @@ export function detectVerificationTarget(workdir) {
   if (existsSync(join(workdir, 'Cargo.toml'))) return [['cargo', 'test', '--quiet'], 'cargo test'];
   if (existsSync(join(workdir, 'go.mod'))) return [['go', 'test', './...'], 'go test ./...'];
 
+  // Node --test: a Node test runner spec file at the top level or under tests/.
+  // Node's test runner discovers *.test.mjs / test-*.mjs / test.mjs (and the .js
+  // spellings) when invoked as `node --test` with no path arguments.
   const testsDir = join(workdir, 'tests');
-  const hasPythonTests =
-    globDirFiles(workdir, 'test_*.py').length > 0 ||
-    (existsSync(testsDir) && globDirFiles(testsDir, '*.py').length > 0);
-  if (hasPythonTests) return [[PYTHON_BIN, '-m', 'pytest', '-q'], 'pytest -q'];
+  const hasNodeTests =
+    globDirFiles(workdir, '*.test.mjs').length > 0 ||
+    globDirFiles(workdir, 'test-*.mjs').length > 0 ||
+    existsSync(join(workdir, 'test.mjs')) ||
+    (existsSync(testsDir) && globDirFiles(testsDir, '*.mjs').length > 0);
+  if (hasNodeTests) return [['node', '--test'], 'node --test'];
 
   return [null, null];
 }

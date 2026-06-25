@@ -1,12 +1,9 @@
-# Normalize line endings to LF on checkout for all text files so shell scripts,
-# Python, and JS sources are byte-identical across Linux, macOS, and Windows.
+# Normalize line endings to LF on checkout for all text files so JS sources,
+# Markdown, YAML, and JSON are byte-identical across Linux, macOS, and Windows.
 #
 # Without this, git for Windows (core.autocrlf=true by default) checks out text
-# files with CRLF line endings. Sourcing a CRLF claudecfg/hooks/lib.sh in bash
-# appends a stray \r to string literals and case patterns, corrupting the
-# footer-contract / message-recognition / command_class functions and breaking
-# the pytest suite that sources lib.sh (test_message_mentions, test_high_bugs,
-# test_medium_bugs, test_hook_effective_roles, test_concrete_outcome_recognition).
+# files with CRLF line endings. A stray \r in ESM module sources or hook config
+# breaks parsing and the Node --test suites that exercise them.
 # `text=auto` lets git auto-detect binary files (NUL bytes) and leave them alone;
 # `eol=lf` forces LF on both checkin and checkout, overriding autocrlf.
 * text=auto eol=lf

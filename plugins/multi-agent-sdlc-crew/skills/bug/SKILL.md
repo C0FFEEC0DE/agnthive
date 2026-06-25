@@ -10,27 +10,24 @@ allowed-tools:
   - Grep
   - Edit
   - Write
-  - Bash(pytest:*)
+  - Bash(node --test:*)
+  - Bash(node:*)
   - Bash(npm test:*)
   - Bash(make test:*)
-  - Bash(uv run pytest:*)
 paths:
   - "src/**"
   - "lib/**"
   - "scripts/**"
   - "plugins/**"
-  - "**/*.py"
   - "**/*.mjs"
   - "**/*.js"
   - "**/*.ts"
   - "**/*.tsx"
   - "tests/**"
   - "test/**"
-  - "**/test_*.py"
-  - "**/*_test.py"
+  - "**/*.test.mjs"
+  - "**/*.test.js"
   - "package.json"
-  - "pyproject.toml"
-  - "pytest.ini"
 ---
 
 # /bug

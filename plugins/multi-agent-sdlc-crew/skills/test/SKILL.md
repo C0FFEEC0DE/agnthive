@@ -10,16 +10,16 @@ allowed-tools:
   - Grep
   - Edit
   - Write
-  - Bash(pytest:*)
+  - Bash(node --test:*)
+  - Bash(node:*)
   - Bash(npm test:*)
   - Bash(make test:*)
-  - Bash(uv run pytest:*)
 paths:
   - "tests/**"
-  - "**/test_*.py"
-  - "**/*_test.py"
+  - "test/**"
+  - "**/*.test.mjs"
+  - "**/*.test.js"
   - "package.json"
-  - "pytest.ini"
 ---
 
 # /test

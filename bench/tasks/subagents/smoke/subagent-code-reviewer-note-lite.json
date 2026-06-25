@@ -10,13 +10,13 @@
   "review_required": false,
   "docs_required": false,
   "verification_required": false,
-  "prompt": "Use @cr to review the calculator.py implementation. Write a short review note about code quality. Do not modify code. Finish with required footer.",
+  "prompt": "Use @cr to review the calculator.mjs implementation. Write a short review note about code quality. Do not modify code. Finish with required footer.",
   "success_criteria": [
     "Review note written",
     "No code changes"
   ],
   "must_not": [
-    "Modify Python files",
+    "Modify JavaScript files",
     "Perform release or deploy work"
   ],
   "forbidden_transcript_patterns": [

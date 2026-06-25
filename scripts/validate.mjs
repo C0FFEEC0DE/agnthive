@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 // validate.mjs — Node ESM port of scripts/validate.sh.
-// Checks: JSON validity, workflow syntax, Python syntax, agent/skill
+// Checks: JSON validity, workflow syntax, agent/skill
 // frontmatter (plugin two-shape skill model), slash-command inventory,
 // workflow policy invariants, GitHub Actions Node.js 24 readiness, notification
 // docs, hook test manifests, benchmark task structure, internal markdown links,
 // and the no-legacy-runtime gate.
 //
-// External linters (ruff, python3, actionlint) are invoked via spawnSync with an
+// External linters (actionlint) are invoked via spawnSync with an
 // explicit argv — no shell, no exec, no eval. The plugin runtime is Node-only and
 // platform-independent, so shell-syntax/shellcheck/installer-smoke checks (which
 // targeted the removed legacy bash profile) are no longer relevant.
@@ -68,18 +68,6 @@ function globDir(dir, ext) {
 function hasCmd(cmd) {
   const r = spawnSync('bash', ['-c', 'command -v "$1"', 'bash', cmd], { stdio: 'pipe' });
   return r.status === 0 && (r.stdout?.toString().trim().length > 0);
-}
-
-/** Resolve a Python interpreter: prefer `python3`, fall back to `python` (Windows
- *  setup-python exposes `python`, not `python3`). Returns null if neither runs. */
-function probePython() {
-  for (const c of ['python3', 'python']) {
-    try {
-      const r = spawnSync(c, ['--version'], { stdio: 'pipe' });
-      if (r.status === 0) return c;
-    } catch { /* try next */ }
-  }
-  return null;
 }
 
 // ---------- frontmatter helpers ----------
@@ -160,22 +148,6 @@ function checkWorkflowSyntax() {
     else console.log('OK: actionlint');
   } else {
     console.log('SKIP: actionlint not installed');
-  }
-  console.log('');
-}
-
-// ---------- Python syntax ----------
-function checkPythonSyntax() {
-  console.log('--- Checking Python syntax ---');
-  const py = probePython();
-  if (!py) { console.log('SKIP: no python/python3 interpreter on PATH\n'); return; }
-  const dirs = ['scripts', 'bench/fixtures', 'test/validators'];
-  const files = [];
-  for (const d of dirs) for (const f of walkGlob(join(REPO_ROOT, d), '.py')) files.push(f);
-  for (const f of files.sort()) {
-    const r = spawnSync(py, ['-m', 'py_compile', f], { stdio: 'pipe' });
-    if (r.status !== 0) reportError(`Python syntax error: ${f}`);
-    else console.log(`OK: ${f}`);
   }
   console.log('');
 }
@@ -389,10 +361,14 @@ function readWorkflow(name) {
 function checkWorkflowPolicy() {
   console.log('--- Checking workflow policy invariants ---');
   const checks = [
-    ['hooks-test.yml', 'uses: actions/setup-python@v6', 'Hook Contracts uses setup-python@v6', 'Hook Contracts must use actions/setup-python@v6'],
-    ['validate.yml', 'uses: actions/setup-python@v6', 'Repository Checks uses setup-python@v6', 'Repository Checks must use actions/setup-python@v6'],
+    // hooks-test.yml is a pure Node hook-fixture run (scripts/test-hooks.mjs)
+    // with no Python tooling. validate.yml and lint.yml (name: Lint) are
+    // likewise Node-only now: the benchmark fixtures are JS (`node --test`), so
+    // neither installs Python, runs `compileall`, or runs `ruff`. validate.yml
+    // still sets up Go on Linux to build actionlint; pin that toolchain.
     ['validate.yml', 'uses: actions/setup-go@v6', 'Repository Checks uses setup-go@v6', 'Repository Checks must use setup-go@v6'],
-    ['python-tests.yml', 'uses: actions/setup-python@v6', 'Python Tests uses setup-python@v6', 'Python Tests must use actions/setup-python@v6'],
+    ['validate.yml', 'uses: actions/setup-node@v5', 'Repository Checks uses setup-node@v5', 'Repository Checks must use setup-node@v5'],
+    ['lint.yml', 'uses: actions/setup-node@v5', 'Lint uses setup-node@v5', 'Lint must use setup-node@v5'],
   ];
   for (const [file, needle, ok, err] of checks) {
     const txt = readWorkflow(file);
@@ -676,7 +652,6 @@ function main() {
   console.log('');
   checkJson();
   checkWorkflowSyntax();
-  checkPythonSyntax();
   checkAgentFrontmatter();
   checkSkillFrontmatter();
   checkSlashCommandInventory();

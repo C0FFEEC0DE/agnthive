@@ -174,7 +174,7 @@ after creation if you want it flagged as a prerelease.
   hand; the release notes above are generated inline by the workflow.
 
 `permissions:` hardening on the existing workflows (`validate.yml`,
-`hooks-test.yml`, `python-tests.yml`, `behavior-benchmark-subagents-smoke.yml`,
+`hooks-test.yml`, `lint.yml`, `behavior-benchmark-subagents-smoke.yml`,
 `security-scan.yml`, `plugin-install-smoke.yml`) landed in Phase 5 alongside
 this runbook — every workflow now declares minimal token scopes
 (`contents: read`, plus `actions: read` only where the two-slot gate or shard

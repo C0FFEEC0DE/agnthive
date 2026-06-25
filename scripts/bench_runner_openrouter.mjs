@@ -2,7 +2,7 @@
 //
 // One-shot benchmark coding worker that calls the OpenRouter chat-completions
 // API, applies the model's file outputs to the benchmark workdir, optionally
-// runs pytest, and writes result.json to the per-task output directory.
+// runs `node --test`, and writes result.json to the per-task output directory.
 //
 // Invoked by scripts/run-benchmark.mjs via spawnSync with stdio:'inherit' and a
 // childEnv carrying BENCH_TASK_FILE / BENCH_TASK_ID / BENCH_OUTPUT_DIR /
@@ -183,12 +183,14 @@ export function applyFiles(files, workdir) {
 }
 
 /**
- * Run pytest in workdir. Returns [passed, combinedOutput]. When no Python test
- * files exist, returns [false, message]. spawnFn is injectable for testing.
+ * Run `node --test` in workdir. Returns [passed, combinedOutput]. When no Node
+ * test files exist, returns [false, message]. spawnFn is injectable for testing.
+ * Node's test runner discovers *.test.mjs / test-*.mjs / test.mjs (and the .js
+ * spellings) when invoked as `node --test` with no path arguments.
  */
 export function runVerification(
   workdir,
-  { spawn = spawnSync, python = 'python3', timeout = 300000 } = {},
+  { spawn = spawnSync, timeout = 300000 } = {},
 ) {
   const hasTests = (() => {
     function check(dir) {
@@ -200,12 +202,18 @@ export function runVerification(
       }
       for (const ent of entries) {
         const p = join(dir, ent.name);
-        if (ent.isFile() && /^test_.*\.py$/.test(ent.name)) return true;
+        if (
+          ent.isFile() &&
+          (/\.test\.mjs$/.test(ent.name) ||
+            /^test-.*\.mjs$/.test(ent.name) ||
+            ent.name === 'test.mjs')
+        )
+          return true;
         if (ent.isDirectory() && ent.name === 'tests') {
-          // tests/*.py
+          // tests/*.mjs
           try {
             for (const sub of readdirSync(p, { withFileTypes: true })) {
-              if (sub.isFile() && sub.name.endsWith('.py')) return true;
+              if (sub.isFile() && sub.name.endsWith('.mjs')) return true;
             }
           } catch {}
         }
@@ -214,9 +222,9 @@ export function runVerification(
     }
     return check(workdir);
   })();
-  if (!hasTests) return [false, 'No Python test files were found in the fixture.'];
+  if (!hasTests) return [false, 'No Node test files were found in the fixture.'];
 
-  const completed = spawn(python, ['-m', 'pytest', '-q'], {
+  const completed = spawn('node', ['--test'], {
     cwd: workdir,
     encoding: 'utf-8',
     timeout,
@@ -325,8 +333,8 @@ export function writeResult(result, outputDir) {
 
 /**
  * Run the full benchmark flow. env is the process env (or a test double);
- * opts allows injecting fetchFn / spawn / python for testing. Returns 0 on
- * success (always — failures are reflected in result.status, mirroring Python).
+ * opts allows injecting fetchFn / spawn for testing. Returns 0 on
+ * success (always — failures are reflected in result.status).
  */
 export async function runMain(env, opts = {}) {
   const repoRoot = resolve(env.BENCH_REPO_ROOT);

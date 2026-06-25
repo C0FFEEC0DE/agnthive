@@ -286,29 +286,29 @@ test('runVerification: no test files returns [false, message]', (t) => {
   const d = makeTempDir(t, 'rv-none-');
   const [ok, msg] = runVerification(d);
   assert.equal(ok, false);
-  assert.ok(msg.includes('No Python test files'));
+  assert.ok(msg.includes('No Node test files'));
 });
 
-test('runVerification: runs pytest via injected spawn, returns [true, output] on rc 0', (t) => {
+test('runVerification: runs node --test via injected spawn, returns [true, output] on rc 0', (t) => {
   const d = makeTempDir(t, 'rv-pass-');
-  writeFileSync(join(d, 'test_x.py'), 'def test_x(): assert True\n');
+  writeFileSync(join(d, 'x.test.mjs'), "import {test} from 'node:test'\n");
   const calls = [];
   const fakeSpawn = (cmd, argv, opts) => {
     calls.push({ cmd, argv, cwd: opts.cwd });
     return { status: 0, stdout: '1 passed', stderr: '' };
   };
-  const [ok, msg] = runVerification(d, { spawn: fakeSpawn, python: 'python3' });
+  const [ok, msg] = runVerification(d, { spawn: fakeSpawn });
   assert.equal(ok, true);
   assert.ok(msg.includes('1 passed'));
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].cmd, 'python3');
-  assert.deepEqual(calls[0].argv, ['-m', 'pytest', '-q']);
+  assert.equal(calls[0].cmd, 'node');
+  assert.deepEqual(calls[0].argv, ['--test']);
   assert.equal(calls[0].cwd, d);
 });
 
 test('runVerification: returns [false, output] on rc 1', (t) => {
   const d = makeTempDir(t, 'rv-fail-');
-  writeFileSync(join(d, 'test_x.py'), 'def test_x(): assert False\n');
+  writeFileSync(join(d, 'x.test.mjs'), "import {test} from 'node:test'\n");
   const fakeSpawn = () => ({ status: 1, stdout: '1 failed', stderr: 'err' });
   const [ok, msg] = runVerification(d, { spawn: fakeSpawn });
   assert.equal(ok, false);
@@ -319,7 +319,7 @@ test('runVerification: returns [false, output] on rc 1', (t) => {
 test('runVerification: detects tests/ subdir as a test source', (t) => {
   const d = makeTempDir(t, 'rv-sub-');
   mkdirSync(join(d, 'tests'));
-  writeFileSync(join(d, 'tests', 'test_a.py'), 'def test_a(): assert True\n');
+  writeFileSync(join(d, 'tests', 'a.test.mjs'), "import {test} from 'node:test'\n");
   const fakeSpawn = () => ({ status: 0, stdout: 'ok', stderr: '' });
   const [ok] = runVerification(d, { spawn: fakeSpawn });
   assert.equal(ok, true);
@@ -412,7 +412,7 @@ test('runMain: passed with no requirements and a changed file', async (t) => {
   mkdirSync(repoRoot);
   mkdirSync(workdir);
   writeFileSync(join(repoRoot, 'CLAUDE.md'), 'c');
-  writeFileSync(join(workdir, 'test_x.py'), 'def test_x(): assert True\n');
+  writeFileSync(join(workdir, 'calc.test.mjs'), "import {test} from 'node:test';\nimport {strict as a} from 'node:assert';\ntest('ok',()=>{a.equal(1,1);});\n");
   const taskFile = join(d, 'task.json');
   writeTask(taskFile);
   const env = {
@@ -456,7 +456,7 @@ test('runMain: failed when verification_required and tests fail', async (t) => {
   mkdirSync(repoRoot);
   mkdirSync(workdir);
   writeFileSync(join(repoRoot, 'CLAUDE.md'), 'c');
-  writeFileSync(join(workdir, 'test_x.py'), 'def test_x(): assert True\n');
+  writeFileSync(join(workdir, 'calc.test.mjs'), "import {test} from 'node:test'\n");
   const taskFile = join(d, 'task.json');
   writeTask(taskFile, { verification_required: true });
   const env = {

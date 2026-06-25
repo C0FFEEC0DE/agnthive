@@ -185,23 +185,23 @@ test('dispatchContractMarker builds the root-only contract line', () => {
 test('buildPrompt injects the dispatch-contract marker into the root prompt only when declared', () => {
   const withContract = buildPrompt(
     baseTask({ dispatch_contract: { mode: 'observed', required_agents: ['bug'], root_only: true } }),
-    'pytest',
+    'node --test',
   );
   assert.ok(withContract.includes('BENCHMARK_DISPATCH_CONTRACT: root_only; mode=observed; roles=bug'), withContract);
   // Absent contract -> no marker line.
-  const without = buildPrompt(baseTask({}), 'pytest');
+  const without = buildPrompt(baseTask({}), 'node --test');
   assert.ok(!without.includes('BENCHMARK_DISPATCH_CONTRACT'), 'unexpected marker in prompt without contract');
 });
 
 test('buildPrompt emits dispatch-contract discipline only when a contract is declared', () => {
   const withContract = buildPrompt(
     baseTask({ dispatch_contract: { mode: 'observed', required_agents: ['bug'], root_only: true } }),
-    'pytest',
+    'node --test',
   );
   assert.ok(withContract.includes('Dispatch contract discipline:'), withContract);
   assert.ok(withContract.includes('first substantive action must be launching the required specialist'), withContract);
   assert.ok(withContract.includes('Do not Edit, Write, or MultiEdit any file before that specialist has started'), withContract);
-  const without = buildPrompt(baseTask({}), 'pytest');
+  const without = buildPrompt(baseTask({}), 'node --test');
   assert.ok(!without.includes('Dispatch contract discipline:'), 'discipline note leaked into prompt without contract');
 });
 
@@ -369,7 +369,7 @@ test('retry predicates: parseAffordableMaxTokens + adjustedOutputTokenBudget', (
   assert.equal(adjustedOutputTokenBudget(100), 256);
 });
 
-test('detectVerificationTarget returns npm/cargo/go/pytest argv by fixture layout', () => {
+test('detectVerificationTarget returns npm/cargo/go/node --test argv by fixture layout', () => {
   const tmp = makeTempDir();
   try {
     // npm: package.json with test script.
@@ -397,15 +397,13 @@ test('detectVerificationTarget returns npm/cargo/go/pytest argv by fixture layou
     mkdirSync(goDir);
     writeFileSync(join(goDir, 'go.mod'), 'module x\n');
     assert.deepEqual(detectVerificationTarget(goDir), [['go', 'test', './...'], 'go test ./...']);
-    // python: top-level test_*.py.
-    const py = join(tmp, 'py');
-    mkdirSync(py);
-    writeFileSync(join(py, 'test_sample.py'), 'def test_ok():\n    assert True\n');
-    const [cmd, label] = detectVerificationTarget(py);
-    assert.equal(cmd[0], 'python3');
-    assert.equal(cmd[1], '-m');
-    assert.equal(cmd[2], 'pytest');
-    assert.equal(label, 'pytest -q');
+    // node --test: top-level *.test.mjs.
+    const nd = join(tmp, 'nd');
+    mkdirSync(nd);
+    writeFileSync(join(nd, 'calc.test.mjs'), "import {test} from 'node:test'\n");
+    const [cmd, label] = detectVerificationTarget(nd);
+    assert.deepEqual(cmd, ['node', '--test']);
+    assert.equal(label, 'node --test');
     // empty dir -> [null, null].
     const empty = join(tmp, 'empty');
     mkdirSync(empty);

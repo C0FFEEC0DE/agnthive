@@ -8,13 +8,13 @@
   "review_required": false,
   "docs_required": true,
   "verification_required": false,
-  "prompt": "Use @a to write a short design note in README.md about reducing duplication between render_title() and render_subtitle(). Do not implement. Finish with required footer.",
+  "prompt": "Use @a to write a short design note in README.md about reducing duplication between renderTitle() and renderSubtitle(). Do not implement. Finish with required footer.",
   "success_criteria": [
     "README.md has a design note",
     "No code changes made"
   ],
   "must_not": [
-    "Modify Python files",
+    "Modify JavaScript files",
     "Perform release or deploy work"
   ],
   "forbidden_transcript_patterns": [

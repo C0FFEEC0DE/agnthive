@@ -11,7 +11,7 @@ allowed-tools:
   - Edit
   - Write
 paths:
-  - "**/*.py"
+  - "**/*.mjs"
   - "**/*.js"
   - "**/*.ts"
   - "**/*.sh"

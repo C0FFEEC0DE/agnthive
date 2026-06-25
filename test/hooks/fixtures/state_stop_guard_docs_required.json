@@ -14,7 +14,7 @@
   "lint_failed": false,
   "build_ok": false,
   "build_failed": false,
-  "last_test_command": "pytest -q",
+  "last_test_command": "node --test",
   "last_lint_command": "",
   "last_build_command": "",
   "subagent_start_count": 0,

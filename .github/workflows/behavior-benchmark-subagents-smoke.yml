@@ -182,15 +182,10 @@ jobs:
             echo "- Will run subagent smoke suite: \`${{ steps.select.outputs.should_run }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Install validation dependencies
-        shell: bash
-        run: |
-          python -m pip install -r requirements-dev.txt --quiet
-
       - name: Validate task/fixture alignment
         shell: bash
         run: |
-          python3 -m pytest test/validators/test_task_fixture_alignment.py -v
+          node --test test/validators/**/*.test.mjs
 
       - name: Build subagent smoke shard matrix
         id: matrix
@@ -271,14 +266,12 @@ jobs:
         with:
           path: |
             ~/.npm
-            ~/.cache/pip
           key: ${{ runner.os }}-behavior-benchmark-deps-v2
 
-      - name: Install Claude Code CLI and pytest
+      - name: Install Claude Code CLI
         shell: bash
         run: |
-          PIP_DISABLE_PIP_VERSION_CHECK=1 npm install -g @anthropic-ai/claude-code --prefer-offline --no-audit
-          PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install pytest --cache-dir ~/.cache/pip
+          npm install -g @anthropic-ai/claude-code --prefer-offline --no-audit
           claude --version
 
       - name: Verify plugin directory
@@ -482,7 +475,7 @@ jobs:
         # regression detector (the prior `continue-on-error: true` made GitHub
         # report a failed assert as `conclusion: success`). dispatch-observed
         # stays visible-and-honest but non-blocking so functional progress (the
-        # model fixing the bug with passing pytest) is not hidden behind the
+        # model fixing the bug with passing `node --test`) is not hidden behind the
         # dispatch signal. Artifacts still upload via the `if: always()` step
         # below, so failed-run debug logs remain available for triage.
         run: |

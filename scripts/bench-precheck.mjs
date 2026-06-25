@@ -87,7 +87,7 @@ function printUsage() {
     `  --max-shards N            shard matrix width (default: 3)\n` +
     `  --output-dir DIR          scratch dir (default: \$BENCH_OUTPUT_DIR or /tmp/claude-bench)\n` +
     `  --repo OWNER/NAME         repo for resume modes (default: parsed from origin)\n` +
-    `  --no-validators           skip the task/fixture alignment pytest step\n` +
+    `  --no-validators           skip the task/fixture alignment validator step\n` +
     `  -h, --help\n`,
   );
 }
@@ -112,14 +112,6 @@ function defaultRepo() {
   // ssh: git@github.com:OWNER/NAME[.git]  https: https://github.com/OWNER/NAME[.git]
   const m = url.match(/[:/]([^/]+)\/([^/]+?)(?:\.git)?$/);
   return m ? `${m[1]}/${m[2]}` : '';
-}
-
-function python3() {
-  for (const bin of ['python3', 'python']) {
-    const r = spawnSync(bin, ['--version'], { encoding: 'utf-8' });
-    if (r.status === 0) return bin;
-  }
-  return '';
 }
 
 function banner(lines) {
@@ -238,18 +230,16 @@ function main() {
   }
 
   // --- step 4: validate task/fixture alignment -------------------------------
+  // Runs the Node --test validator suite (ported from the former pytest suite).
+  // The glob is quoted so Node --test expands it itself (mirrors the Makefile
+  // node-test target); spawnSync passes it as a literal argv element.
   if (args.runValidators) {
     banner([`Validating task/fixture alignment…`]);
-    const py = python3();
-    if (!py) {
-      process.stderr.write(`python3 not found — skipping validator step (use --no-validators to silence)\n`);
-    } else {
-      const v = spawnSync(py, ['-m', 'pytest', 'test/validators/test_task_fixture_alignment.py', '-q'], { cwd: repoRoot, encoding: 'utf-8', maxBuffer: 16 * 1024 * 1024 });
-      process.stdout.write(v.stdout);
-      if (v.stderr) process.stderr.write(v.stderr);
-      if (v.status !== 0) { process.stderr.write(`\nValidation FAILED (exit ${v.status}).\n`); process.exit(1); }
-      process.stdout.write(`Validator: PASSED\n`);
-    }
+    const v = spawnSync(process.execPath, ['--test', 'test/validators/**/*.test.mjs'], { cwd: repoRoot, encoding: 'utf-8', maxBuffer: 16 * 1024 * 1024 });
+    process.stdout.write(v.stdout);
+    if (v.stderr) process.stderr.write(v.stderr);
+    if (v.status !== 0) { process.stderr.write(`\nValidation FAILED (exit ${v.status}).\n`); process.exit(1); }
+    process.stdout.write(`Validator: PASSED\n`);
   }
 
   // --- step 5: build shard matrix -------------------------------------------

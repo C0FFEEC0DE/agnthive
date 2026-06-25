@@ -15,7 +15,7 @@
 ## Verification
 
 - [ ] `make lint` passes
-- [ ] `make test` (or `python3 -m pytest test/validators/ -v`) passes
+- [ ] `make test` (Node `--test` over `test/**/*.test.mjs`) passes
 - [ ] `make hooks` (or `node scripts/test-hooks.mjs`) passes
 - [ ] `node scripts/validate.mjs` passes
 - [ ] Frontmatter valid for any new/changed agent or skill

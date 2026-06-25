@@ -9,7 +9,7 @@ allowed-tools:
   - Glob
   - Grep
 paths:
-  - "**/*.py"
+  - "**/*.mjs"
   - "**/*.js"
   - "**/*.ts"
   - "**/*.sh"

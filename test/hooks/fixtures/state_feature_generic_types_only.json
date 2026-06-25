@@ -16,7 +16,7 @@
   "detected_test_command": "pytest",
   "detected_lint_command": "",
   "detected_build_command": "",
-  "last_test_command": "pytest -q",
+  "last_test_command": "node --test",
   "last_lint_command": "",
   "last_build_command": "",
   "subagent_start_count": 2,

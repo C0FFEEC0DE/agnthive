@@ -14,7 +14,7 @@ The behavioral benchmark copies each fixture from `bench/fixtures/` into a tempo
 Current task assertions include:
 
 - workspace changes were actually made
-- verification-required tasks still pass the fixture-appropriate test command such as `pytest -q`, `npm test`, `cargo test`, or `go test ./...`
+- verification-required tasks still pass the fixture-appropriate test command such as `node --test`, `npm test`, `cargo test`, or `go test ./...` (the bundled JS fixtures under `bench/fixtures/python-math` and `bench/fixtures/text-report` run via `node --test`)
 - implementation tasks verify the final Claude response includes exact stop-safe summary lines for `Verification status:`, `Review outcome:`, `Changed files:` or `No files changed:`, and `Remaining risks:`
 - transcript-sensitive tasks verify handoff markers only when the benchmark is explicitly about stable output shape
 - workflow-combination tasks prefer `required_used_agents` and `required_used_agent_groups` so CI checks which specialist roles actually ran instead of brittle `Task:` headings
@@ -31,7 +31,7 @@ This makes the benchmark a behavioral acceptance gate, not just a process smoke 
 
 The live GitHub smoke workflow uses the suite in `bench/tasks/smoke/*.json` (if present) so it can run on smaller models without turning every PR into a long provider soak.
 
-The runner invokes Claude Code with `--permission-mode acceptEdits` so isolated fixture repositories can be modified non-interactively during CI. The bundled profile allows the relevant fixture-local test commands directly, including `pytest`, `npm`, `cargo`, and `go`, so harmless verification runs do not inflate `permission_denials_count`. If a task still fails, inspect `claude_subtype`, `claude_stop_reason`, `permission_denials_count`, and `first_permission_denial` in the task summary and `result.json`.
+The runner invokes Claude Code with `--permission-mode acceptEdits` so isolated fixture repositories can be modified non-interactively during CI. The bundled profile allows the relevant fixture-local test commands directly, including `node`, `npm`, `cargo`, and `go`, so harmless verification runs do not inflate `permission_denials_count`. If a task still fails, inspect `claude_subtype`, `claude_stop_reason`, `permission_denials_count`, and `first_permission_denial` in the task summary and `result.json`.
 The GitHub smoke workflow default is `6` turns per task so CI stays bounded for small models; raise it manually in `workflow_dispatch` when you want a slower debug run.
 The runner also injects an explicit workflow override into the prompt so bugfix, feature, refactor, and docs tasks are not misclassified as review-only work just because the final summary must mention review outcome.
 Manager-led tasks are expected to continue orchestration after manager activation unless the prompt explicitly asks for plan-only behavior. The benchmark contract now expects an early specialist handoff rather than prolonged manager-only analysis.
@@ -127,7 +127,7 @@ Three smoke tasks now declare dispatch contracts (all `root_only: true`):
 
 ## CI Gate-Line Split (functional / dispatch-observed / dispatch-enforced)
 
-The smoke benchmark gate used to be one monolithic pass/fail: `passed === tasks && tool_failures === 0 && unresolved_tasks === 0`. Under that rule a model that did the fix inline with passing `pytest` but never dispatched (the `glm-5.2:cloud` under-delegation case) failed the whole CI on `required_used_agents_missing`, hiding real functional progress behind the dispatch signal. Stage 6 of the dispatch-stabilization plan splits the gate into three explicitly named lines so functional progress stays visible (and mergeable) while the dispatch capability signal stays honestly visible.
+The smoke benchmark gate used to be one monolithic pass/fail: `passed === tasks && tool_failures === 0 && unresolved_tasks === 0`. Under that rule a model that did the fix inline with passing `node --test` but never dispatched (the `glm-5.2:cloud` under-delegation case) failed the whole CI on `required_used_agents_missing`, hiding real functional progress behind the dispatch signal. Stage 6 of the dispatch-stabilization plan splits the gate into three explicitly named lines so functional progress stays visible (and mergeable) while the dispatch capability signal stays honestly visible.
 
 The three lines:
 
@@ -377,7 +377,7 @@ tasks from a previous summary, then feed that list to the runner:
 node scripts/select-benchmark-tasks.mjs --suite subagents_smoke \
     --selection-mode resume \
     --previous-summary-file /tmp/claude-bench/summary.json \
-  | python3 -c 'import json,sys; print("\n".join(json.load(sys.stdin)["task_files"]))' \
+  | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>process.stdout.write(JSON.parse(d).task_files.join("\n")+"\n"))' \
   > /tmp/claude-bench-failed.txt
 
 # 2. Re-run only those tasks:

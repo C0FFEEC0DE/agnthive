@@ -81,7 +81,7 @@ This is enforced by:
 | Architect | `a` | rollout and refactor smoke tasks | actual use of `@a` via `required_used_agents`, plus docs-only or refactor-safe scope checks | no footer-repair chatter | design-note coverage plus bounded refactor planning that preserves behavior and verification |
 | Bugbuster | `bug` | zero-division smoke task | `Task:\s*Bug Scan`, `Findings:`, plus stop-safe footer markers | no footer-repair chatter | bugfix with findings, tests, docs update, and review |
 | Debugger | `dbg` | zero-division smoke task | `Task:\s*Debug`, `Reproduction:`, `Root cause:`, plus stop-safe footer markers | no footer-repair chatter | reproduce, isolate, fix, test, and document |
-| Tester | `t` | regression smoke task | `Task:\s*Testing`, `Gaps:`, plus stop-safe footer markers | no footer-repair chatter | verification-first task with real `pytest -q` evidence |
+| Tester | `t` | regression smoke task | `Task:\s*Testing`, `Gaps:`, plus stop-safe footer markers | no footer-repair chatter | verification-first task with real `node --test` evidence |
 | Code Reviewer | `cr` | review-note smoke task | `Task:\s*Code Review`, `Findings:`, `Review outcome:`, plus stop-safe footer markers | no invented findings, no hook/footer repair chatter | review-only task that must not modify source code |
 | Docwriter | `doc` | quickstart smoke task | `Task:\s*Docs`, `Coverage:`, plus stop-safe footer markers | no invented install/clone steps, no footer-repair chatter | docs-only task with forbidden doc hallucination patterns |
 ## How To Extend

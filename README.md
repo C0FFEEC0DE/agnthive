@@ -2,7 +2,6 @@
 
 [![Repository Checks](https://github.com/C0FFEEC0DE/multi-agent-sdlc-crew/actions/workflows/validate.yml/badge.svg?branch=main)](https://github.com/C0FFEEC0DE/multi-agent-sdlc-crew/actions/workflows/validate.yml)
 [![Hook Contracts](https://github.com/C0FFEEC0DE/multi-agent-sdlc-crew/actions/workflows/hooks-test.yml/badge.svg?branch=main)](https://github.com/C0FFEEC0DE/multi-agent-sdlc-crew/actions/workflows/hooks-test.yml)
-[![Python Tests](https://github.com/C0FFEEC0DE/multi-agent-sdlc-crew/actions/workflows/python-tests.yml/badge.svg?branch=main)](https://github.com/C0FFEEC0DE/multi-agent-sdlc-crew/actions/workflows/python-tests.yml)
 [![Security Checks](https://github.com/C0FFEEC0DE/multi-agent-sdlc-crew/actions/workflows/security-scan.yml/badge.svg?branch=main)](https://github.com/C0FFEEC0DE/multi-agent-sdlc-crew/actions/workflows/security-scan.yml)
 
 A **hook-gated SDLC profile for Claude Code**: a platform-independent Node hook
@@ -62,7 +61,7 @@ Full names work too: `@code-reviewer`, `@tester`, etc.
 
 ```
 @e explore the auth module
-@cr review api.py
+@cr review api.mjs
 @t write tests for utils
 @manager implement new feature: user authentication
 ```

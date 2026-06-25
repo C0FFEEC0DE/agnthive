@@ -72,12 +72,12 @@ test('task status table row matches jq byte-for-byte', () => {
   s.rates = { ...s.rates, execution_coverage_rate: 2 / 3, task_pass_rate: 0.5, clean_pass_rate: 0.5 };
   s.median_runtime_seconds = 12.34;
   s.tasks = [
-    { task_id: 'bugfix-zero-division-lite', status: 'passed', runtime_seconds: 10.5, verification_required: true, tests_run: true, tests_passed: true, review_required: true, review_present: true, docs_required: true, docs_updated: true, changed_files: ['calculator.py', 'README.md'], recovered_nonzero_exit: false, timeout_recovered: false, max_turns_recovered: false, summary_repaired_by: 'none', failures: [] },
-    { task_id: 'feature-manager-no-agent-choice', status: 'failed', runtime_seconds: 14.18, verification_required: true, tests_run: true, tests_passed: false, review_required: true, review_present: true, docs_required: true, docs_updated: true, changed_files: ['calculator.py', 'test_calculator.py', 'README.md'], recovered_nonzero_exit: true, timeout_recovered: true, max_turns_recovered: false, summary_repaired_by: 'retry', failures: ['verification_failed', 'required_used_agents_missing'] },
+    { task_id: 'bugfix-zero-division-lite', status: 'passed', runtime_seconds: 10.5, verification_required: true, tests_run: true, tests_passed: true, review_required: true, review_present: true, docs_required: true, docs_updated: true, changed_files: ['calculator.mjs', 'README.md'], recovered_nonzero_exit: false, timeout_recovered: false, max_turns_recovered: false, summary_repaired_by: 'none', failures: [] },
+    { task_id: 'feature-manager-no-agent-choice', status: 'failed', runtime_seconds: 14.18, verification_required: true, tests_run: true, tests_passed: false, review_required: true, review_present: true, docs_required: true, docs_updated: true, changed_files: ['calculator.mjs', 'calculator.test.mjs', 'README.md'], recovered_nonzero_exit: true, timeout_recovered: true, max_turns_recovered: false, summary_repaired_by: 'retry', failures: ['verification_failed', 'required_used_agents_missing'] },
   ];
   const out = renderSummary(s);
-  assert.match(out, /\| `bugfix-zero-division-lite` \| `passed` \| 10.5 \| `passed` \| `done` \| `updated` \| calculator.py, README.md \| `none` \| `none` \| — \|/);
-  assert.match(out, /\| `feature-manager-no-agent-choice` \| `failed` \| 14.18 \| `failed` \| `done` \| `updated` \| calculator.py, test_calculator.py, README.md \| `timeout` \| `retry` \| verification_failed, required_used_agents_missing \|/);
+  assert.match(out, /\| `bugfix-zero-division-lite` \| `passed` \| 10.5 \| `passed` \| `done` \| `updated` \| calculator.mjs, README.md \| `none` \| `none` \| — \|/);
+  assert.match(out, /\| `feature-manager-no-agent-choice` \| `failed` \| 14.18 \| `failed` \| `done` \| `updated` \| calculator.mjs, calculator.test.mjs, README.md \| `timeout` \| `retry` \| verification_failed, required_used_agents_missing \|/);
   assert.match(out, /> Note: only 2 of 3 selected tasks executed./);
 });
 

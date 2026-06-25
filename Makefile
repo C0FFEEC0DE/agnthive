@@ -33,14 +33,12 @@ all: lint test hooks
 node-test:
 	node --test 'test/**/*.test.mjs'
 
-# Lint: Node ESM syntax check + python compile + ruff (if available). The hook
-# runtime is now a platform-independent Node plugin (no Bash/shell scripts
-# remain in the repo), so shell-syntax/shellcheck steps are no longer needed.
+# Lint: Node ESM syntax check only. The hook runtime is a platform-independent
+# Node plugin (no Bash/shell scripts remain in the repo), and the fixtures/
+# validators were ported from Python to Node --test .mjs, so there is no Python
+# source tree left to compile or lint.
 lint:
 	node scripts/lint.mjs
-	python -m compileall -q .
-	@if command -v ruff >/dev/null 2>&1; then ruff check .; \
-	else echo "ruff not installed, skipping"; fi
 
 hooks:
 	node scripts/test-hooks.mjs
@@ -50,30 +48,23 @@ validate:
 	node scripts/validate.mjs
 
 test: node-test
-	python -m pytest -q
 
 # The ratcheting branch-coverage gate (COV_MIN=100 on scripts/*.py) was retired
 # when the bench runners were ported from Python to Node ESM: scripts/ is now
-# Node-only, so there is no Python source tree left to cover. The remaining
-# pytest tests (bench fixture/config validators under test/validators/) cover data
-# files, not a source module, so a coverage gate does not apply. `make cov` now
-# just runs the Python suite plainly (alias for the pytest half of `make test`).
-cov:
-	@if command -v pytest >/dev/null 2>&1; then \
-		python -m pytest -q test/validators/; \
-	else echo "pytest not installed, skipping Python suite"; fi
+# Node-only, so there is no Python source tree left to cover. The validator
+# suite (test/validators/) was ported to Node --test .mjs, so no Python coverage
+# gate remains. `make cov` is kept as an alias of `make test` for muscle memory.
+cov: node-test
 
 # Remove regenerable test/benchmark artifacts so repeated runs do not exhaust
 # disk quota. Safe: every file/dir removed here is recreated by the target that
-# produced it. Covers: coverage data, pytest + python caches, and benchmark
-# per-task logs/output (BENCH_OUTPUT_DIR defaults to /tmp/claude-bench, but a
-# caller may point it inside the repo, so clean both).
+# produced it. Covers: coverage data and benchmark per-task logs/output
+# (BENCH_OUTPUT_DIR defaults to /tmp/claude-bench, but a caller may point it
+# inside the repo, so clean both).
 clean:
 	rm -rf .coverage .coverage.* htmlcov coverage.xml
-	rm -rf .pytest_cache
-	find . -name __pycache__ -type d -not -path '*/.git/*' -prune -exec rm -rf {} + 2>/dev/null || true
 	rm -rf '$(BENCH_OUTPUT_DIR)' bench-output bench-output-*
-	@echo "clean: removed coverage data, python caches, and benchmark output"
+	@echo "clean: removed coverage data and benchmark output"
 
 bench-mock:
 	node scripts/run-benchmark.mjs \

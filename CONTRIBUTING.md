@@ -82,9 +82,9 @@ paths:
 ## Testing
 
 Before submitting:
-- [ ] `python3 -m pip install -r requirements-dev.txt` installs Python test dependencies
-- [ ] `make lint` passes (shell syntax, shellcheck, python compile, ruff)
-- [ ] `make test` (or `python3 -m pytest test/validators/ -v`) passes
+- [ ] `make lint` passes (Node ESM syntax check via `node --check` over `scripts/`, `plugins/`, and `test/` — Node standard library only, no Python, no ruff)
+- [ ] `make test` (Node `--test` over `test/**/*.test.mjs`) passes — the validator
+      suite (`test/validators/*.test.mjs`) is included in that glob
 - [ ] `make hooks` (or `node scripts/test-hooks.mjs`) passes
 - [ ] `node scripts/validate.mjs` passes
 - [ ] JSON files are valid

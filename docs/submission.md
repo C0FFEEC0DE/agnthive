@@ -46,9 +46,10 @@ release flow.
   paths, CRLF, UTF-8 multi-byte splits, partial UTF-8, cache paths.
 - Supply chain: CodeQL (js-ts), dependency-review, SBOM (syft), Dependabot,
   minimal token scopes — see `.github/workflows/`.
-- Local gates: `make lint` (86 files), `make test` (Node 764 + pytest 361),
-  `make cov` (100% on both bench runners), `make hooks` (157 cases / 2
-  scenarios), `node scripts/validate.mjs` (All checks passed).
+- Local gates: `make lint` (Node ESM syntax check, 86 files), `make test`
+  (Node --test, node-only — no pytest), `make cov` (alias of `make test`,
+  node-only), `make hooks` (157 cases / 2 scenarios),
+  `node scripts/validate.mjs` (All checks passed).
 
 ## Release checklist (from the production plan)
 

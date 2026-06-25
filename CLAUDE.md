@@ -80,16 +80,17 @@ OpenRouter-backed Claude Code is configured via repository secrets/variables. Se
 ## Test Commands
 
 ```bash
-# Lint: Node ESM syntax + python compile + ruff
+# Lint: Node ESM syntax check (node scripts/lint.mjs) — Node-only, no Python
 make lint
 
-# All tests
+# All tests (Node --test over test/**/*.test.mjs — includes the validator
+# suite under test/validators/*.test.mjs, which is itself Node --test .mjs).
 make test
 
-# Python suite (bench fixture/config validators under test/validators/). The
-# ratcheting branch-coverage gate on scripts/*.py was retired when the bench
-# runners were ported to Node ESM — scripts/ is now Node-only, so there is no
-# Python source tree left to cover.
+# Alias of `make test` for muscle memory. The ratcheting branch-coverage
+# gate on scripts/*.py was retired when the bench runners were ported to
+# Node ESM (scripts/ is now Node-only); the repo is fully Node now — no
+# .py files exist and no Python runs in CI or lint.
 make cov
 
 # Hook contract harness + integration scenarios (Node dispatcher driven)
@@ -98,11 +99,11 @@ make hooks
 # Full repository self-check (validation + hooks + lint + tests)
 node scripts/validate.mjs
 
-# Remove regenerable test/benchmark artifacts (coverage data, pytest + python
-# caches, benchmark per-task logs under BENCH_OUTPUT_DIR). Run after repeated
-# test/bench cycles so accumulated output does not exhaust disk quota.
+# Remove regenerable test/benchmark artifacts (coverage data, benchmark
+# per-task logs under BENCH_OUTPUT_DIR). Run after repeated test/bench
+# cycles so accumulated output does not exhaust disk quota.
 make clean
 
-# Benchmark tests only
-python3 -m pytest test/validators/ -v
+# Validator (task/fixture alignment) tests only
+node --test test/validators/**/*.test.mjs
 ```

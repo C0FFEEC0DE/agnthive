@@ -13,7 +13,7 @@
   "lint_failed": true,
   "build_ok": false,
   "build_failed": false,
-  "last_test_command": "pytest -q",
+  "last_test_command": "node --test",
   "last_lint_command": "make lint",
   "last_build_command": "",
   "files": [

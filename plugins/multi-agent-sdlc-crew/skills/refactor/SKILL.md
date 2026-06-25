@@ -13,7 +13,7 @@ allowed-tools:
   - Bash(git status:*)
   - Bash(git diff:*)
 paths:
-  - "**/*.py"
+  - "**/*.mjs"
   - "**/*.js"
   - "**/*.ts"
   - "**/*.sh"
