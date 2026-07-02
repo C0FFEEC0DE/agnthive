@@ -37,7 +37,7 @@ jobs:
         # keep the check non-blocking here. Remove continue-on-error once the
         # dependency graph is enabled to restore full high-severity enforcement.
         continue-on-error: true
-        uses: actions/dependency-review-action@v4
+        uses: actions/dependency-review-action@v5
         with:
           # Fail on high/critical vulnerabilities and unresolved license issues.
           fail-on-severity: high
