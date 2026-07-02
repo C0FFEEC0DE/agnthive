@@ -13,4 +13,5 @@ Dated implementation plans produced from an approved design, executed via Subage
 
 Design (docs/specs/) → Plan → Subagent-Driven Development → Review.
 
-See `claudecfg/workflows/subagent-driven-development.md` and `docs/agent-contracts.md`.
+The shipped workflow and contracts live in
+`plugins/agent-hive/references/`.

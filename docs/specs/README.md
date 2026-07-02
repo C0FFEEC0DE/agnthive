@@ -13,4 +13,13 @@ Dated design documents produced during the **brainstorm/design** phase, before a
 
 Design → Plan (docs/plans/) → Subagent-Driven Development → Review.
 
-See `claudecfg/workflows/subagent-driven-development.md` and `docs/agent-contracts.md`.
+The shipped workflow and contracts live in
+`plugins/agent-hive/references/`.
+
+## Exceptions to the dated-design convention
+
+`claude-code-plugin-node-migration.md` is a **completed migration
+traceability matrix**, not a brainstorm design. It pairs with
+`docs/plans/2026-06-21-claude-code-plugin-node-production.md` and uses the
+non-dated path dictated by that plan. It records the coverage gate used for the
+completed Node port.

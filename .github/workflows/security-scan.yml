@@ -10,6 +10,9 @@ on:
   schedule:
     - cron: '0 6 * * 1'  # Weekly on Monday at 6 AM
 
+permissions:
+  contents: read
+
 jobs:
   security-scan:
     name: Security Checks
@@ -44,20 +47,26 @@ jobs:
       run: |
         echo "=== Checking file permissions ==="
 
-        # Check for executable scripts that shouldn't be
-        find . -name "*.py" -perm /111 -type f 2>/dev/null | head -5
+        # Check for executable source scripts that shouldn't be (the repo is
+        # Node-only: .mjs/.js/.sh sources should not carry the executable bit).
+        find . \( -name "*.mjs" -o -name "*.js" -o -name "*.sh" \) -perm /111 -type f 2>/dev/null | head -5
 
-        echo "✅ File permissions check complete"
+        echo "File permissions check complete"
 
     - name: Validate JSON files
       run: |
         echo "=== Validating JSON files ==="
 
-        for file in $(find . -name "*.json" -type f | grep -v node_modules); do
-          if ! python3 -m json.tool "$file" > /dev/null 2>&1; then
-            echo "❌ Invalid JSON: $file"
-            exit 1
-          fi
-        done
+        # Node-stdlib JSON validation — the repo runs no Python tooling in CI.
+        mapfile -t json_files < <(find . -name "*.json" -type f | grep -v node_modules)
+        node -e '
+          const fs = require("node:fs");
+          let bad = 0;
+          for (const f of process.argv.slice(1)) {
+            try { JSON.parse(fs.readFileSync(f, "utf-8")); }
+            catch (e) { console.error("Invalid JSON: " + f); bad++; }
+          }
+          if (bad) process.exit(1);
+        ' "${json_files[@]}"
 
-        echo "✅ All JSON files valid"
+        echo "All JSON files valid"

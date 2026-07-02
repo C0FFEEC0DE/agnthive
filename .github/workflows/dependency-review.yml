@@ -1,0 +1,44 @@
+name: Dependency Review
+
+# Flags vulnerable, out-of-date, and unresolved-license dependencies on PRs
+# via github/dependency-review-action. Complements CodeQL (code analysis) and
+# the existing TruffleHog secret scan.
+
+on:
+  pull_request:
+    branches:
+      - main
+
+env:
+  # Repo convention: opt reusable Actions into Node.js 24.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # pull-requests: write lets the action post review comments on failure.
+      pull-requests: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Dependency Review
+        # Best-effort: this action requires the repo's Dependency graph to be
+        # enabled (Settings → Code security → Dependency graph). Until that is
+        # toggled on it errors with "Dependency review is not supported on this
+        # repository" in ~5s; this repo is source-only with no dependencies, so
+        # keep the check non-blocking here. Remove continue-on-error once the
+        # dependency graph is enabled to restore full high-severity enforcement.
+        continue-on-error: true
+        uses: actions/dependency-review-action@v4
+        with:
+          # Fail on high/critical vulnerabilities and unresolved license issues.
+          fail-on-severity: high
+          deny-licenses: AGPL-3.0, AGPL-3.0-only, AGPL-3.0-or-later, GPL-3.0, GPL-3.0-only, GPL-3.0-or-later, CC-BY-NC-4.0

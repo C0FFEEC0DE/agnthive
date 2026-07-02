@@ -16,7 +16,7 @@
     "No code changes"
   ],
   "must_not": [
-    "Modify Python files",
+    "Modify JavaScript files",
     "Perform release or deploy work"
   ],
   "forbidden_transcript_patterns": [

@@ -1,0 +1,51 @@
+{
+  "session_id": "case-feature-generic-only",
+  "cwd": "",
+  "transcript_path": "",
+  "created_at": "2026-06-12T00:00:00Z",
+  "task_type": "feature",
+  "edited": true,
+  "code_changed": true,
+  "docs_changed": false,
+  "tests_ok": true,
+  "tests_failed": false,
+  "lint_ok": false,
+  "lint_failed": false,
+  "build_ok": false,
+  "build_failed": false,
+  "detected_test_command": "pytest",
+  "detected_lint_command": "",
+  "detected_build_command": "",
+  "last_test_command": "node --test",
+  "last_lint_command": "",
+  "last_build_command": "",
+  "subagent_start_count": 2,
+  "subagents_started": [
+    "general-purpose",
+    "workflow-subagent"
+  ],
+  "subagent_instance_count_by_role": {
+    "general-purpose": 1,
+    "workflow-subagent": 1
+  },
+  "subagent_events": [
+    {"index": 1, "role": "general-purpose"},
+    {"index": 2, "role": "workflow-subagent"}
+  ],
+  "required_subagents": [
+    "t",
+    "cr"
+  ],
+  "required_subagent_any_of": [
+    ["e", "a"]
+  ],
+  "stop_block_count": 0,
+  "stop_block_reason": "",
+  "stop_block_message": "",
+  "subagent_stop_block_count": 0,
+  "subagent_stop_block_reason": "",
+  "subagent_stop_block_message": "",
+  "files": [
+    "src/app.py"
+  ]
+}

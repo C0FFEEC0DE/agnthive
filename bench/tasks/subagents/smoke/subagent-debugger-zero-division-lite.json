@@ -9,14 +9,14 @@
   "fixture": "python-math",
   "review_required": false,
   "docs_required": false,
-  "verification_required": true,
-  "prompt": "Use @dbg to diagnose the division by zero in calculator.py. Identify root cause. Do not fix. Finish with required footer.",
+  "verification_required": false,
+  "prompt": "Use @dbg to diagnose the division by zero in calculator.mjs (divide(8, 0) returns Infinity instead of throwing — identify root cause). Identify root cause. Do not fix. Finish with required footer.",
   "success_criteria": [
     "Root cause identified",
     "No code changes"
   ],
   "must_not": [
-    "Modify Python files",
+    "Modify JavaScript files",
     "Perform release or deploy work"
   ],
   "forbidden_transcript_patterns": [

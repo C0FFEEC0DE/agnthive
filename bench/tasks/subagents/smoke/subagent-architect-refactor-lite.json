@@ -8,15 +8,15 @@
   "review_required": false,
   "docs_required": false,
   "verification_required": true,
-  "prompt": "Launch @architect/@a immediately and let that specialist scope the refactor before you touch the code. Do not refactor the code yourself before the handoff. Use @architect/@a to drive the smallest safe refactor that removes duplicated normalization logic in render_title() and render_subtitle() without changing behavior. Run pytest -q. Finish with required footer.",
+  "prompt": "Use @a to extract the duplicated strip+uppercase normalization from renderTitle() and renderSubtitle() into a shared helper. Do not edit any file yourself — only @a touches the code. @a must run `node --test` and confirm 4 passed. Finish with required footer.",
   "success_criteria": [
     "Duplication reduced",
     "Behavior unchanged",
-    "pytest -q passes"
+    "node --test passes"
   ],
   "must_not": [
     "Change output format",
-    "Skip pytest -q",
+    "Skip node --test",
     "Perform release or deploy work"
   ],
   "forbidden_transcript_patterns": [
@@ -29,5 +29,10 @@
     "Verification status:",
     "Remaining risks:|Next step:"
   ],
-  "required_used_agents": ["a"]
+  "required_used_agents": ["a"],
+  "dispatch_contract": {
+    "mode": "enforced",
+    "required_agents": ["a"],
+    "root_only": true
+  }
 }

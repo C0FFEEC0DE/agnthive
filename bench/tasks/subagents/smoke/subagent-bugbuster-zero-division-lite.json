@@ -8,14 +8,14 @@
   "review_required": false,
   "docs_required": false,
   "verification_required": true,
-  "prompt": "Use @bug to find and fix the division by zero in calculator.py. Add a test. Run pytest -q. Finish with required footer.",
+  "prompt": "CRITICAL: You MUST launch @bug as a real subagent handoff using the Agent tool — not just a mention in text. The benchmark validates actual SubagentStart hooks. Use @bug to find and fix the division by zero in calculator.mjs (divide(8, 0) returns Infinity instead of throwing a clear error). Do not edit any file yourself — only @bug touches the code. @bug must add a test and run `node --test` confirming 3 passed. Finish with required footer.",
   "success_criteria": [
     "Division by zero fixed",
     "One test added",
-    "pytest -q passes"
+    "node --test passes"
   ],
   "must_not": [
-    "Skip pytest -q",
+    "Skip node --test",
     "Perform release or deploy work"
   ],
   "forbidden_transcript_patterns": [
@@ -28,5 +28,10 @@
     "Verification status:",
     "Remaining risks:|Next step:"
   ],
-  "required_used_agents": ["bug"]
+  "required_used_agents": ["bug"],
+  "dispatch_contract": {
+    "mode": "observed",
+    "required_agents": ["bug"],
+    "root_only": true
+  }
 }

@@ -1,0 +1,9 @@
+# Normalize line endings to LF on checkout for all text files so JS sources,
+# Markdown, YAML, and JSON are byte-identical across Linux, macOS, and Windows.
+#
+# Without this, git for Windows (core.autocrlf=true by default) checks out text
+# files with CRLF line endings. A stray \r in ESM module sources or hook config
+# breaks parsing and the Node --test suites that exercise them.
+# `text=auto` lets git auto-detect binary files (NUL bytes) and leave them alone;
+# `eol=lf` forces LF on both checkin and checkout, overriding autocrlf.
+* text=auto eol=lf

@@ -1,0 +1,4 @@
+{
+  "session_id": "scenario-dispatch-enforced",
+  "prompt": "BENCHMARK_DISPATCH_CONTRACT: root_only; mode=enforced; roles=a\nUse @a to extract the duplicated strip+uppercase normalization from renderTitle() and renderSubtitle() into a shared helper. Do not edit any file yourself — only @a touches the code. @a must run node --test and confirm 4 passed. Finish with required footer."
+}

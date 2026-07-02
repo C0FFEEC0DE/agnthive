@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://example.com/multi-agent-sdlc-crew/bench/summary.schema.json",
+  "$id": "https://example.com/agent-hive/bench/summary.schema.json",
   "title": "Benchmark Summary",
   "type": "object",
   "required": [

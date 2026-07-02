@@ -14,20 +14,20 @@ on:
     paths:
       - '.github/workflows/behavior-benchmark-subagents-smoke.yml'
       - 'bench/**'
-      - 'claudecfg/**'
-      - 'scripts/assert-benchmark-summary.sh'
-      - 'scripts/bench_runner_claude_code.py'
-      - 'scripts/build-benchmark-matrix.py'
-      - 'scripts/collect-benchmark-changes.sh'
-      - 'scripts/download-benchmark-summary.py'
-      - 'scripts/merge-benchmark-summaries.py'
-      - 'scripts/render-benchmark-summary.sh'
-      - 'scripts/run-benchmark.sh'
-      - 'scripts/select-benchmark-tasks.py'
-      - 'scripts/wait-for-benchmark-slot.py'
+      - 'scripts/assert-benchmark-summary.mjs'
+      - 'scripts/bench/lib.mjs'
+      - 'scripts/bench_runner_claude_code.mjs'
+      - 'scripts/bench_runner_openrouter.mjs'
+      - 'scripts/build-benchmark-matrix.mjs'
+      - 'scripts/collect-benchmark-changes.mjs'
+      - 'scripts/download-benchmark-summary.mjs'
+      - 'scripts/merge-benchmark-summaries.mjs'
+      - 'scripts/render-benchmark-summary.mjs'
+      - 'scripts/run-benchmark.mjs'
+      - 'scripts/select-benchmark-tasks.mjs'
+      - 'scripts/wait-for-benchmark-slot.mjs'
       - 'CLAUDE.md'
-      - 'install.sh'
-      - 'claudecfg/install.sh'
+      - 'plugins/agent-hive/**'
   workflow_dispatch:
     inputs:
       selection_mode:
@@ -61,7 +61,21 @@ on:
         default: "768"
         type: string
 
+# Minimal token scopes: contents: read for checkout; actions: read for the
+# two-slot gate (wait-for-benchmark-slot polls the Actions API), shard-artifact
+# download, and resume/auto_resume run lookup. The bench runners do not use
+# GITHUB_TOKEN for PR comments or check runs (they call the OpenRouter API via
+# ANTHROPIC_AUTH_TOKEN), so no write scopes are required.
+permissions:
+  contents: read
+  actions: read
+
 jobs:
+  # Local equivalent: `make bench-precheck` / `scripts/bench-precheck.mjs`
+  # reproduces this job on a workstation — it drives the same Node CLIs
+  # (collect-benchmark-changes, select-benchmark-tasks, build-benchmark-matrix,
+  # find-failed-benchmark-run, download-benchmark-summary) with no model/token,
+  # so local and CI selection stay byte-identical. See docs/benchmarking.md.
   precheck:
     name: Behavior Benchmark Subagents Smoke Precheck
     runs-on: ubuntu-latest
@@ -89,7 +103,7 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
           REF_NAME: ${{ github.ref_name }}
         run: |
-          bash scripts/collect-benchmark-changes.sh \
+          node scripts/collect-benchmark-changes.mjs \
             --event "${{ github.event_name }}" \
             --output .bench-changed-files.txt \
             --base-ref "${BASE_REF:-main}" \
@@ -112,7 +126,7 @@ jobs:
                 echo "resume_run_id input is required when selection_mode=resume" >&2
                 exit 1
               fi
-              python3 scripts/download-benchmark-summary.py \
+              node scripts/download-benchmark-summary.mjs \
                 --repo "${GITHUB_REPOSITORY}" \
                 --run-id "${INPUT_RESUME_RUN_ID}" \
                 --artifact-name "behavior-benchmark-subagents-smoke-${INPUT_RESUME_RUN_ID}" \
@@ -121,7 +135,7 @@ jobs:
               echo "resume_run_id=${INPUT_RESUME_RUN_ID}" >> "$GITHUB_OUTPUT"
             elif [ "$selection_mode" = "auto_resume" ]; then
               # Find the last failed run automatically
-              python3 scripts/find-failed-benchmark-run.py \
+              node scripts/find-failed-benchmark-run.mjs \
                 --workflow "Behavior Benchmark Subagents Smoke" \
                 --max-age-hours 72 \
                 --status failed
@@ -130,7 +144,7 @@ jobs:
                 run_id=$(grep "^run_id=" "$GITHUB_OUTPUT" 2>/dev/null | cut -d= -f2)
                 if [ -n "$run_id" ]; then
                   echo "Found failed run: ${run_id}"
-                  python3 scripts/download-benchmark-summary.py \
+                  node scripts/download-benchmark-summary.mjs \
                     --repo "${GITHUB_REPOSITORY}" \
                     --run-id "${run_id}" \
                     --artifact-name "behavior-benchmark-subagents-smoke-${run_id}" \
@@ -148,7 +162,7 @@ jobs:
               fi
             fi
           fi
-          python3 scripts/select-benchmark-tasks.py \
+          node scripts/select-benchmark-tasks.mjs \
             --suite subagents_smoke \
             --selection-mode "$selection_mode" \
             --changed-files-file .bench-changed-files.txt \
@@ -168,15 +182,10 @@ jobs:
             echo "- Will run subagent smoke suite: \`${{ steps.select.outputs.should_run }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Install pytest for validation
-        shell: bash
-        run: |
-          pip install pytest --quiet
-
       - name: Validate task/fixture alignment
         shell: bash
         run: |
-          python3 -m pytest tests/bench/test_task_fixture_alignment.py -v
+          node --test test/validators/**/*.test.mjs
 
       - name: Build subagent smoke shard matrix
         id: matrix
@@ -185,7 +194,7 @@ jobs:
           cat > .bench-selected-tasks.txt <<'EOF'
           ${{ steps.select.outputs.task_files }}
           EOF
-          matrix_json="$(python3 scripts/build-benchmark-matrix.py --task-list-file .bench-selected-tasks.txt --max-shards 3)"
+          matrix_json="$(node scripts/build-benchmark-matrix.mjs --task-list-file .bench-selected-tasks.txt --max-shards 3)"
           echo "matrix_json=$matrix_json" >> "$GITHUB_OUTPUT"
 
   benchmark-subagents-smoke-shards:
@@ -257,28 +266,36 @@ jobs:
         with:
           path: |
             ~/.npm
-            ~/.cache/pip
           key: ${{ runner.os }}-behavior-benchmark-deps-v2
 
-      - name: Install Claude Code CLI and pytest
+      - name: Install Claude Code CLI
         shell: bash
         run: |
-          PIP_DISABLE_PIP_VERSION_CHECK=1 npm install -g @anthropic-ai/claude-code --prefer-offline --no-audit
-          PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install pytest --cache-dir ~/.cache/pip
+          npm install -g @anthropic-ai/claude-code --prefer-offline --no-audit
           claude --version
 
-      - name: Install Claude configuration
+      - name: Verify plugin directory
         shell: bash
         run: |
-          bash ./install.sh
+          # Behavioral runs load the plugin via --plugin-dir (see
+          # scripts/bench_runner_claude_code.mjs), not the legacy install.sh
+          # profile. Fail fast if the plugin directory is missing so the run
+          # does not silently proceed with no SDLC hooks/agents loaded.
+          test -d plugins/agent-hive
+          node -e "require('node:fs').accessSync('plugins/agent-hive/.claude-plugin/plugin.json')"
 
       - name: Run subagent smoke benchmark
         shell: bash
         env:
-          BENCH_RUNNER_CMD: python3 "$GITHUB_WORKSPACE/scripts/bench_runner_claude_code.py"
+          BENCH_RUNNER_CMD: node ${{ github.workspace }}/scripts/bench_runner_claude_code.mjs
           BENCH_SOURCE_REF: ${{ github.ref }}
           MAX_TURNS: ${{ steps.cfg.outputs.max_turns }}
           BENCH_FAIL_FAST: ${{ steps.cfg.outputs.fail_fast }}
+          # Point at a nonexistent profile dir so run-benchmark.mjs does NOT copy
+          # any ~/.claude into the fixture workdir — the plugin is loaded via
+          # --plugin-dir, and we want plugin-only behavior (no legacy shell
+          # hooks leaking in alongside it).
+          BENCH_CLAUDE_PROFILE_DIR: /tmp/no-such-claude-profile
           CLAUDE_TIMEOUT_SECONDS: ${{ steps.cfg.outputs.timeout_seconds }}
           CLAUDE_CODE_MAX_OUTPUT_TOKENS: ${{ steps.cfg.outputs.max_output_tokens }}
           OLLAMA_MODEL: ${{ steps.cfg.outputs.model }}
@@ -291,7 +308,7 @@ jobs:
             echo "OLLAMA_API_KEY secret is required" >&2
             exit 1
           fi
-          bash scripts/run-benchmark.sh \
+          node scripts/run-benchmark.mjs \
             --output-dir bench-output \
             --mode command \
             --task-list-file .bench-selected-tasks.txt \
@@ -316,7 +333,7 @@ jobs:
               echo "- Timeout seconds: \`${{ steps.cfg.outputs.timeout_seconds }}\`"
               echo "- Max output tokens: \`${{ steps.cfg.outputs.max_output_tokens }}\`"
               echo ""
-              bash scripts/render-benchmark-summary.sh bench-output/summary.json
+              node scripts/render-benchmark-summary.mjs bench-output/summary.json
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 
@@ -366,7 +383,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           BENCH_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
-          python3 scripts/wait-for-benchmark-slot.py \
+          node scripts/wait-for-benchmark-slot.mjs \
             --current-run-id "${{ github.run_id }}" \
             --head-sha "${BENCH_HEAD_SHA}" \
             --max-active 2 \
@@ -400,7 +417,7 @@ jobs:
             exit 1
           fi
           for shard_index in "${shard_indexes[@]}"; do
-            python3 scripts/download-benchmark-summary.py \
+            node scripts/download-benchmark-summary.mjs \
               --repo "${GITHUB_REPOSITORY}" \
               --run-id "${GITHUB_RUN_ID}" \
               --artifact-name "behavior-benchmark-subagents-smoke-shard-${shard_index}-${GITHUB_RUN_ID}" \
@@ -416,10 +433,10 @@ jobs:
             echo "No shard summary.json files were downloaded" >&2
             exit 1
           fi
-          python3 scripts/merge-benchmark-summaries.py \
+          node scripts/merge-benchmark-summaries.mjs \
             --output bench-output/summary.json \
             "${summary_files[@]}"
-          bash scripts/render-benchmark-summary.sh bench-output/summary.json > bench-output/benchmark-report.md
+          node scripts/render-benchmark-summary.mjs bench-output/summary.json > bench-output/benchmark-report.md
 
       - name: Render subagent smoke summary
         shell: bash
@@ -435,10 +452,49 @@ jobs:
             cat bench-output/benchmark-report.md
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Enforce subagent smoke gate
+      - name: Enforce subagent smoke functional gate
         shell: bash
+        # Stage 6 gate-line split. assert-benchmark-summary.mjs now reports
+        # three explicitly named lines and exits non-zero ONLY on the
+        # merge-blocking functional line (fix + verification + review/docs +
+        # structural execution coverage):
+        #   - functional         : merge-blocking. Drives this step's exit code.
+        #   - dispatch-observed  : the model itself called the Agent tool
+        #                           (real SubagentStart). Visible, NON-blocking
+        #                           capability signal — printed to step output
+        #                           and the rendered summary, never masked or
+        #                           "repaired" through final text. A red
+        #                           dispatch-observed line is an honest model
+        #                           capability signal, not a CI failure.
+        #   - dispatch-enforced  : separate line for the hard-guard harness
+        #                           (Stage 5, not yet wired -> n/a).
+        # The plumbing (runner invocation, --plugin-dir loading, hook firing,
+        # transcript / result parsing) is separately gated by the shard jobs
+        # above. This step is the ONLY gate on model behavior, so it MUST report
+        # its real functional exit status: a masked-green gate is worthless as a
+        # regression detector (the prior `continue-on-error: true` made GitHub
+        # report a failed assert as `conclusion: success`). dispatch-observed
+        # stays visible-and-honest but non-blocking so functional progress (the
+        # model fixing the bug with passing `node --test`) is not hidden behind the
+        # dispatch signal. Artifacts still upload via the `if: always()` step
+        # below, so failed-run debug logs remain available for triage.
         run: |
-          bash scripts/assert-benchmark-summary.sh bench-output/summary.json
+          node scripts/assert-benchmark-summary.mjs bench-output/summary.json
+
+      - name: Report dispatch-observed capability signal
+        if: always()
+        shell: bash
+        # Always surface the dispatch-observed line in the step summary so the
+        # honest capability signal stays visible whether or not the functional
+        # gate passed. This step never fails the workflow — it only renders the
+        # already-computed gate lines from summary.json into the job summary.
+        run: |
+          if [ -f bench-output/summary.json ]; then {
+            echo "## Dispatch capability signal"
+            echo ""
+            node scripts/render-benchmark-summary.mjs bench-output/summary.json | sed -n '/^### Gate lines/,/^### /p' | sed '$d' | sed '/^> Note:/d'
+          } >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Upload subagent smoke artifacts
         if: always()

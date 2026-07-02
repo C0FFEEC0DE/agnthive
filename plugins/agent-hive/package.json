@@ -1,0 +1,12 @@
+{
+  "name": "agent-hive-plugin",
+  "version": "0.1.0-beta.1",
+  "private": true,
+  "type": "module",
+  "description": "Node.js hook runtime for the agent-hive Claude Code plugin.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "main": "modules/hook-dispatcher.mjs"
+}

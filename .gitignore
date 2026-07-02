@@ -1,4 +1,5 @@
 node_modules/
+dist/
 dist-build/
 coverage/
 .coverage
@@ -14,6 +15,12 @@ htmlcov/
 __pycache__/
 *.py[cod]
 .pytest_cache/
+
+# Benchmark per-task output (logs, transcripts, workspace patches). The
+# benchmark runner writes these under BENCH_OUTPUT_DIR (default /tmp/claude-bench
+# in CI, but a local run may point it inside the repo).
+bench-output/
+bench-output-*/
 
 # Editor files
 *.tmp

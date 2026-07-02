@@ -8,26 +8,48 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
+env:
+  # Opt every JavaScript action into Node.js 24 ahead of the September 2026
+  # Node.js 20 runner deprecation (repo convention).
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 jobs:
   repository-checks:
-    name: Repository Checks
-    runs-on: ubuntu-latest
+    name: Repository Checks (${{ matrix.os }} / Node ${{ matrix.node }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node: ['22', '24']
+    runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
 
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.x'
-
+      # Go is only needed to `go install` actionlint, which is installed on
+      # Linux only (see below), so the Go toolchain is not set up elsewhere.
       - name: Set up Go
+        if: runner.os == 'Linux'
         uses: actions/setup-go@v6
         with:
           go-version: '1.23'
 
-      - name: Install workflow lint tools
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node }}
+
+      # shellcheck is apt-get-installable only on Linux. actionlint is built
+      # via `go install` (Linux only per task scope). On macOS, shellcheck is
+      # preinstalled by the runner image; scripts/validate.mjs auto-detects
+      # availability and runs it when present. On Windows, neither tool is
+      # preinstalled and apt-get is unavailable, so validate.mjs SKIPs both.
+      - name: "Install workflow lint tools (Linux: shellcheck + actionlint)"
+        if: runner.os == 'Linux'
         shell: bash
         run: |
           sudo apt-get update
@@ -35,19 +57,41 @@ jobs:
           go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
           echo "$HOME/go/bin" >> "$GITHUB_PATH"
 
-      - name: Run repository validator
-        run: bash scripts/validate.sh
+      # `make` is preinstalled on Linux and macOS but not on Windows runners.
+      # Install it via Chocolatey (preinstalled on Windows runners) so the
+      # `make test` step below runs the same Node test suites everywhere.
+      - name: Install make (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: choco install make -y --no-progress
 
-      - name: Check shell syntax
-        run: bash -n install.sh claudecfg/install.sh claudecfg/hooks/*.sh scripts/*.sh
-
-      - name: Check key JSON files
+      - name: "Note: shellcheck/actionlint skipped on Windows"
+        if: runner.os == 'Windows'
+        shell: bash
         run: |
-          jq empty claudecfg/settings.json
-          jq empty tests/hooks/cases.json
-          jq empty tests/hooks/scenarios.json
+          echo "NOTE: shellcheck is not preinstalled on Windows runners and apt-get is unavailable; scripts/validate.mjs auto-detects availability and SKIPs shellcheck and actionlint on this OS. POSIX bash/jq/git steps below still run via git-bash."
+
+      - name: Run repository validator
+        shell: bash
+        run: node scripts/validate.mjs
+
+      - name: Run test suites (Node)
+        shell: bash
+        run: make test
+
+      # POSIX-only steps run under git-bash on Windows (present on Windows
+      # runners via Git for Windows) so the jq/find/git invocations are
+      # identical across all three operating systems. The hook runtime is now a
+      # platform-independent Node plugin, so there are no shell scripts to
+      # syntax-check.
+      - name: Check key JSON files
+        shell: bash
+        run: |
+          jq empty test/hooks/cases.json
+          jq empty test/hooks/scenarios.json
           find bench/tasks -type f -name '*.json' -exec jq empty {} +
           jq empty bench/schema/*.json
 
       - name: Check whitespace errors
+        shell: bash
         run: git diff --check

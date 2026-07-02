@@ -1,0 +1,6 @@
+# CODEOWNERS — default ownership for the agent-hive repository.
+# PR review is automatically requested for the owners of any touched path.
+# Expand per-area ownership (e.g. /plugins/ @area-owner, /.github/workflows/ @ci-owner)
+# as the team grows.
+
+* @C0FFEEC0DE

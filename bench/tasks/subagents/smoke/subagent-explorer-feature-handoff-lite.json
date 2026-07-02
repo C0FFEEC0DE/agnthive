@@ -9,7 +9,7 @@
   "fixture": "python-math",
   "review_required": false,
   "docs_required": false,
-  "verification_required": true,
+  "verification_required": false,
   "prompt": "Use @e to explore the calculator fixture and identify the function to extend. Report findings. Do not implement. Finish with required footer.",
   "success_criteria": [
     "Exploration complete",
@@ -17,7 +17,7 @@
     "No code changes"
   ],
   "must_not": [
-    "Modify Python files",
+    "Modify JavaScript files",
     "Perform release or deploy work"
   ],
   "forbidden_transcript_patterns": [

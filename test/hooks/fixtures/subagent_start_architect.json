@@ -1,0 +1,8 @@
+{
+  "session_id": "scenario-dispatch-enforced",
+  "agentType": "general-purpose",
+  "tool_input": {
+    "subagentType": "Architect",
+    "description": "Extract duplicated strip+uppercase normalization into a shared helper"
+  }
+}

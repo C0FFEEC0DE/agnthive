@@ -1,0 +1,57 @@
+version: 2
+
+# Dependabot supply-chain updates for the agent-hive plugin repo.
+# The plugin runtime ships as committed ES modules under modules/ — there is
+# no npm install at runtime — so the npm ecosystem entries below are retained
+# for future deps the repo may adopt (e.g. dev/build tooling). The root
+# package.json currently declares no runtime dependencies.
+
+updates:
+  # npm — repository root (dev/build tooling, future deps).
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: UTC
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - npm
+    commit-message:
+      prefix: 'deps(npm)'
+      include: scope
+
+  # npm — plugin workspace (currently no deps; entry kept for future use).
+  - package-ecosystem: npm
+    directory: /plugins/agent-hive
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: UTC
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - npm
+      - plugin
+    commit-message:
+      prefix: 'deps(npm-plugin)'
+      include: scope
+
+  # github-actions — keep all workflow Actions pinned to current majors.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: UTC
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - github-actions
+    commit-message:
+      prefix: 'deps(ci)'
+      include: scope

@@ -1,4 +1,0 @@
-{
-  "session_id": "case-benchmark-refactor-override",
-  "prompt": "You are running in a tiny benchmark repository fixture.\n\nWorkflow override: treat this as a refactor workflow, not a review-only workflow.\n\nTask metadata:\n- id: refactor-report-formatting-lite\n- workflow_category: refactor\n\nTask:\nRefactor reporter.py to remove duplicated title/subtitle normalization logic without changing behavior or function names. Keep it small, run pytest -q, and finish with the required footer."
-}

@@ -1,0 +1,150 @@
+name: Release
+
+# Tag-only release flow. Triggered by pushing a SemVer tag (v*). Builds ONE
+# artifact from a clean checkout, tests the EXACT artifact, generates an SBOM,
+# then creates a GitHub Release with the artifact + SBOM attached.
+#
+# There is NO npm publication for this plugin — it is distributed as a source
+# repository marketplace that copies the plugin dir into the marketplace cache.
+# npm provenance (sigstore) is therefore N/A; see docs/release.md.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  # Repo convention: opt reusable Actions into Node.js 24.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Cut Release
+    runs-on: ubuntu-latest
+    permissions:
+      # contents: write is required to create the GitHub Release and upload assets.
+      # No id-token: write is granted: nothing is published to npm and the SBOM
+      # is not signed (upload-sbom-release: false). Re-add id-token: write only
+      # if/when a cosign/sigstore signing step lands.
+      contents: write
+
+    steps:
+      - name: Checkout code (clean, at tag)
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Validate committed runtime (build)
+        # Hard gate: the committed plugin runtime must be intact and
+        # syntactically valid before we package it.
+        run: node scripts/build.mjs --package
+
+      - name: Package plugin into one zip artifact
+        # git archive produces a deterministic zip of ONLY tracked files (dist/
+        # is gitignored, so no build artifacts leak — the runtime ships as
+        # committed ES modules under modules/). Archiving the HEAD:<subpath>
+        # tree yields plugin-dir-relative paths; --prefix nests them under
+        # agent-hive/ so unzipping drops a named dir into plugins/.
+        id: package
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          artifact="agent-hive-plugin-${TAG}.zip"
+          git archive --format=zip --prefix=agent-hive/ \
+            -o "$artifact" HEAD:plugins/agent-hive
+          echo "artifact=$artifact" >> "$GITHUB_OUTPUT"
+          ls -lh "$artifact"
+
+      - name: Test the exact artifact (unpack + structural + syntax check)
+        # Unzip the artifact we just built (not the checkout) and assert the
+        # shipped structure + syntax of every .mjs module. This is the
+        # test-the-exact-artifact gate that runs BEFORE the release is created.
+        id: unpack
+        env:
+          ARTIFACT: ${{ steps.package.outputs.artifact }}
+        run: |
+          set -euo pipefail
+          stage="$(mktemp -d)"
+          unzip -q "$ARTIFACT" -d "$stage"
+          plugin="$stage/agent-hive"
+          echo "plugin_dir=$plugin" >> "$GITHUB_OUTPUT"
+          # Required structural files.
+          for rel in .claude-plugin/plugin.json package.json \
+                     modules/hook-dispatcher.mjs hooks/hooks.json; do
+            if [ ! -f "$plugin/$rel" ]; then
+              echo "release: FAIL — missing $rel in artifact" >&2
+              exit 1
+            fi
+          done
+          # Syntax-check every shipped ES module (tests the exact artifact).
+          fail=0
+          for f in "$plugin"/modules/*.mjs; do
+            node --check "$f" || fail=1
+          done
+          if [ "$fail" -ne 0 ]; then
+            echo "release: FAIL — artifact contains .mjs with syntax errors" >&2
+            exit 1
+          fi
+          echo "release: OK — artifact structure + module syntax verified"
+
+      - name: Run plugin install smoke on the exact artifact
+        # Enforced gate: scripts/plugin-install-smoke.mjs validates the unpacked
+        # artifact for the structural properties the hard gate above does NOT
+        # cover — hook exec form (command "node" + args array, no shell:true),
+        # no .py/.sh in the runtime, every ${CLAUDE_PLUGIN_ROOT} target resolves,
+        # userConfig well-formedness, and statusline parse. The script is
+        # committed in this tree (the hashFiles guard is therefore always true),
+        # so this must fail the release rather than warn. The positional PLUGIN_DIR
+        # arg makes it validate the exact shipped artifact, not a re-packaged copy.
+        if: hashFiles('scripts/plugin-install-smoke.mjs') != ''
+        env:
+          PLUGIN_DIR: ${{ steps.unpack.outputs.plugin_dir }}
+        run: node scripts/plugin-install-smoke.mjs "$PLUGIN_DIR"
+
+      - name: Generate SBOM (SPDX JSON) for the artifact
+        # Uses anchore/sbom-action (syft) to scan the unpacked artifact dir,
+        # so the SBOM reflects the exact released tree. GitHub-native
+        # `gh api .../dependency-graph/sbom` is the documented alternative but
+        # requires dependency-graph enablement / GHAS on private repos; syft is
+        # self-contained and works for this source-only plugin.
+        uses: anchore/sbom-action@v0
+        with:
+          path: ${{ steps.unpack.outputs.plugin_dir }}
+          format: spdx-json
+          output-file: sbom.spdx.json
+          upload-artifact: false
+          upload-sbom-release: false
+
+      - name: Create GitHub Release with artifact + SBOM
+        # Test-then-release: every prior hard-gate step must pass to reach here.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          ARTIFACT: ${{ steps.package.outputs.artifact }}
+        run: |
+          set -euo pipefail
+          notes="$(mktemp).md"
+          {
+            echo "## ${TAG}"
+            echo ""
+            echo "Source-only Claude Code plugin distribution. The artifact"
+            echo "below is a packaged copy of \`plugins/agent-hive/\`"
+            echo "from this tag; unzip it into your marketplace \`plugins/\` dir."
+            echo ""
+            echo "- Artifact: \`$ARTIFACT\`"
+            echo "- SBOM: \`sbom.spdx.json\` (SPDX JSON, generated by syft)"
+            echo "- No npm publication; npm provenance (sigstore) is N/A."
+            echo "- Built from a clean checkout at tag ${TAG} with locked-down"
+            echo "  workflow permissions (contents: write only)."
+          } > "$notes"
+          gh release create "$TAG" "$ARTIFACT" sbom.spdx.json \
+            --title "$TAG" --notes-file "$notes" --verify-tag

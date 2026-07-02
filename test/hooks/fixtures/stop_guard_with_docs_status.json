@@ -1,0 +1,4 @@
+{
+  "session_id": "case-stop-guard-docs",
+  "last_assistant_message": "Verification status: node --test passed.\nReview outcome: done.\nChanged files: src/app.py.\nDocs status: no docs changes needed.\nRemaining risks: none."
+}

@@ -1,0 +1,22 @@
+{
+  "session_id": "case-build-failed",
+  "cwd": "",
+  "transcript_path": "",
+  "created_at": "2026-03-25T00:00:00Z",
+  "task_type": "feature",
+  "edited": true,
+  "code_changed": true,
+  "docs_changed": false,
+  "tests_ok": true,
+  "tests_failed": false,
+  "lint_ok": false,
+  "lint_failed": false,
+  "build_ok": false,
+  "build_failed": true,
+  "last_test_command": "node --test",
+  "last_lint_command": "",
+  "last_build_command": "make",
+  "files": [
+    "src/app.py"
+  ]
+}

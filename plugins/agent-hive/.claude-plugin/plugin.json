@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "agent-hive",
+  "displayName": "Agent Hive",
+  "version": "0.1.0-beta.1",
+  "description": "Hook-gated multi-agent SDLC profile with a Node.js hook runtime that enforces discover -> design -> implement -> verify -> review -> docs, plus footer, specialist-role, and verification contracts.",
+  "author": {
+    "name": "C0FFEEC0DE",
+    "url": "https://github.com/C0FFEEC0DE"
+  },
+  "homepage": "https://github.com/C0FFEEC0DE/agent-hive",
+  "repository": "https://github.com/C0FFEEC0DE/agent-hive",
+  "license": "MIT",
+  "keywords": [
+    "sdlc",
+    "multi-agent",
+    "hooks",
+    "gated-workflow",
+    "code-review",
+    "verification"
+  ],
+  "hooks": "./hooks/hooks.json",
+  "userConfig": {
+    "enforcement_mode": {
+      "type": "string",
+      "title": "Command policy enforcement mode",
+      "description": "advisory (default) logs dangerous-intent without blocking; enforce denies dangerous commands and fails closed on unparseable input. Any other value is treated as advisory by the runtime.",
+      "default": "advisory"
+    }
+  }
+}

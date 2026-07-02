@@ -1,0 +1,5 @@
+{
+  "dispatch_contract_mode": "standard",
+  "required_subagents": ["a"],
+  "subagents_started": []
+}

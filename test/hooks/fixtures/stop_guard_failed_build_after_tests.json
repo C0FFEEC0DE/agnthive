@@ -1,0 +1,4 @@
+{
+  "session_id": "case-build-failed",
+  "last_assistant_message": "Verification status: node --test passed. Review outcome: pending. Changed files: src/app.py. Remaining risks: none."
+}

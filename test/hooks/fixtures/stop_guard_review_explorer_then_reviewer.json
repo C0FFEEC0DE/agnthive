@@ -1,0 +1,5 @@
+{
+  "session_id": "case-stop-guard-review-explorer-then-reviewer",
+  "transcript_path": "test/hooks/fixtures/transcripts/review_explorer_then_reviewer.jsonl",
+  "last_assistant_message": "Review outcome: findings reported. Verification status: not required. No files changed: review-only session. Remaining risks: none."
+}

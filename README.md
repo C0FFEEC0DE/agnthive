@@ -1,24 +1,30 @@
-# multi-agent-sdlc-crew
+# agent-hive
 
-[![Repository Checks](https://github.com/C0FFEEC0DE/multi-agent-sdlc-crew/actions/workflows/validate.yml/badge.svg?branch=main)](https://github.com/C0FFEEC0DE/multi-agent-sdlc-crew/actions/workflows/validate.yml)
-[![Hook Contracts](https://github.com/C0FFEEC0DE/multi-agent-sdlc-crew/actions/workflows/hooks-test.yml/badge.svg?branch=main)](https://github.com/C0FFEEC0DE/multi-agent-sdlc-crew/actions/workflows/hooks-test.yml)
-[![Python Tests](https://github.com/C0FFEEC0DE/multi-agent-sdlc-crew/actions/workflows/python-tests.yml/badge.svg?branch=main)](https://github.com/C0FFEEC0DE/multi-agent-sdlc-crew/actions/workflows/python-tests.yml)
-[![Security Checks](https://github.com/C0FFEEC0DE/multi-agent-sdlc-crew/actions/workflows/security-scan.yml/badge.svg?branch=main)](https://github.com/C0FFEEC0DE/multi-agent-sdlc-crew/actions/workflows/security-scan.yml)
+[![Repository Checks](https://github.com/C0FFEEC0DE/agent-hive/actions/workflows/validate.yml/badge.svg?branch=main)](https://github.com/C0FFEEC0DE/agent-hive/actions/workflows/validate.yml)
+[![Hook Contracts](https://github.com/C0FFEEC0DE/agent-hive/actions/workflows/hooks-test.yml/badge.svg?branch=main)](https://github.com/C0FFEEC0DE/agent-hive/actions/workflows/hooks-test.yml)
+[![Security Checks](https://github.com/C0FFEEC0DE/agent-hive/actions/workflows/security-scan.yml/badge.svg?branch=main)](https://github.com/C0FFEEC0DE/agent-hive/actions/workflows/security-scan.yml)
 
-A **hook-gated SDLC profile for Claude Code**: shell hooks enforce a
-discover → design → implement → verify → review → docs flow, eight specialist
-agents do the work, and a benchmark suite catches agent regressions on every PR.
+A **hook-gated SDLC profile for Claude Code**: a platform-independent Node hook
+runtime enforces a discover → design → implement → verify → review → docs flow,
+eight specialist agents do the work, and a benchmark suite catches agent
+regressions on every PR.
 
-It gives you: deterministic handoff/stop contracts, token-spend discipline, and
-defense-in-depth command blocking — all as a drop-in `~/.claude` profile.
+It gives you: deterministic handoff/stop contracts, token-spend discipline,
+explicit `Handoff evidence: @alias ...` markers for benchmark-visible role use,
+and defense-in-depth command blocking — all as a distributable Claude Code
+plugin.
 
 ## Install
 
+Install the plugin from a local checkout:
+
 ```bash
-./install.sh
+claude plugin install ./plugins/agent-hive
 ```
 
-Backs up your current `~/.claude` config, then installs this one. Restart Claude Code.
+Restart Claude Code. See `plugins/agent-hive/README.md` for
+requirements, configuration, the optional status line, and legacy-migration
+notes (if you previously installed the old `~/.claude` profile via `./install.sh`).
 
 ## How it works
 
@@ -34,7 +40,7 @@ flowchart LR
     G -->|all pass| H[Done]
 ```
 
-Full diagram and the pieces: [`docs/architecture.md`](docs/architecture.md).
+Full diagram and the pieces: [`plugins/agent-hive/references/architecture.md`](plugins/agent-hive/references/architecture.md).
 
 ## Agents
 
@@ -55,7 +61,7 @@ Full names work too: `@code-reviewer`, `@tester`, etc.
 
 ```
 @e explore the auth module
-@cr review api.py
+@cr review api.mjs
 @t write tests for utils
 @manager implement new feature: user authentication
 ```
@@ -72,7 +78,7 @@ Full names work too: `@code-reviewer`, `@tester`, etc.
 - `/review` — code review
 - `/docs` — documentation
 
-These are the documented entry points; the hooks enforce the actual handoff and stop gates.
+These are the documented entry points; the hooks enforce the actual handoff and stop gates. When a benchmark needs a visible role-usage marker, it may also require an explicit `Handoff evidence: @alias ...` line in the transcript.
 
 ### Required handoffs
 
@@ -86,23 +92,23 @@ These are the documented entry points; the hooks enforce the actual handoff and 
 
 ## Configuration
 
-- **Model:** none pinned — your runtime default applies. Set `"model": "…"` in `claudecfg/settings.json` to fix one.
+- **Model:** none pinned — your runtime default applies. Set `"model": "…"` in your Claude Code settings to fix one.
 - **`effortLevel`:** defaults to `medium` (lower spend); raise to `high` for hard design/verify/judge stages.
 - **Safety:** `permissions.deny` blocks `sudo`, `mkfs`, `dd`, `rm -rf /`, `rm -rf ~`, force-push, and secret reads. Auto-execution only inside project folders.
 - **Observability:** `Notification` and other runtime events log to `~/.claude/logs/*.jsonl` (rotated at 1 MB).
-- See [`docs/token-cost.md`](docs/token-cost.md) for the full spend story.
+- See [`plugins/agent-hive/references/token-cost.md`](plugins/agent-hive/references/token-cost.md) for the full spend story.
 
 ## Docs
 
-- [`claudecfg/GUIDE.md`](claudecfg/GUIDE.md) — cheatsheet
-- [`docs/architecture.md`](docs/architecture.md) — how the hooks fit together
-- [`docs/token-cost.md`](docs/token-cost.md) — minimal token spend
-- [`docs/benchmarking.md`](docs/benchmarking.md) — benchmark setup
-- [`docs/agent-contracts.md`](docs/agent-contracts.md) — agent contracts
+- [`plugins/agent-hive/README.md`](plugins/agent-hive/README.md) — plugin cheatsheet
+- [`plugins/agent-hive/references/architecture.md`](plugins/agent-hive/references/architecture.md) — how the hooks fit together
+- [`plugins/agent-hive/references/token-cost.md`](plugins/agent-hive/references/token-cost.md) — minimal token spend
+- [`docs/benchmarking.md`](docs/benchmarking.md) — benchmark setup, including `make bench-precheck` to reproduce the smoke precheck locally without a model
+- [`plugins/agent-hive/references/agent-contracts.md`](plugins/agent-hive/references/agent-contracts.md) — agent contracts
 
 ## Contributing
 
-See [`CONTRIBUTING.md`](CONTRIBUTING.md). Run `make lint`, `make test`, `bash scripts/validate.sh` before a PR. Report security issues via [`SECURITY.md`](SECURITY.md).
+See [`CONTRIBUTING.md`](CONTRIBUTING.md). Run `make lint`, `make test`, `node scripts/validate.mjs` before a PR. Report security issues via [`SECURITY.md`](SECURITY.md).
 
 ## License
 

@@ -1,0 +1,37 @@
+{
+  "name": "agent-hive",
+  "version": "0.1.0-beta.1",
+  "private": true,
+  "type": "module",
+  "description": "Claude Code plugin and Node.js hook runtime for a hook-gated multi-agent SDLC profile.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "plugins/*"
+  ],
+  "scripts": {
+    "lint": "node scripts/lint.mjs",
+    "typecheck": "node scripts/lint.mjs",
+    "test": "node --test \"test/**/*.test.mjs\"",
+    "build": "node scripts/build.mjs",
+    "package": "node scripts/build.mjs --package",
+    "bench:mock": "node scripts/run-benchmark.mjs --output-dir \"${BENCH_OUTPUT_DIR:-/tmp/claude-bench}\" --mode mock --ref \"${BENCH_SOURCE_REF:-working-tree}\" --task-glob \"${BENCH_TASK_GLOB:-bench/tasks/subagents/smoke/*.json}\" && node scripts/assert-benchmark-summary.mjs \"${BENCH_OUTPUT_DIR:-/tmp/claude-bench}/summary.json\"",
+    "bench:command": "node scripts/run-benchmark.mjs --output-dir \"${BENCH_OUTPUT_DIR:-/tmp/claude-bench}\" --mode command --ref \"${BENCH_SOURCE_REF:-working-tree}\" --task-glob \"${BENCH_TASK_GLOB:-bench/tasks/subagents/smoke/*.json}\" && node scripts/assert-benchmark-summary.mjs \"${BENCH_OUTPUT_DIR:-/tmp/claude-bench}/summary.json\"",
+    "bench:run": "node scripts/run-benchmark.mjs",
+    "bench:assert": "node scripts/assert-benchmark-summary.mjs \"${BENCH_OUTPUT_DIR:-/tmp/claude-bench}/summary.json\"",
+    "bench:report": "node -e \"process.stdout.write(require('node:fs').readFileSync(process.env.BENCH_OUTPUT_DIR?process.env.BENCH_OUTPUT_DIR+'/benchmark-report.md':'/tmp/claude-bench/benchmark-report.md','utf-8'))\"",
+    "bench:select": "node scripts/select-benchmark-tasks.mjs",
+    "bench:matrix": "node scripts/build-benchmark-matrix.mjs",
+    "bench:merge": "node scripts/merge-benchmark-summaries.mjs",
+    "bench:compare": "node scripts/compare-benchmarks.mjs",
+    "bench:collect": "node scripts/collect-benchmark-changes.mjs",
+    "bench:render-summary": "node scripts/render-benchmark-summary.mjs",
+    "bench:render-report": "node scripts/render-benchmark-report.mjs",
+    "bench:wait-slot": "node scripts/wait-for-benchmark-slot.mjs",
+    "bench:find-failed": "node scripts/find-failed-benchmark-run.mjs",
+    "bench:download": "node scripts/download-benchmark-summary.mjs",
+    "bench:rerun": "node scripts/rerun-failed-benchmark.mjs"
+  }
+}

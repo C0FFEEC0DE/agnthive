@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `tests/hooks/test-lib.sh` unit-test harness wired into `make hooks`, `make lint`, `scripts/validate.sh`, and the Hook Contracts CI workflow
 - `tests/test_statusline.py` (10 tests) and `tests/test_install_git_hooks.py` (3 tests)
 - End-to-end compare-benchmarks → render-benchmark-report contract test guarding the delta-key contract
+- `make bench-precheck` / `scripts/bench-precheck.mjs` to run the smoke precheck locally (mirrors the CI `precheck` job; deterministic, no model/token — drives the same Node CLIs CI uses)
 
 ### Changed
 - `claudecfg/hooks/lib.sh`: extracted the `message_has_any_line_prefix` helper and deduplicated the seven `message_mentions_*` functions (behavior-identical, ~90 lines removed)

@@ -1,0 +1,86 @@
+# Plugin installation + package smoke test.
+#
+# Runs the structural smoke validator (scripts/plugin-install-smoke.mjs) which
+# PACKAGES the plugin into a clean temp dir and validates the packaged layout
+# (manifest fields, declared path resolution, no legacy .py/.sh runtime, hook
+# exec form, statusline parse). This structural smoke is the ENFORCED gate and
+# runs on every push to main and every PR targeting main.
+#
+# The second step ATTEMPTS the real `claude plugin` lifecycle commands
+# (marketplace add, plugin install, reload, list, update, uninstall) against a
+# clean HOME when the `claude` CLI is available on PATH. It is OPPORTUNISTIC:
+# guarded by `if: command -v claude` so the workflow does not fail when the
+# CLI is not installed in CI. The structural smoke above is the source of
+# truth; the lifecycle step is best-effort coverage for environments that ship
+# the CLI.
+name: Plugin Install Smoke
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+# Opt into Node.js 24 for JavaScript Actions ahead of the September 2026
+# Node.js 20 runner deprecation (mirrors the benchmark workflows).
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+permissions:
+  contents: read
+
+jobs:
+  plugin-install-smoke:
+    name: Plugin Install Smoke
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      # ENFORCED GATE — structural smoke. Packages the plugin into a clean temp
+      # dir and validates the packaged layout. Fails the workflow on any error.
+      - name: Structural plugin package smoke
+        shell: bash
+        run: node scripts/plugin-install-smoke.mjs
+
+      # OPPORTUNISTIC — real claude CLI lifecycle. The `if:` on a GitHub Actions
+      # step is an expression, not a shell command, so the command-existence
+      # guard lives inside the bash script (`if ! command -v claude`). The step
+      # also sets continue-on-error so neither a missing CLI nor a lifecycle
+      # hiccup can fail the workflow. The structural smoke above is the only
+      # enforced gate.
+      - name: Claude CLI plugin lifecycle (opportunistic)
+        shell: bash
+        continue-on-error: true
+        env:
+          CLEAN_HOME: ${{ runner.temp }}/claude-clean-home
+          PLUGIN_SOURCE: ${{ github.workspace }}/plugins/agent-hive
+        run: |
+          set -uo pipefail
+          if ! command -v claude >/dev/null 2>&1; then
+            echo "claude CLI not installed on PATH; skipping lifecycle (structural smoke is the enforced gate)"
+            exit 0
+          fi
+          mkdir -p "$CLEAN_HOME"
+          export HOME="$CLEAN_HOME"
+          echo "::group::claude plugin lifecycle"
+          echo "claude version: $(claude --version 2>&1 || echo unknown)"
+          # Use the local marketplace add form so no network registry is required.
+          if claude plugin marketplace add "$PLUGIN_SOURCE" 2>&1; then
+            claude plugin install agent-hive 2>&1 || echo "::warning::install step returned non-zero"
+            claude plugin reload 2>&1 || echo "::warning::reload step returned non-zero"
+            claude plugin list 2>&1 || echo "::warning::list step returned non-zero"
+            claude plugin update agent-hive 2>&1 || echo "::warning::update step returned non-zero"
+            claude plugin uninstall agent-hive 2>&1 || echo "::warning::uninstall step returned non-zero"
+          else
+            echo "::warning::marketplace add returned non-zero; CLI lifecycle skipped"
+          fi
+          echo "::endgroup::"

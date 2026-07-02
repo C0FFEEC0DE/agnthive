@@ -1,0 +1,1268 @@
+[
+  {
+    "name": "pre_tool_use_allows_safe_command",
+    "script": "pre-tool-use.sh",
+    "stdin": "test/hooks/fixtures/pre_tool_use_safe_ls.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.permissionDecision == \"allow\" and (.hookSpecificOutput.permissionDecisionReason | contains(\"allowed\"))"
+  },
+  {
+    "name": "pre_tool_use_blocks_rm_rf_home",
+    "script": "pre-tool-use.sh",
+    "stdin": "test/hooks/fixtures/pre_tool_use_rm_rf_home.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.permissionDecision == \"deny\" and (.hookSpecificOutput.permissionDecisionReason | contains(\"home\"))"
+  },
+  {
+    "name": "pre_tool_use_blocks_rm_rf_dot",
+    "script": "pre-tool-use.sh",
+    "stdin": "test/hooks/fixtures/pre_tool_use_rm_rf_dot.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.permissionDecision == \"deny\" and (.hookSpecificOutput.permissionDecisionReason | contains(\"current directory\"))"
+  },
+  {
+    "name": "pre_tool_use_editwrite_denied_before_dispatch",
+    "script": "pre-tool-use.sh",
+    "stdin": "test/hooks/fixtures/pre_tool_use_edit_dispatch.json",
+    "seed_state": "test/hooks/fixtures/state_dispatch_enforced_pending.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.permissionDecision == \"deny\" and (.hookSpecificOutput.permissionDecisionReason | contains(\"Dispatch contract enforced\")) and (.hookSpecificOutput.permissionDecisionReason | contains(\"@a\"))"
+  },
+  {
+    "name": "pre_tool_use_editwrite_allowed_after_dispatch",
+    "script": "pre-tool-use.sh",
+    "stdin": "test/hooks/fixtures/pre_tool_use_edit_dispatch.json",
+    "seed_state": "test/hooks/fixtures/state_dispatch_enforced_satisfied.json",
+    "expect_exit": 0,
+    "stdout_jq": "has(\"hookSpecificOutput\") | not"
+  },
+  {
+    "name": "pre_tool_use_editwrite_inert_under_standard_mode",
+    "script": "pre-tool-use.sh",
+    "stdin": "test/hooks/fixtures/pre_tool_use_edit_dispatch.json",
+    "seed_state": "test/hooks/fixtures/state_dispatch_standard_inert.json",
+    "expect_exit": 0,
+    "stdout_jq": "has(\"hookSpecificOutput\") | not"
+  },
+  {
+    "name": "pre_tool_use_blocks_rm_fr_root",
+    "script": "pre-tool-use.sh",
+    "stdin": "test/hooks/fixtures/pre_tool_use_rm_fr_root.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.permissionDecision == \"deny\" and (.hookSpecificOutput.permissionDecisionReason | contains(\"Destructive commands\"))"
+  },
+  {
+    "name": "pre_tool_use_blocks_rm_rf_dashdash_root",
+    "script": "pre-tool-use.sh",
+    "stdin": "test/hooks/fixtures/pre_tool_use_rm_rf_dashdash_root.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.permissionDecision == \"deny\" and (.hookSpecificOutput.permissionDecisionReason | contains(\"Destructive commands\"))"
+  },
+  {
+    "name": "pre_tool_use_blocks_rm_rf_quoted_home",
+    "script": "pre-tool-use.sh",
+    "stdin": "test/hooks/fixtures/pre_tool_use_rm_rf_quoted_home.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.permissionDecision == \"deny\" and (.hookSpecificOutput.permissionDecisionReason | contains(\"home\"))"
+  },
+  {
+    "name": "pre_tool_use_blocks_sudo",
+    "script": "pre-tool-use.sh",
+    "stdin": "test/hooks/fixtures/pre_tool_use_sudo.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.permissionDecision == \"deny\" and (.hookSpecificOutput.permissionDecisionReason | contains(\"sudo\"))"
+  },
+  {
+    "name": "pre_tool_use_blocks_release",
+    "script": "pre-tool-use.sh",
+    "stdin": "test/hooks/fixtures/pre_tool_use_release.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.permissionDecision == \"deny\" and (.hookSpecificOutput.permissionDecisionReason | contains(\"release/deploy\"))"
+  },
+  {
+    "name": "pre_tool_use_blocks_mkfs_variant",
+    "script": "pre-tool-use.sh",
+    "stdin": "test/hooks/fixtures/pre_tool_use_mkfs_variant.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.permissionDecision == \"deny\" and (.hookSpecificOutput.permissionDecisionReason | contains(\"Dangerous disk commands\"))"
+  },
+  {
+    "name": "pre_tool_use_blocks_force_push_short_flag",
+    "script": "pre-tool-use.sh",
+    "stdin": "test/hooks/fixtures/pre_tool_use_force_push_short.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.permissionDecision == \"deny\" and (.hookSpecificOutput.permissionDecisionReason | contains(\"Destructive commands\"))"
+  },
+  {
+    "name": "pre_tool_use_blocks_remote_bootstrap_curl_bash",
+    "script": "pre-tool-use.sh",
+    "stdin": "test/hooks/fixtures/pre_tool_use_remote_bootstrap_curl_bash.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.permissionDecision == \"deny\" and (.hookSpecificOutput.permissionDecisionReason | contains(\"remote scripts\"))"
+  },
+  {
+    "name": "pre_tool_use_blocks_remote_bootstrap_env_bash",
+    "script": "pre-tool-use.sh",
+    "stdin": "test/hooks/fixtures/pre_tool_use_remote_bootstrap_env_bash.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.permissionDecision == \"deny\" and (.hookSpecificOutput.permissionDecisionReason | contains(\"remote scripts\"))"
+  },
+  {
+    "name": "permission_request_blocks_release",
+    "script": "permission-request.sh",
+    "stdin": "test/hooks/fixtures/permission_request_release.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.decision.behavior == \"deny\" and (.hookSpecificOutput.decision.message | contains(\"outside this profile\"))"
+  },
+  {
+    "name": "permission_request_blocks_remote_bootstrap_wget_bash",
+    "script": "permission-request.sh",
+    "stdin": "test/hooks/fixtures/permission_request_remote_bootstrap_wget_bash.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.decision.behavior == \"deny\" and (.hookSpecificOutput.decision.message | contains(\"remote shell bootstrap\"))"
+  },
+  {
+    "name": "permission_request_blocks_remote_bootstrap_wget_sh",
+    "script": "permission-request.sh",
+    "stdin": "test/hooks/fixtures/permission_request_remote_bootstrap_wget_sh.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.decision.behavior == \"deny\" and (.hookSpecificOutput.decision.message | contains(\"remote shell bootstrap\"))"
+  },
+  {
+    "name": "permission_denied_retries_non_hard_denied_command",
+    "script": "permission-denied.sh",
+    "stdin": "test/hooks/fixtures/permission_denied_retry_safe_git_push.json",
+    "expect_exit": 0,
+    "stdout_jq": ".retry == true"
+  },
+  {
+    "name": "permission_denied_does_not_retry_hard_denied_command",
+    "script": "permission-denied.sh",
+    "stdin": "test/hooks/fixtures/permission_denied_no_retry_sudo.json",
+    "expect_exit": 0,
+    "stdout_jq": ".retry == false"
+  },
+  {
+    "name": "permission_denied_does_not_retry_in_benchmark_ci_mode",
+    "script": "permission-denied.sh",
+    "stdin": "test/hooks/fixtures/permission_denied_no_retry_benchmark_ci.json",
+    "env": {
+      "BENCH_TASK_ID": "bugfix-zero-division-lite"
+    },
+    "expect_exit": 0,
+    "stdout_jq": ".retry == false"
+  },
+  {
+    "name": "notification_hook_escapes_quotes_in_payload",
+    "script": "notification.sh",
+    "stdin": "test/hooks/fixtures/notification_quoted_injection.json",
+    "expect_exit": 0,
+    "file_assertions": [
+      {
+        "path": "__CASE_HOME__/.claude/logs/notification.jsonl",
+        "regex": "\"title\":\"Hello \\\\\"World\\\\\"\""
+      },
+      {
+        "path": "__CASE_HOME__/.claude/logs/notification.jsonl",
+        "regex": "\"message\":\"Test; rm -rf /\""
+      }
+    ]
+  },
+  {
+    "name": "notification_hook_logs_payload",
+    "script": "notification.sh",
+    "stdin": "test/hooks/fixtures/notification_summary.json",
+    "expect_exit": 0,
+    "file_assertions": [
+      {
+        "path": "__CASE_HOME__/.claude/logs/notification.jsonl",
+        "regex": "\"title\":\"Task update\""
+      },
+      {
+        "path": "__CASE_HOME__/.claude/logs/notification.jsonl",
+        "regex": "\"message\":\"Verification completed\""
+      }
+    ]
+  },
+  {
+    "name": "notification_hook_handles_minimal_payload",
+    "script": "notification.sh",
+    "stdin": "test/hooks/fixtures/notification_minimal.json",
+    "expect_exit": 0,
+    "file_assertions": [
+      {
+        "path": "__CASE_HOME__/.claude/logs/notification.jsonl",
+        "regex": "\"session_id\":\"case-notification-minimal\""
+      },
+      {
+        "path": "__CASE_HOME__/.claude/logs/notification.jsonl",
+        "regex": "\"title\":\"\""
+      },
+      {
+        "path": "__CASE_HOME__/.claude/logs/notification.jsonl",
+        "regex": "\"message\":\"\""
+      }
+    ]
+  },
+  {
+    "name": "notification_hook_handles_quoted_payload",
+    "script": "notification.sh",
+    "stdin": "test/hooks/fixtures/notification_quoted.json",
+    "expect_exit": 0,
+    "file_assertions": [
+      {
+        "path": "__CASE_HOME__/.claude/logs/notification.jsonl",
+        "regex": "\"session_id\":\"case-notification-quoted\""
+      },
+      {
+        "path": "__CASE_HOME__/.claude/logs/notification.jsonl",
+        "regex": "\"title\":\"Quoted \\\\\"task\\\\\"\""
+      },
+      {
+        "path": "__CASE_HOME__/.claude/logs/notification.jsonl",
+        "regex": "\"message\":\"Line one\\\\nLine two's status\""
+      }
+    ]
+  },
+  {
+    "name": "subagent_stop_blocks_without_concrete_outcome_prefix",
+    "script": "subagent-stop-guard.sh",
+    "stdin": "test/hooks/fixtures/subagent_stop_invalid_outcome.json",
+    "expect_exit": 0,
+    "stdout_jq": ".decision == \"block\" and (.reason | contains(\"Outcome:\")) and (.reason | contains(\"`\") | not)"
+  },
+  {
+    "name": "subagent_stop_allows_loose_concrete_outcome_keywords",
+    "script": "subagent-stop-guard.sh",
+    "stdin": "test/hooks/fixtures/subagent_stop_loose_outcome.json",
+    "expect_exit": 0,
+    "state_jq": ".subagent_stop_block_count == 0 and .subagent_stop_block_reason == \"\" and .subagent_stop_block_message == \"\""
+  },
+  {
+    "name": "subagent_stop_blocks_without_assistant_message",
+    "script": "subagent-stop-guard.sh",
+    "stdin": "test/hooks/fixtures/subagent_stop_no_message.json",
+    "expect_exit": 0,
+    "stdout_jq": ".decision == \"block\" and (.reason | contains(\"No assistant summary message\"))"
+  },
+  {
+    "name": "subagent_stop_blocks_without_changed_files",
+    "script": "subagent-stop-guard.sh",
+    "stdin": "test/hooks/fixtures/subagent_stop_missing_files.json",
+    "expect_exit": 0,
+    "stdout_jq": ".decision == \"block\" and (.reason | contains(\"Changed files:\")) and (.reason | contains(\"`\") | not)"
+  },
+  {
+    "name": "subagent_stop_blocks_without_verification_status",
+    "script": "subagent-stop-guard.sh",
+    "stdin": "test/hooks/fixtures/subagent_stop_missing_verification.json",
+    "expect_exit": 0,
+    "stdout_jq": ".decision == \"block\" and (.reason | contains(\"Verification status:\")) and (.reason | contains(\"`\") | not)"
+  },
+  {
+    "name": "subagent_stop_blocks_without_risks_or_next_step",
+    "script": "subagent-stop-guard.sh",
+    "stdin": "test/hooks/fixtures/subagent_stop_missing_risks_or_next.json",
+    "expect_exit": 0,
+    "stdout_jq": ".decision == \"block\" and (.reason | contains(\"Remaining risks:\")) and (.reason | contains(\"Next step:\")) and (.reason | contains(\"`\") | not) and (.errorDetails | contains(\"- [PASS] Concrete outcome\")) and (.errorDetails | contains(\"- [FAIL] Closure line\")) and (.errorDetails | contains(\"### Minimal Valid Template\"))"
+  },
+  {
+    "name": "subagent_stop_allows_complete_summary",
+    "script": "subagent-stop-guard.sh",
+    "stdin": "test/hooks/fixtures/subagent_stop_complete.json",
+    "expect_exit": 0
+  },
+  {
+    "name": "subagent_stop_uses_transcript_summary_when_payload_message_is_missing",
+    "script": "subagent-stop-guard.sh",
+    "stdin": "test/hooks/fixtures/subagent_stop_transcript_fallback.json",
+    "expect_exit": 0
+  },
+  {
+    "name": "subagent_stop_clears_loop_state_after_valid_summary",
+    "script": "subagent-stop-guard.sh",
+    "stdin": "test/hooks/fixtures/subagent_stop_complete_loop_reset.json",
+    "seed_state": "test/hooks/fixtures/state_subagent_stop_repeated_files_block.json",
+    "expect_exit": 0,
+    "state_jq": ".subagent_stop_block_count == 0 and .subagent_stop_block_reason == \"\" and .subagent_stop_block_message == \"\""
+  },
+  {
+    "name": "subagent_stop_escalates_repeated_same_block_reason",
+    "script": "subagent-stop-guard.sh",
+    "stdin": "test/hooks/fixtures/subagent_stop_missing_files.json",
+    "seed_state": "test/hooks/fixtures/state_subagent_stop_repeated_files_block.json",
+    "expect_exit": 0,
+    "stdout_jq": "((has(\"decision\") | not)) and .hardStop == true and .continue == false and (.stopReason | contains(\"Repeated stop-block loop detected\"))"
+  },
+  {
+    "name": "user_prompt_submit_handles_empty_session_id_gracefully",
+    "script": "user-prompt-submit.sh",
+    "stdin": "test/hooks/fixtures/user_prompt_no_session_id.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"UserPromptSubmit\""
+  },
+  {
+    "name": "user_prompt_submit_classifies_feature",
+    "script": "user-prompt-submit.sh",
+    "stdin": "test/hooks/fixtures/user_prompt_feature.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"UserPromptSubmit\" and (.hookSpecificOutput.additionalContext | contains(\"successful verification or @t\"))",
+    "state_jq": ".task_type == \"feature\" and ((.required_subagents | sort) == [\"cr\", \"t\"]) and .required_subagent_any_of == [[\"e\", \"a\"]] and .docs_required == true"
+  },
+  {
+    "name": "user_prompt_submit_leaves_informational_model_question_as_other",
+    "script": "user-prompt-submit.sh",
+    "stdin": "test/hooks/fixtures/user_prompt_models_info.json",
+    "expect_exit": 0,
+    "state_jq": ".task_type == \"other\" and .manager_mode == \"none\" and .required_subagents == [] and .required_subagent_any_of == []"
+  },
+  {
+    "name": "user_prompt_submit_leaves_creative_model_typo_query_as_other",
+    "script": "user-prompt-submit.sh",
+    "stdin": "test/hooks/fixtures/user_prompt_models_creative_typo_info.json",
+    "expect_exit": 0,
+    "state_jq": ".task_type == \"other\" and .manager_mode == \"none\" and .required_subagents == [] and .required_subagent_any_of == []"
+  },
+  {
+    "name": "user_prompt_submit_treats_os_device_support_as_other_even_with_bug_word",
+    "script": "user-prompt-submit.sh",
+    "stdin": "test/hooks/fixtures/user_prompt_tech_support_bug_word.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"UserPromptSubmit\" and (.hookSpecificOutput.additionalContext | contains(\"support workflow\")) and (.hookSpecificOutput.additionalContext | contains(\"No workflow-specific specialist handoffs are required\"))",
+    "state_jq": ".task_type == \"support\" and .required_subagents == [] and .required_subagent_any_of == []"
+  },
+  {
+    "name": "user_prompt_submit_keeps_model_integration_request_as_feature",
+    "script": "user-prompt-submit.sh",
+    "stdin": "test/hooks/fixtures/user_prompt_models_feature.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"UserPromptSubmit\" and (.hookSpecificOutput.additionalContext | contains(\"successful verification or @t\"))",
+    "state_jq": ".task_type == \"feature\" and ((.required_subagents | sort) == [\"cr\", \"t\"]) and .required_subagent_any_of == [[\"e\", \"a\"]] and .docs_required == true"
+  },
+  {
+    "name": "user_prompt_submit_classifies_model_advice_plus_repo_change_as_feature",
+    "script": "user-prompt-submit.sh",
+    "stdin": "test/hooks/fixtures/user_prompt_models_mixed_feature.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"UserPromptSubmit\" and (.hookSpecificOutput.additionalContext | contains(\"successful verification or @t\"))",
+    "state_jq": ".task_type == \"feature\" and ((.required_subagents | sort) == [\"cr\", \"t\"]) and .required_subagent_any_of == [[\"e\", \"a\"]] and .docs_required == true"
+  },
+  {
+    "name": "user_prompt_submit_leaves_model_comparison_for_repo_as_other",
+    "script": "user-prompt-submit.sh",
+    "stdin": "test/hooks/fixtures/user_prompt_models_compare_repo.json",
+    "expect_exit": 0,
+    "state_jq": ".task_type == \"other\" and .required_subagents == [] and .required_subagent_any_of == []"
+  },
+  {
+    "name": "user_prompt_submit_supports_manager_plan_only_for_model_integration",
+    "script": "user-prompt-submit.sh",
+    "stdin": "test/hooks/fixtures/user_prompt_models_manager_plan_only.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"UserPromptSubmit\" and (.hookSpecificOutput.additionalContext | contains(\"Plan-only manager mode is active\"))",
+    "state_jq": ".task_type == \"feature\" and .manager_mode == \"plan_only\" and .required_subagents == [] and .required_subagent_any_of == []"
+  },
+  {
+    "name": "user_prompt_submit_classifies_model_config_review_as_review",
+    "script": "user-prompt-submit.sh",
+    "stdin": "test/hooks/fixtures/user_prompt_models_review.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"UserPromptSubmit\" and (.hookSpecificOutput.additionalContext | contains(\"@cr\"))",
+    "state_jq": ".task_type == \"review\" and .required_subagents == [\"cr\"] and .required_subagent_any_of == [] and .docs_required == false"
+  },
+  {
+    "name": "user_prompt_submit_classifies_model_docs_request_as_docs",
+    "script": "user-prompt-submit.sh",
+    "stdin": "test/hooks/fixtures/user_prompt_models_docs.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"UserPromptSubmit\" and (.hookSpecificOutput.additionalContext | contains(\"@doc\"))",
+    "state_jq": ".task_type == \"docs\" and .required_subagents == [\"doc\"] and .required_subagent_any_of == [] and .docs_required == true"
+  },
+  {
+    "name": "user_prompt_submit_classifies_mixed_intent_as_bugfix",
+    "script": "user-prompt-submit.sh",
+    "stdin": "test/hooks/fixtures/user_prompt_mixed_intent.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"UserPromptSubmit\" and (.hookSpecificOutput.additionalContext | contains(\"successful verification or @t\"))",
+    "state_jq": ".task_type == \"bugfix\" and ((.required_subagents | sort) == [\"cr\", \"t\"]) and .required_subagent_any_of == [[\"bug\", \"e\", \"dbg\"]] and .docs_required == true"
+  },
+  {
+    "name": "user_prompt_submit_classifies_bugfix",
+    "script": "user-prompt-submit.sh",
+    "stdin": "test/hooks/fixtures/user_prompt_bugfix.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"UserPromptSubmit\" and (.hookSpecificOutput.additionalContext | contains(\"successful verification or @t, plus @cr and one of @bug/@e/@dbg\"))",
+    "state_jq": ".task_type == \"bugfix\" and ((.required_subagents | sort) == [\"cr\", \"t\"]) and .required_subagent_any_of == [[\"bug\", \"e\", \"dbg\"]] and .docs_required == true"
+  },
+  {
+    "name": "user_prompt_submit_classifies_russian_bugfix",
+    "script": "user-prompt-submit.sh",
+    "stdin": "test/hooks/fixtures/user_prompt_bugfix_ru.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"UserPromptSubmit\" and (.hookSpecificOutput.additionalContext | contains(\"successful verification or @t, plus @cr and one of @bug/@e/@dbg\"))",
+    "state_jq": ".task_type == \"bugfix\" and ((.required_subagents | sort) == [\"cr\", \"t\"]) and .required_subagent_any_of == [[\"bug\", \"e\", \"dbg\"]] and .docs_required == true"
+  },
+  {
+    "name": "user_prompt_submit_classifies_refactor",
+    "script": "user-prompt-submit.sh",
+    "stdin": "test/hooks/fixtures/user_prompt_refactor.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"UserPromptSubmit\" and (.hookSpecificOutput.additionalContext | contains(\"successful verification or @t, plus @cr and one of @a/@e\"))",
+    "state_jq": ".task_type == \"refactor\" and ((.required_subagents | sort) == [\"cr\", \"t\"]) and .required_subagent_any_of == [[\"a\", \"e\"]] and .docs_required == true"
+  },
+  {
+    "name": "user_prompt_submit_prefers_benchmark_refactor_override_over_bugfix_regex_hits",
+    "script": "user-prompt-submit.sh",
+    "stdin": "test/hooks/fixtures/user_prompt_benchmark_refactor_override.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"UserPromptSubmit\" and (.hookSpecificOutput.additionalContext | contains(\"Treat this as a refactor workflow.\")) and (.hookSpecificOutput.additionalContext | contains(\"@a/@e\"))",
+    "state_jq": ".task_type == \"refactor\" and ((.required_subagents | sort) == [\"cr\", \"t\"]) and .required_subagent_any_of == [[\"a\", \"e\"]] and .docs_required == true"
+  },
+  {
+    "name": "user_prompt_submit_classifies_review",
+    "script": "user-prompt-submit.sh",
+    "stdin": "test/hooks/fixtures/user_prompt_review.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"UserPromptSubmit\" and (.hookSpecificOutput.additionalContext | contains(\"@cr\"))",
+    "state_jq": ".task_type == \"review\" and .required_subagents == [\"cr\"] and .required_subagent_any_of == [] and .docs_required == false"
+  },
+  {
+    "name": "user_prompt_submit_classifies_docs",
+    "script": "user-prompt-submit.sh",
+    "stdin": "test/hooks/fixtures/user_prompt_docs.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"UserPromptSubmit\" and (.hookSpecificOutput.additionalContext | contains(\"@doc\"))",
+    "state_jq": ".task_type == \"docs\" and .required_subagents == [\"doc\"] and .required_subagent_any_of == [] and .docs_required == true"
+  },
+  {
+    "name": "user_prompt_submit_enables_manager_led_orchestration_for_feature",
+    "script": "user-prompt-submit.sh",
+    "stdin": "test/hooks/fixtures/user_prompt_manager_feature.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"UserPromptSubmit\" and (.hookSpecificOutput.additionalContext | contains(\"Manager-led orchestration is active\")) and (.hookSpecificOutput.additionalContext | contains(\"successful verification or @t, plus @cr and one of @e/@a\"))",
+    "state_jq": ".task_type == \"feature\" and .manager_mode == \"orchestrate\" and ((.required_subagents | sort) == [\"cr\", \"t\"]) and .required_subagent_any_of == [[\"e\", \"a\"]]"
+  },
+  {
+    "name": "user_prompt_submit_supports_explicit_manager_plan_only_mode",
+    "script": "user-prompt-submit.sh",
+    "stdin": "test/hooks/fixtures/user_prompt_manager_plan_only.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"UserPromptSubmit\" and (.hookSpecificOutput.additionalContext | contains(\"Plan-only manager mode is active\"))",
+    "state_jq": ".task_type == \"feature\" and .manager_mode == \"plan_only\" and .required_subagents == [] and .required_subagent_any_of == []"
+  },
+  {
+    "name": "subagent_start_canonicalizes_from_json_aliases",
+    "script": "subagent-start.sh",
+    "stdin": "test/hooks/fixtures/subagent_start_designer_alias.json",
+    "expect_exit": 0,
+    "state_jq": ".subagents_started == [\"a\"]"
+  },
+  {
+    "name": "subagent_start_canonicalizes_code_reviewer_alias",
+    "script": "subagent-start.sh",
+    "stdin": "test/hooks/fixtures/subagent_start_code_reviewer.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"SubagentStart\" and (.hookSpecificOutput.additionalContext | contains(\"@cr\"))",
+    "state_jq": ".subagent_start_count == 1 and .subagents_started == [\"cr\"]"
+  },
+  {
+    "name": "subagent_start_prefers_tool_input_name_over_generic_type",
+    "script": "subagent-start.sh",
+    "stdin": "test/hooks/fixtures/subagent_start_tool_input_name_over_type.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"SubagentStart\" and (.hookSpecificOutput.additionalContext | contains(\"@t\"))",
+    "state_jq": ".subagent_start_count == 1 and .subagents_started == [\"t\"]"
+  },
+  {
+    "name": "subagent_start_prefers_tool_input_subagent_type_over_agent_type",
+    "script": "subagent-start.sh",
+    "stdin": "test/hooks/fixtures/subagent_start_tool_input_subagent_type_over_agent_type.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"SubagentStart\" and (.hookSpecificOutput.additionalContext | contains(\"@t\"))",
+    "state_jq": ".subagent_start_count == 1 and .subagents_started == [\"t\"]"
+  },
+  {
+    "name": "subagent_start_supports_camelcase_subagent_type_over_agent_type",
+    "script": "subagent-start.sh",
+    "stdin": "test/hooks/fixtures/subagent_start_camelcase_subagent_type_over_agent_type.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"SubagentStart\" and (.hookSpecificOutput.additionalContext | contains(\"@e\"))",
+    "state_jq": ".subagent_start_count == 1 and .subagents_started == [\"e\"]"
+  },
+  {
+    "name": "subagent_start_prefers_top_level_subagent_type_over_generic_type",
+    "script": "subagent-start.sh",
+    "stdin": "test/hooks/fixtures/subagent_start_top_level_subagent_type_over_type.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"SubagentStart\" and (.hookSpecificOutput.additionalContext | contains(\"@a\"))",
+    "state_jq": ".subagent_start_count == 1 and .subagents_started == [\"a\"]"
+  },
+  {
+    "name": "subagent_start_keeps_started_roles_unique",
+    "script": "subagent-start.sh",
+    "stdin": "test/hooks/fixtures/subagent_start_duplicate_tester.json",
+    "seed_state": "test/hooks/fixtures/state_subagent_start_duplicate_tester.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"SubagentStart\" and (.hookSpecificOutput.additionalContext | contains(\"@t\"))",
+    "state_jq": ".subagent_start_count == 2 and .subagents_started == [\"t\"] and .subagent_instance_count_by_role.t == 2 and (.subagent_events | length) == 2"
+  },
+  {
+    "name": "subagent_start_tracks_parallel_same_role_instances_with_distinct_scope",
+    "script": "subagent-start.sh",
+    "stdin": "test/hooks/fixtures/subagent_start_second_explorer_scope.json",
+    "seed_state": "test/hooks/fixtures/state_subagent_start_first_explorer_scope.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"SubagentStart\" and (.hookSpecificOutput.additionalContext | contains(\"Parallel same-role handoffs are allowed\"))",
+    "state_jq": ".subagent_start_count == 2 and .subagents_started == [\"e\"] and .subagent_instance_count_by_role.e == 2 and (.subagent_events | length) == 2 and .subagent_events[0].purpose == \"Trace workflow A\" and .subagent_events[1].purpose == \"Trace workflow B\""
+  },
+  {
+    "name": "subagent_start_supports_tool_input_agent_name",
+    "script": "subagent-start.sh",
+    "stdin": "test/hooks/fixtures/subagent_start_tool_input_agent_name_over_type.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"SubagentStart\" and (.hookSpecificOutput.additionalContext | contains(\"@cr\"))",
+    "state_jq": ".subagent_start_count == 1 and .subagents_started == [\"cr\"]"
+  },
+  {
+    "name": "subagent_start_supports_tool_input_agent_alias",
+    "script": "subagent-start.sh",
+    "stdin": "test/hooks/fixtures/subagent_start_tool_input_agent_alias_over_type.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"SubagentStart\" and (.hookSpecificOutput.additionalContext | contains(\"@dbg\"))",
+    "state_jq": ".subagent_start_count == 1 and .subagents_started == [\"dbg\"]"
+  },
+  {
+    "name": "post_edit_write_marks_code_change",
+    "script": "post-edit-write.sh",
+    "stdin": "test/hooks/fixtures/post_edit_write_code.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"PostToolUse\" and (.hookSpecificOutput.additionalContext | contains(\"requires verification\"))",
+    "state_jq": ".edited == true and .code_changed == true and .docs_changed == false and ((.files | index(\"src/app.py\")) != null)"
+  },
+  {
+    "name": "post_edit_write_marks_multiedit_code_change",
+    "script": "post-edit-write.sh",
+    "stdin": "test/hooks/fixtures/post_multiedit_code.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"PostToolUse\" and (.hookSpecificOutput.additionalContext | contains(\"requires verification\"))",
+    "state_jq": ".edited == true and .code_changed == true and .docs_changed == false and ((.files | index(\"src/app.py\")) != null)"
+  },
+  {
+    "name": "post_edit_write_reads_tool_input_path",
+    "script": "post-edit-write.sh",
+    "stdin": "test/hooks/fixtures/post_edit_path_code.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"PostToolUse\" and (.hookSpecificOutput.additionalContext | contains(\"requires verification\"))",
+    "state_jq": ".edited == true and .code_changed == true and .docs_changed == false and ((.files | index(\"src/from-path.py\")) != null)"
+  },
+  {
+    "name": "post_edit_write_reads_notebook_path",
+    "script": "post-edit-write.sh",
+    "stdin": "test/hooks/fixtures/post_notebook_edit_code.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"PostToolUse\" and (.hookSpecificOutput.additionalContext | contains(\"requires verification\"))",
+    "state_jq": ".edited == true and .code_changed == true and .docs_changed == false and ((.files | index(\"notebooks/demo.ipynb\")) != null)"
+  },
+  {
+    "name": "post_edit_write_marks_docs_change",
+    "script": "post-edit-write.sh",
+    "stdin": "test/hooks/fixtures/post_edit_write_docs.json",
+    "expect_exit": 0,
+    "state_jq": ".edited == true and .docs_changed == true and .code_changed == false and ((.files | index(\"README.md\")) != null)"
+  },
+  {
+    "name": "post_bash_classifies_cmake_as_build",
+    "script": "post-bash.sh",
+    "stdin": "test/hooks/fixtures/post_bash_cmake.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"PostToolUse\" and (.hookSpecificOutput.additionalContext | contains(\"build\"))",
+    "state_jq": ".build_ok == true and .last_build_command == \"cmake --build .\""
+  },
+  {
+    "name": "post_bash_marks_tests_ok",
+    "script": "post-bash.sh",
+    "stdin": "test/hooks/fixtures/post_bash_test_success.json",
+    "seed_state": "test/hooks/fixtures/state_post_bash_seed.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"PostToolUse\" and (.hookSpecificOutput.additionalContext | contains(\"Successful verification command\"))",
+    "state_jq": ".tests_ok == true and .tests_failed == false and .last_test_command == \"pytest -q\""
+  },
+  {
+    "name": "post_bash_classifies_make_lint_as_lint",
+    "script": "post-bash.sh",
+    "stdin": "test/hooks/fixtures/post_bash_make_lint_success.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"PostToolUse\" and (.hookSpecificOutput.additionalContext | contains(\"lint/static-check\"))",
+    "state_jq": ".lint_ok == true and .lint_failed == false and .last_lint_command == \"make lint\" and .build_ok == false"
+  },
+  {
+    "name": "post_tool_failure_marks_tests_failed",
+    "script": "post-tool-failure.sh",
+    "stdin": "test/hooks/fixtures/post_tool_failure_test.json",
+    "seed_state": "test/hooks/fixtures/state_post_failure_seed.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"PostToolUseFailure\" and (.hookSpecificOutput.additionalContext | contains(\"Verification command failed\"))",
+    "state_jq": ".tests_failed == true and .tests_ok == false and .last_test_command == \"pytest -q\""
+  },
+  {
+    "name": "post_tool_failure_classifies_make_lint_as_lint_failure",
+    "script": "post-tool-failure.sh",
+    "stdin": "test/hooks/fixtures/post_tool_failure_make_lint.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"PostToolUseFailure\" and (.hookSpecificOutput.additionalContext | contains(\"Lint/static-check command failed\"))",
+    "state_jq": ".lint_failed == true and .lint_ok == false and .last_lint_command == \"make lint\" and .build_failed == false"
+  },
+  {
+    "name": "task_completed_blocks_without_tests",
+    "script": "task-completed.sh",
+    "stdin": "test/hooks/fixtures/task_completed_incomplete.json",
+    "seed_state": "test/hooks/fixtures/state_task_incomplete.json",
+    "expect_exit": 2,
+    "stderr_regex": "no successful test command"
+  },
+  {
+    "name": "task_completed_blocks_after_failed_build",
+    "script": "task-completed.sh",
+    "stdin": "test/hooks/fixtures/task_completed_failed_build_after_tests.json",
+    "seed_state": "test/hooks/fixtures/state_failed_build_after_tests.json",
+    "expect_exit": 2,
+    "stderr_regex": "latest build command failed"
+  },
+  {
+    "name": "task_completed_blocks_when_feature_required_roles_are_missing",
+    "script": "task-completed.sh",
+    "stdin": "test/hooks/fixtures/task_completed_feature_required_roles.json",
+    "seed_state": "test/hooks/fixtures/state_feature_missing_required_subagents.json",
+    "expect_exit": 2,
+    "stderr_regex": "Missing required roles: @cr"
+  },
+  {
+    "name": "task_completed_allows_when_feature_required_roles_are_satisfied",
+    "script": "task-completed.sh",
+    "stdin": "test/hooks/fixtures/task_completed_feature_roles_satisfied.json",
+    "seed_state": "test/hooks/fixtures/state_feature_required_subagents_satisfied.json",
+    "expect_exit": 0
+  },
+  {
+    "name": "task_completed_allows_when_feature_architect_branch_is_satisfied",
+    "script": "task-completed.sh",
+    "stdin": "test/hooks/fixtures/task_completed_feature_architect_roles_satisfied.json",
+    "seed_state": "test/hooks/fixtures/state_feature_architect_required_subagents_satisfied.json",
+    "expect_exit": 0
+  },
+  {
+    "name": "task_completed_allows_when_bugfix_bug_branch_is_satisfied",
+    "script": "task-completed.sh",
+    "stdin": "test/hooks/fixtures/task_completed_bugfix_bug_roles_satisfied.json",
+    "seed_state": "test/hooks/fixtures/state_bugfix_bug_required_subagents_satisfied.json",
+    "expect_exit": 0
+  },
+  {
+    "name": "task_completed_allows_when_bugfix_debugger_branch_is_satisfied",
+    "script": "task-completed.sh",
+    "stdin": "test/hooks/fixtures/task_completed_bugfix_dbg_roles_satisfied.json",
+    "seed_state": "test/hooks/fixtures/state_bugfix_dbg_required_subagents_satisfied.json",
+    "expect_exit": 0
+  },
+  {
+    "name": "task_completed_blocks_when_bugfix_branch_is_missing_even_with_verification",
+    "script": "task-completed.sh",
+    "stdin": "test/hooks/fixtures/task_completed_bugfix_missing_branch.json",
+    "seed_state": "test/hooks/fixtures/state_bugfix_missing_branch_verified.json",
+    "expect_exit": 2,
+    "stderr_regex": "Missing one-of groups: @bug/@e/@dbg"
+  },
+  {
+    "name": "task_completed_allows_when_refactor_architect_branch_is_satisfied",
+    "script": "task-completed.sh",
+    "stdin": "test/hooks/fixtures/task_completed_refactor_architect_roles_satisfied.json",
+    "seed_state": "test/hooks/fixtures/state_refactor_architect_required_subagents_satisfied.json",
+    "expect_exit": 0
+  },
+  {
+    "name": "task_completed_blocks_when_feature_lacks_successful_verification_and_tester_handoff",
+    "script": "task-completed.sh",
+    "stdin": "test/hooks/fixtures/task_completed_feature_missing_tester_without_verification.json",
+    "seed_state": "test/hooks/fixtures/state_feature_missing_tester_without_verification.json",
+    "expect_exit": 2,
+    "stderr_regex": "Missing required roles: @t"
+  },
+  {
+    "name": "task_completed_blocks_when_only_lint_passed_but_tests_are_detected",
+    "script": "task-completed.sh",
+    "stdin": "test/hooks/fixtures/task_completed_feature_required_roles.json",
+    "seed_state": "test/hooks/fixtures/state_feature_only_lint_with_tests_detected.json",
+    "expect_exit": 2,
+    "stderr_regex": "detected test command \\(pytest\\), but no successful test command"
+  },
+  {
+    "name": "task_completed_allows_when_docs_docwriter_branch_is_satisfied",
+    "script": "task-completed.sh",
+    "stdin": "test/hooks/fixtures/task_completed_docs_doc_roles_satisfied.json",
+    "seed_state": "test/hooks/fixtures/state_docs_doc_required_subagents_satisfied.json",
+    "expect_exit": 0
+  },
+  {
+    "name": "task_completed_allows_code_change_when_no_verification_commands_detected",
+    "script": "task-completed.sh",
+    "stdin": "test/hooks/fixtures/task_completed_no_verification_commands.json",
+    "seed_state": "test/hooks/fixtures/state_no_verification_commands_detected.json",
+    "expect_exit": 0
+  },
+  {
+    "name": "stop_guard_blocks_without_verification_status",
+    "script": "stop-guard.sh",
+    "stdin": "test/hooks/fixtures/stop_guard_missing_verification.json",
+    "seed_state": "test/hooks/fixtures/state_stop_guard_seed.json",
+    "expect_exit": 0,
+    "stdout_jq": ".decision == \"block\" and (.reason | contains(\"Verification status:\")) and (.reason | contains(\"`\") | not) and (.errorDetails | contains(\"- [FAIL] Verification status line\")) and (.errorDetails | contains(\"- [FAIL] Review outcome line\")) and (.errorDetails | contains(\"- [PASS] Changed files line\")) and (.errorDetails | contains(\"### Workflow Gates\")) and (.errorDetails | contains(\"### Minimal Valid Template\"))"
+  },
+  {
+    "name": "stop_guard_blocks_keyword_only_summary_without_exact_footer_prefixes",
+    "script": "stop-guard.sh",
+    "stdin": "test/hooks/fixtures/stop_guard_keyword_only_summary.json",
+    "seed_state": "test/hooks/fixtures/state_stop_guard_seed.json",
+    "expect_exit": 0,
+    "stdout_jq": ".decision == \"block\" and (.reason | contains(\"Verification status:\")) and (.reason | contains(\"`\") | not)"
+  },
+  {
+    "name": "stop_guard_allows_lowercase_footer_prefixes",
+    "script": "stop-guard.sh",
+    "stdin": "test/hooks/fixtures/stop_guard_lowercase_prefixes.json",
+    "seed_state": "test/hooks/fixtures/state_stop_guard_seed.json",
+    "expect_exit": 0,
+    "state_jq": ".stop_block_count == 0 and .stop_block_reason == \"\" and .stop_block_message == \"\""
+  },
+  {
+    "name": "stop_guard_blocks_when_review_required_subagent_is_missing",
+    "script": "stop-guard.sh",
+    "stdin": "test/hooks/fixtures/stop_guard_review_missing_required_subagent.json",
+    "seed_state": "test/hooks/fixtures/state_review_missing_code_reviewer.json",
+    "expect_exit": 0,
+    "stdout_jq": ".decision == \"block\" and (.reason | contains(\"@cr\"))"
+  },
+  {
+    "name": "stop_guard_allows_manager_backgrounded_review_without_specialist_yet",
+    "script": "stop-guard.sh",
+    "stdin": "test/hooks/fixtures/stop_guard_manager_backgrounded_review.json",
+    "seed_state": "test/hooks/fixtures/state_review_manager_backgrounded.json",
+    "expect_exit": 0,
+    "state_jq": ".stop_block_count == 0 and .stop_block_reason == \"\" and .stop_block_message == \"\""
+  },
+  {
+    "name": "stop_guard_allows_review_when_skill_transcript_proves_code_reviewer_started",
+    "script": "stop-guard.sh",
+    "stdin": "test/hooks/fixtures/stop_guard_review_skill_transcript.json",
+    "seed_state": "test/hooks/fixtures/state_review_manager_transcript_skill.json",
+    "expect_exit": 0
+  },
+  {
+    "name": "stop_guard_allows_review_when_agent_transcript_proves_code_reviewer_started",
+    "script": "stop-guard.sh",
+    "stdin": "test/hooks/fixtures/stop_guard_review_agent_transcript.json",
+    "seed_state": "test/hooks/fixtures/state_review_manager_agent_transcript.json",
+    "expect_exit": 0
+  },
+  {
+    "name": "stop_guard_allows_broad_review_when_explorer_then_reviewer_are_in_transcript",
+    "script": "stop-guard.sh",
+    "stdin": "test/hooks/fixtures/stop_guard_review_explorer_then_reviewer.json",
+    "seed_state": "test/hooks/fixtures/state_review_manager_explorer_then_reviewer.json",
+    "expect_exit": 0
+  },
+  {
+    "name": "stop_guard_blocks_review_only_without_verification_status",
+    "script": "stop-guard.sh",
+    "stdin": "test/hooks/fixtures/stop_guard_review_only.json",
+    "seed_state": "test/hooks/fixtures/state_stop_guard_seed.json",
+    "expect_exit": 0,
+    "stdout_jq": ".decision == \"block\" and (.reason | contains(\"Verification status:\")) and (.reason | contains(\"`\") | not)"
+  },
+  {
+    "name": "stop_guard_blocks_without_review_outcome",
+    "script": "stop-guard.sh",
+    "stdin": "test/hooks/fixtures/stop_guard_missing_review.json",
+    "seed_state": "test/hooks/fixtures/state_stop_guard_seed.json",
+    "expect_exit": 0,
+    "stdout_jq": ".decision == \"block\" and (.reason | contains(\"Review outcome:\")) and (.reason | contains(\"`\") | not)"
+  },
+  {
+    "name": "stop_guard_blocks_without_changed_files",
+    "script": "stop-guard.sh",
+    "stdin": "test/hooks/fixtures/stop_guard_missing_files.json",
+    "seed_state": "test/hooks/fixtures/state_stop_guard_seed.json",
+    "expect_exit": 0,
+    "stdout_jq": ".decision == \"block\" and (.reason | contains(\"Changed files:\")) and (.reason | contains(\"`\") | not)"
+  },
+  {
+    "name": "stop_guard_blocks_without_remaining_risks",
+    "script": "stop-guard.sh",
+    "stdin": "test/hooks/fixtures/stop_guard_missing_risks.json",
+    "seed_state": "test/hooks/fixtures/state_stop_guard_seed.json",
+    "expect_exit": 0,
+    "stdout_jq": ".decision == \"block\" and (.reason | contains(\"Remaining risks:\")) and (.reason | contains(\"`\") | not)"
+  },
+  {
+    "name": "stop_guard_blocks_when_code_changed_and_no_assistant_message",
+    "script": "stop-guard.sh",
+    "stdin": "test/hooks/fixtures/stop_guard_no_assistant_message.json",
+    "seed_state": "test/hooks/fixtures/state_stop_guard_seed.json",
+    "expect_exit": 0,
+    "stdout_jq": ".decision == \"block\" and (.reason | contains(\"no assistant summary message\"))"
+  },
+  {
+    "name": "stop_guard_blocks_after_failed_build",
+    "script": "stop-guard.sh",
+    "stdin": "test/hooks/fixtures/stop_guard_failed_build_after_tests.json",
+    "seed_state": "test/hooks/fixtures/state_failed_build_after_tests.json",
+    "expect_exit": 0,
+    "stdout_jq": ".decision == \"block\" and (.reason | contains(\"latest build command failed\"))"
+  },
+  {
+    "name": "stop_guard_uses_transcript_summary_when_payload_message_is_missing",
+    "script": "stop-guard.sh",
+    "stdin": "test/hooks/fixtures/stop_guard_transcript_fallback.json",
+    "seed_state": "test/hooks/fixtures/state_stop_guard_seed.json",
+    "expect_exit": 0
+  },
+  {
+    "name": "stop_guard_allows_missing_assistant_message_when_no_code_changed",
+    "script": "stop-guard.sh",
+    "stdin": "test/hooks/fixtures/stop_guard_no_assistant_message_no_code_change.json",
+    "seed_state": "test/hooks/fixtures/state_stop_guard_no_code_change.json",
+    "expect_exit": 0
+  },
+  {
+    "name": "stop_guard_allows_code_change_when_no_verification_commands_detected_but_summary_explains_it",
+    "script": "stop-guard.sh",
+    "stdin": "test/hooks/fixtures/stop_guard_no_verification_commands_detected.json",
+    "seed_state": "test/hooks/fixtures/state_no_verification_commands_detected.json",
+    "expect_exit": 0
+  },
+  {
+    "name": "stop_guard_blocks_no_change_summary_after_code_changes",
+    "script": "stop-guard.sh",
+    "stdin": "test/hooks/fixtures/stop_guard_no_changes_summary.json",
+    "seed_state": "test/hooks/fixtures/state_stop_guard_seed.json",
+    "expect_exit": 0,
+    "stdout_jq": ".decision == \"block\" and (.reason | contains(\"no changes were made\"))"
+  },
+  {
+    "name": "stop_guard_allows_key_files_changed_label",
+    "script": "stop-guard.sh",
+    "stdin": "test/hooks/fixtures/stop_guard_key_files_changed_label.json",
+    "seed_state": "test/hooks/fixtures/state_stop_guard_seed.json",
+    "expect_exit": 0
+  },
+  {
+    "name": "stop_guard_clears_loop_state_after_valid_summary",
+    "script": "stop-guard.sh",
+    "stdin": "test/hooks/fixtures/stop_guard_key_files_changed_label.json",
+    "seed_state": "test/hooks/fixtures/state_stop_guard_repeated_review_block.json",
+    "expect_exit": 0,
+    "state_jq": ".stop_block_count == 0 and .stop_block_reason == \"\" and .stop_block_message == \"\""
+  },
+  {
+    "name": "stop_guard_escalates_repeated_same_block_reason",
+    "script": "stop-guard.sh",
+    "stdin": "test/hooks/fixtures/stop_guard_missing_review.json",
+    "seed_state": "test/hooks/fixtures/state_stop_guard_repeated_review_block.json",
+    "expect_exit": 0,
+    "stdout_jq": "((has(\"decision\") | not)) and .hardStop == true and .continue == false and (.stopReason | contains(\"Repeated stop-block loop detected\"))",
+    "state_jq": ".stalled_by_policy == true and (.policy_stall_reason | contains(\"Repeated stop-block loop detected\"))"
+  },
+  {
+    "name": "stop_guard_repeats_only_terminal_signal_after_policy_stall",
+    "script": "stop-guard.sh",
+    "stdin": "test/hooks/fixtures/stop_guard_missing_review.json",
+    "seed_state": "test/hooks/fixtures/state_stop_guard_policy_stalled.json",
+    "expect_exit": 0,
+    "stdout_jq": "((has(\"decision\") | not)) and .hardStop == true and .continue == false and (.stopReason | contains(\"Repeated stop-block loop detected\"))",
+    "state_jq": ".stop_block_count == 3 and .stalled_by_policy == true"
+  },
+  {
+    "name": "user_prompt_submit_clears_terminal_stop_state",
+    "script": "user-prompt-submit.sh",
+    "stdin": "test/hooks/fixtures/user_prompt_review.json",
+    "seed_state": "test/hooks/fixtures/state_stop_guard_policy_stalled.json",
+    "expect_exit": 0,
+    "state_jq": ".stop_block_count == 0 and .stop_block_reason == \"\" and .stop_block_message == \"\" and .stalled_by_policy == false and .policy_stall_reason == \"\""
+  },
+  {
+    "name": "stop_guard_allows_other_task_type_without_verification",
+    "script": "stop-guard.sh",
+    "stdin": "test/hooks/fixtures/stop_guard_other_task_type.json",
+    "seed_state": "test/hooks/fixtures/state_stop_guard_other_task_type.json",
+    "expect_exit": 0
+  },
+  {
+    "name": "stop_guard_allows_support_task_type_without_verification",
+    "script": "stop-guard.sh",
+    "stdin": "test/hooks/fixtures/stop_guard_other_task_type.json",
+    "seed_state": "test/hooks/fixtures/state_stop_guard_support_task_type.json",
+    "expect_exit": 0
+  },
+  {
+    "name": "session_start_detects_node_scripts",
+    "script": "session-start.sh",
+    "stdin": "test/hooks/fixtures/session_start_node.json",
+    "cwd": "test/hooks/projects/node-app",
+    "env": {
+      "CLAUDE_ENV_FILE": "__CASE_TMP__/claude.env"
+    },
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"SessionStart\" and (.hookSpecificOutput.additionalContext | contains(\"test=npm run test\")) and (.hookSpecificOutput.additionalContext | contains(\"lint=npm run lint\")) and (.hookSpecificOutput.additionalContext | contains(\"build=npm run build\"))",
+    "file_assertions": [
+      {
+        "path": "__CASE_TMP__/claude.env",
+        "regex": "CLAUDE_SDLC_PROFILE=hook-gated"
+      },
+      {
+        "path": "__CASE_TMP__/claude.env",
+        "regex": "PROJECT_TEST_CMD=\"npm run test\""
+      },
+      {
+        "path": "__CASE_TMP__/claude.env",
+        "regex": "PROJECT_LINT_CMD=\"npm run lint\""
+      },
+      {
+        "path": "__CASE_TMP__/claude.env",
+        "regex": "PROJECT_BUILD_CMD=\"npm run build\""
+      }
+    ],
+    "state_jq": ".detected_test_command == \"npm run test\" and .detected_lint_command == \"npm run lint\" and .detected_build_command == \"npm run build\""
+  },
+  {
+    "name": "session_start_prefers_make_targets_for_any_language_project",
+    "script": "session-start.sh",
+    "stdin": "test/hooks/fixtures/session_start_node.json",
+    "cwd": "test/hooks/projects/make-any-language",
+    "env": {
+      "CLAUDE_ENV_FILE": "__CASE_TMP__/claude.env"
+    },
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"SessionStart\" and (.hookSpecificOutput.additionalContext | contains(\"test=make test\")) and (.hookSpecificOutput.additionalContext | contains(\"lint=make lint\")) and (.hookSpecificOutput.additionalContext | contains(\"build=make\"))",
+    "file_assertions": [
+      {
+        "path": "__CASE_TMP__/claude.env",
+        "regex": "PROJECT_TEST_CMD=\"make test\""
+      },
+      {
+        "path": "__CASE_TMP__/claude.env",
+        "regex": "PROJECT_LINT_CMD=\"make lint\""
+      },
+      {
+        "path": "__CASE_TMP__/claude.env",
+        "regex": "PROJECT_BUILD_CMD=\"make\""
+      }
+    ],
+    "state_jq": ".detected_test_command == \"make test\" and .detected_lint_command == \"make lint\" and .detected_build_command == \"make\""
+  },
+  {
+    "name": "teammate_idle_blocks_after_failed_lint",
+    "script": "teammate-idle.sh",
+    "stdin": "test/hooks/fixtures/teammate_idle_failed_lint_after_tests.json",
+    "seed_state": "test/hooks/fixtures/state_failed_lint_after_tests.json",
+    "expect_exit": 2,
+    "stderr_regex": "latest lint/static-check command failed"
+  },
+  {
+    "name": "teammate_idle_blocks_manager_led_workflow_without_specialist_handoff",
+    "script": "teammate-idle.sh",
+    "stdin": "test/hooks/fixtures/task_completed_feature_required_roles.json",
+    "seed_state": "test/hooks/fixtures/state_feature_manager_only_started.json",
+    "expect_exit": 2,
+    "stderr_regex": "Manager-led orchestration has not handed off to any specialist yet"
+  },
+  {
+    "name": "teammate_idle_allows_manager_led_review_when_skill_transcript_shows_specialist",
+    "script": "teammate-idle.sh",
+    "stdin": "test/hooks/fixtures/stop_guard_review_skill_transcript.json",
+    "seed_state": "test/hooks/fixtures/state_review_manager_transcript_skill.json",
+    "expect_exit": 0
+  },
+  {
+    "name": "config_change_tracks_user_settings_modification",
+    "script": "config-change.sh",
+    "stdin": "test/hooks/fixtures/config_change_user_settings.json",
+    "expect_exit": 0,
+    "file_assertions": [
+      {
+        "path": "__CASE_HOME__/.claude/logs/config-change.jsonl",
+        "regex": "source.*user_settings"
+      }
+    ]
+  },
+  {
+    "name": "instructions_loaded_logs_session_start",
+    "script": "instructions-loaded.sh",
+    "stdin": "test/hooks/fixtures/instructions_loaded_session_start.json",
+    "expect_exit": 0,
+    "file_assertions": [
+      {
+        "path": "__CASE_HOME__/.claude/logs/instructions-loaded.jsonl",
+        "regex": "load_reason.*session_start"
+      }
+    ]
+  },
+  {
+    "name": "notification_logs_status_update",
+    "script": "notification.sh",
+    "stdin": "test/hooks/fixtures/notification_summary.json",
+    "expect_exit": 0,
+    "file_assertions": [
+      {
+        "path": "__CASE_HOME__/.claude/logs/notification.jsonl",
+        "regex": "Verification completed"
+      }
+    ]
+  },
+  {
+    "name": "pre_compact_logs_manual_compaction",
+    "script": "pre-compact.sh",
+    "stdin": "test/hooks/fixtures/pre_compact_manual.json",
+    "expect_exit": 0,
+    "file_assertions": [
+      {
+        "path": "__CASE_HOME__/.claude/logs/pre-compact.jsonl",
+        "regex": "manual"
+      }
+    ]
+  },
+  {
+    "name": "post_compact_logs_compaction_result",
+    "script": "post-compact.sh",
+    "stdin": "test/hooks/fixtures/post_compact_manual.json",
+    "expect_exit": 0,
+    "file_assertions": [
+      {
+        "path": "__CASE_HOME__/.claude/logs/post-compact.jsonl",
+        "regex": "manual"
+      }
+    ]
+  },
+  {
+    "name": "config_change_handles_minimal_payload",
+    "script": "config-change.sh",
+    "stdin": "test/hooks/fixtures/config_change_minimal.json",
+    "expect_exit": 0,
+    "file_assertions": [
+      {
+        "path": "__CASE_HOME__/.claude/logs/config-change.jsonl",
+        "regex": "\"session_id\"[[:space:]]*:[[:space:]]*\"case-config-change-minimal\""
+      },
+      {
+        "path": "__CASE_HOME__/.claude/logs/config-change.jsonl",
+        "regex": "\"source\"[[:space:]]*:[[:space:]]*\"\""
+      },
+      {
+        "path": "__CASE_HOME__/.claude/logs/config-change.jsonl",
+        "regex": "\"file_path\"[[:space:]]*:[[:space:]]*\"\""
+      }
+    ]
+  },
+  {
+    "name": "instructions_loaded_handles_minimal_payload",
+    "script": "instructions-loaded.sh",
+    "stdin": "test/hooks/fixtures/instructions_loaded_minimal.json",
+    "expect_exit": 0,
+    "file_assertions": [
+      {
+        "path": "__CASE_HOME__/.claude/logs/instructions-loaded.jsonl",
+        "regex": "\"session_id\"[[:space:]]*:[[:space:]]*\"case-instructions-loaded-minimal\""
+      },
+      {
+        "path": "__CASE_HOME__/.claude/logs/instructions-loaded.jsonl",
+        "regex": "\"memory_type\"[[:space:]]*:[[:space:]]*\"\""
+      },
+      {
+        "path": "__CASE_HOME__/.claude/logs/instructions-loaded.jsonl",
+        "regex": "\"load_reason\"[[:space:]]*:[[:space:]]*\"\""
+      }
+    ]
+  },
+  {
+    "name": "pre_compact_handles_minimal_payload",
+    "script": "pre-compact.sh",
+    "stdin": "test/hooks/fixtures/pre_compact_minimal.json",
+    "expect_exit": 0,
+    "file_assertions": [
+      {
+        "path": "__CASE_HOME__/.claude/logs/pre-compact.jsonl",
+        "regex": "\"session_id\"[[:space:]]*:[[:space:]]*\"case-pre-compact-minimal\""
+      },
+      {
+        "path": "__CASE_HOME__/.claude/logs/pre-compact.jsonl",
+        "regex": "\"trigger\"[[:space:]]*:[[:space:]]*\"\""
+      }
+    ]
+  },
+  {
+    "name": "post_compact_handles_minimal_payload",
+    "script": "post-compact.sh",
+    "stdin": "test/hooks/fixtures/post_compact_minimal.json",
+    "expect_exit": 0,
+    "file_assertions": [
+      {
+        "path": "__CASE_HOME__/.claude/logs/post-compact.jsonl",
+        "regex": "\"session_id\"[[:space:]]*:[[:space:]]*\"case-post-compact-minimal\""
+      },
+      {
+        "path": "__CASE_HOME__/.claude/logs/post-compact.jsonl",
+        "regex": "\"compact_summary\"[[:space:]]*:[[:space:]]*\"\""
+      }
+    ]
+  },
+  {
+    "name": "session_end_handles_minimal_payload",
+    "script": "session-end.sh",
+    "stdin": "test/hooks/fixtures/session_end_minimal.json",
+    "expect_exit": 0,
+    "file_assertions": [
+      {
+        "path": "__CASE_HOME__/.claude/logs/session-index.jsonl",
+        "regex": "\"session_id\"[[:space:]]*:[[:space:]]*\"case-session-end-minimal\""
+      },
+      {
+        "path": "__CASE_HOME__/.claude/logs/session-index.jsonl",
+        "regex": "\"cwd\"[[:space:]]*:[[:space:]]*\"\""
+      },
+      {
+        "path": "__CASE_HOME__/.claude/logs/session-index.jsonl",
+        "regex": "\"transcript_path\"[[:space:]]*:[[:space:]]*\"\""
+      },
+      {
+        "path": "__CASE_HOME__/.claude/logs/session-index.jsonl",
+        "regex": "\"reason\"[[:space:]]*:[[:space:]]*\"\""
+      }
+    ]
+  },
+  {
+    "name": "session_end_logs_transcript_path",
+    "script": "session-end.sh",
+    "stdin": "test/hooks/fixtures/session_end_logout.json",
+    "expect_exit": 0,
+    "file_assertions": [
+      {
+        "path": "__CASE_HOME__/.claude/logs/session-index.jsonl",
+        "regex": "logout"
+      }
+    ]
+  },
+  {
+    "name": "stop_guard_blocks_without_docs_status",
+    "script": "stop-guard.sh",
+    "stdin": "test/hooks/fixtures/stop_guard_missing_docs.json",
+    "seed_state": "test/hooks/fixtures/state_stop_guard_docs_required.json",
+    "expect_exit": 0,
+    "stdout_jq": ".decision == \"block\" and (.reason | contains(\"Docs status:\")) and (.reason | contains(\"`\") | not) and (.errorDetails | contains(\"- [FAIL] Docs status line\")) and (.errorDetails | contains(\"### Workflow Gates\"))"
+  },
+  {
+    "name": "stop_guard_allows_with_docs_status",
+    "script": "stop-guard.sh",
+    "stdin": "test/hooks/fixtures/stop_guard_with_docs_status.json",
+    "seed_state": "test/hooks/fixtures/state_stop_guard_docs_required.json",
+    "expect_exit": 0
+  },
+  {
+    "name": "stop_guard_allows_alternate_docs_prefix",
+    "script": "stop-guard.sh",
+    "stdin": "test/hooks/fixtures/stop_guard_docs_alternate_prefix.json",
+    "seed_state": "test/hooks/fixtures/state_stop_guard_docs_required.json",
+    "expect_exit": 0
+  },
+  {
+    "name": "stop_guard_allows_russian_docs_prefix",
+    "script": "stop-guard.sh",
+    "stdin": "test/hooks/fixtures/stop_guard_docs_ru_prefix.json",
+    "seed_state": "test/hooks/fixtures/state_stop_guard_docs_required.json",
+    "expect_exit": 0
+  },
+  {
+    "name": "stop_guard_allows_docs_when_no_code_changed",
+    "script": "stop-guard.sh",
+    "stdin": "test/hooks/fixtures/stop_guard_no_code_change.json",
+    "seed_state": "test/hooks/fixtures/state_stop_guard_docs_required_no_code_change.json",
+    "expect_exit": 0
+  },
+  {
+    "name": "stop_guard_blocks_feature_when_only_generic_types_in_state",
+    "script": "stop-guard.sh",
+    "stdin": "test/hooks/fixtures/stop_guard_generic_types_only.json",
+    "seed_state": "test/hooks/fixtures/state_feature_generic_types_only.json",
+    "expect_exit": 0,
+    "stdout_jq": ".decision == \"block\" and (.reason | contains(\"Missing required roles\"))"
+  },
+  {
+    "name": "stop_guard_allows_feature_when_generic_types_alongside_real_roles",
+    "script": "stop-guard.sh",
+    "stdin": "test/hooks/fixtures/stop_guard_generic_and_real_roles.json",
+    "seed_state": "test/hooks/fixtures/state_feature_generic_and_real_roles.json",
+    "expect_exit": 0
+  },
+  {
+    "name": "stop_guard_allows_review_when_alias_nerd_infers_explorer",
+    "script": "stop-guard.sh",
+    "stdin": "test/hooks/fixtures/stop_guard_alias_explorer.json",
+    "seed_state": "test/hooks/fixtures/state_review_alias_explorer.json",
+    "expect_exit": 0
+  },
+  {
+    "name": "stop_guard_allows_review_when_alias_toxic_senior_infers_code_reviewer",
+    "script": "stop-guard.sh",
+    "stdin": "test/hooks/fixtures/stop_guard_alias_reviewer.json",
+    "seed_state": "test/hooks/fixtures/state_review_alias_reviewer.json",
+    "expect_exit": 0
+  },
+  {
+    "name": "stop_guard_allows_feature_when_multiple_aliases_in_transcript",
+    "script": "stop-guard.sh",
+    "stdin": "test/hooks/fixtures/stop_guard_alias_multiple.json",
+    "seed_state": "test/hooks/fixtures/state_feature_alias_multiple.json",
+    "expect_exit": 0
+  },
+  {
+    "name": "stop_guard_allows_review_when_alias_short_cr_matches",
+    "script": "stop-guard.sh",
+    "stdin": "test/hooks/fixtures/stop_guard_alias_short_cr.json",
+    "seed_state": "test/hooks/fixtures/state_review_alias_reviewer.json",
+    "expect_exit": 0
+  },
+  {
+    "name": "stop_guard_allows_review_when_alias_short_e_matches",
+    "script": "stop-guard.sh",
+    "stdin": "test/hooks/fixtures/stop_guard_alias_short_e.json",
+    "seed_state": "test/hooks/fixtures/state_review_alias_explorer.json",
+    "expect_exit": 0
+  },
+  {
+    "name": "stop_guard_does_not_false_positive_on_email_in_transcript",
+    "script": "stop-guard.sh",
+    "stdin": "test/hooks/fixtures/stop_guard_no_false_positive.json",
+    "seed_state": "test/hooks/fixtures/state_review_alias_explorer.json",
+    "expect_exit": 0,
+    "stdout_jq": ".decision == \"block\""
+  },
+  {
+    "name": "stop_guard_deduplicates_alias_and_explicit_pattern_in_transcript",
+    "script": "stop-guard.sh",
+    "stdin": "test/hooks/fixtures/stop_guard_alias_dedup.json",
+    "seed_state": "test/hooks/fixtures/state_review_alias_dedup.json",
+    "expect_exit": 0
+  },
+  {
+    "name": "task_completed_blocks_when_only_generic_types_in_state",
+    "script": "task-completed.sh",
+    "stdin": "test/hooks/fixtures/task_completed_incomplete.json",
+    "seed_state": "test/hooks/fixtures/state_feature_generic_types_only.json",
+    "expect_exit": 2,
+    "stderr_regex": "Missing required roles.*@cr"
+  },
+  {
+    "name": "task_completed_allows_when_generic_types_alongside_real_roles",
+    "script": "task-completed.sh",
+    "stdin": "test/hooks/fixtures/task_completed_incomplete.json",
+    "seed_state": "test/hooks/fixtures/state_feature_generic_and_real_roles.json",
+    "expect_exit": 0
+  }
+]

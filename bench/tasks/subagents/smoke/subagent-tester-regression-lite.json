@@ -8,15 +8,15 @@
   "review_required": false,
   "docs_required": false,
   "verification_required": true,
-  "prompt": "Use @t to add one regression test for add() with negative operand. Run pytest -q. Do not modify calculator.py. Finish with required footer.",
+  "prompt": "CRITICAL: You MUST launch @t as a real subagent handoff using the Agent tool — not just a mention in text. The benchmark validates actual SubagentStart hooks. Use @t to add one regression test for add() with negative operand. Do not edit any file yourself — only @t touches the code. @t must run `node --test` and confirm 3 passed. Do not modify calculator.mjs. Finish with required footer.",
   "success_criteria": [
     "One regression test added for add()",
-    "pytest -q passes",
-    "calculator.py unchanged"
+    "node --test passes",
+    "calculator.mjs unchanged"
   ],
   "must_not": [
-    "Modify calculator.py",
-    "Skip pytest -q",
+    "Modify calculator.mjs",
+    "Skip node --test",
     "Perform release or deploy work"
   ],
   "forbidden_transcript_patterns": [
@@ -29,5 +29,10 @@
     "Verification status:",
     "Remaining risks:|Next step:"
   ],
-  "required_used_agents": ["t"]
+  "required_used_agents": ["t"],
+  "dispatch_contract": {
+    "mode": "observed",
+    "required_agents": ["t"],
+    "root_only": true
+  }
 }

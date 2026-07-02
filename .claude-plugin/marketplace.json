@@ -1,0 +1,30 @@
+{
+  "name": "agent-hive",
+  "description": "Self-hosted marketplace for the agent-hive Claude Code plugin: a hook-gated SDLC profile with a Node.js hook runtime.",
+  "owner": {
+    "name": "C0FFEEC0DE",
+    "url": "https://github.com/C0FFEEC0DE"
+  },
+  "plugins": [
+    {
+      "name": "agent-hive",
+      "source": "./plugins/agent-hive",
+      "description": "Hook-gated multi-agent SDLC profile: discover -> design -> implement -> verify -> review -> docs, with footer/role/verification contracts enforced by a Node.js hook runtime.",
+      "author": {
+        "name": "C0FFEEC0DE",
+        "url": "https://github.com/C0FFEEC0DE"
+      },
+      "homepage": "https://github.com/C0FFEEC0DE/agent-hive",
+      "repository": "https://github.com/C0FFEEC0DE/agent-hive",
+      "license": "MIT",
+      "keywords": [
+        "sdlc",
+        "multi-agent",
+        "hooks",
+        "gated-workflow",
+        "code-review",
+        "verification"
+      ]
+    }
+  ]
+}

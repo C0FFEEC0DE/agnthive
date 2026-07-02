@@ -1,0 +1,60 @@
+name: CodeQL
+
+# CodeQL semantic code analysis for the plugin's JavaScript/TypeScript
+# (Node .mjs) runtime. Runs on pushes and PRs to main plus a weekly schedule
+# so new CodeQL queries catch up on stable branches.
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  schedule:
+    - cron: '0 6 * * 1'  # Weekly on Monday at 06:00 UTC
+
+env:
+  # Repo convention: opt reusable Actions into Node.js 24 ahead of the
+  # September 2026 Node.js 20 runner deprecation.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze (javascript-typescript)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      # actions: read is required by CodeQL in scheduled runs to download
+      # CodeQL pack metadata and (for PR analysis) commit action snapshots.
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [javascript-typescript]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Initialize CodeQL
+        # CodeQL Action v4 — v3 deprecates December 2026
+        # (https://github.blog/changelog/2025-10-28-upcoming-deprecation-of-codeql-action-v3/).
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          # Build-mode "none" runs autobuild for interpreted languages; for
+          # javascript-typescript CodeQL autobuild needs no Node toolchain.
+          build-mode: none
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v4
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: '/language:${{ matrix.language }}'
