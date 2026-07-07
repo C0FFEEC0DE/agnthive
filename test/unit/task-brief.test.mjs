@@ -45,7 +45,7 @@ const PLAN = [
 ].join('\n');
 
 function runBrief(planFile, n, briefDir) {
-  const env = { ...process.env, CLAUDE_CREW_BRIEF_DIR: briefDir };
+  const env = { ...process.env, AGNTHIVE_BRIEF_DIR: briefDir };
   return spawnSync(process.execPath, [SCRIPT, planFile, String(n)], {
     encoding: 'utf-8', env, cwd: REPO,
   });

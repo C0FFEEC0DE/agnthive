@@ -5,11 +5,11 @@ import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { statePaths, loadState } from '../../plugins/agent-hive/modules/state.mjs';
+import { statePaths, loadState } from '../../plugins/agnthive/modules/state.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..', '..');
-const dispatcher = join(root, 'plugins', 'agent-hive', 'modules', 'hook-dispatcher.mjs');
+const dispatcher = join(root, 'plugins', 'agnthive', 'modules', 'hook-dispatcher.mjs');
 const fixtures = join(root, 'test', 'hooks', 'fixtures');
 
 function run(event, fixtureName, dataRoot) {

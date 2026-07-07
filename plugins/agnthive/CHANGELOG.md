@@ -10,22 +10,7 @@ profile history; entries here begin with the plugin.
 
 ## [Unreleased]
 
-### Added
-
-- Stage 5 `dispatch_enforced` hard guard. A benchmark task with
-  `dispatch_contract.mode: "enforced"` now forces dispatch at the harness level:
-  `UserPromptSubmit` stashes `dispatch_contract_mode` to session state from the
-  `BENCHMARK_DISPATCH_CONTRACT` marker, and a new `PreToolUse` registration for
-  `Edit|MultiEdit|Write|NotebookEdit` denies root edits until at least one
-  required specialist role has a real `SubagentStart` recorded. Once the
-  specialist starts, edits flow (including the specialist's own). The guard is
-  inert for non-bench sessions and for `observed`/`standard` modes. The
-  `subagent-architect-refactor-lite` smoke canary is converted to `enforced`,
-  unblocking the merge-blocking functional gate (dispatch failures are excluded
-  from the functional line under `enforced`/`observed`) while the separate
-  `dispatch-enforced` line honestly reports whether the guard produced a real
-  dispatch. Hook cases and unit assertions cover deny-before-dispatch,
-  allow-after-dispatch, and inert-under-standard.
+_Nothing yet._
 
 ## [0.1.0-beta.1] - 2026-06-22
 
@@ -75,16 +60,16 @@ contract in `docs/specs/claude-code-plugin-node-migration.md`.
   `session-index.jsonl`, `pre-compact.jsonl`, `post-compact.jsonl`,
   `config-change.jsonl`, `instructions-loaded.jsonl`) built from a fixed field
   whitelist and serialized with `JSON.stringify`. Each stream rotates to
-  `<name>.old` at `CLAUDE_CREW_LOG_MAX_BYTES` (1 MiB default). No credentials,
+  `<name>.old` at `AGNTHIVE_LOG_MAX_BYTES` (1 MiB default). No credentials,
   full environment variables, or prompt/transcript contents are logged.
 - **Progress ledger.** `ledger.mjs` re-injects compact context after
-  compaction, capped at `CLAUDE_CREW_LEDGER_MAX_BYTES` (64 KiB default) with
+  compaction, capped at `AGNTHIVE_LEDGER_MAX_BYTES` (64 KiB default) with
   UTF-8-safe truncation.
 - **Canonical agents and namespaced skills.** Eight agents under `agents/`
   with kebab-case canonical names; legacy persona aliases retained only in
   `assets/aliases.json` for transcript compatibility (no packaged symlinks).
   Skills under `skills/<name>/SKILL.md` with namespaced invocation
-  (`/agent-hive:review`). Workflow documents moved into `references/`
+  (`/agnthive:review`). Workflow documents moved into `references/`
   as on-demand skill references.
 - **Optional Node status line.** `scripts/statusline.mjs` reads one JSON object
   from stdin and prints `<cwd basename> | <model display name> | <output style>`.
@@ -109,6 +94,26 @@ contract in `docs/specs/claude-code-plugin-node-migration.md`.
   with `--verify-tag`. Documented in `docs/release.md`.
 - **Threat model.** `docs/threat-model.md` records the trust boundary, the
   seven threats and their mitigations, and the residual risks.
+- **Stage 5 `dispatch_enforced` hard guard.** A benchmark task with
+  `dispatch_contract.mode: "enforced"` now forces dispatch at the harness level:
+  `UserPromptSubmit` stashes `dispatch_contract_mode` to session state from the
+  `BENCHMARK_DISPATCH_CONTRACT` marker, and a new `PreToolUse` registration for
+  `Edit|MultiEdit|Write|NotebookEdit` denies root edits until at least one
+  required specialist role has a real `SubagentStart` recorded. Once the
+  specialist starts, edits flow (including the specialist's own). The guard is
+  inert for non-bench sessions and for `observed`/`standard` modes. The
+  `subagent-architect-refactor-lite` smoke canary is converted to `enforced`,
+  unblocking the merge-blocking functional gate (dispatch failures are excluded
+  from the functional line under `enforced`/`observed`) while the separate
+  `dispatch-enforced` line honestly reports whether the guard produced a real
+  dispatch. Hook cases and unit assertions cover deny-before-dispatch,
+  allow-after-dispatch, and inert-under-standard.
+- **Environment-variable namespace `AGNTHIVE_*`.** The public env knobs
+  (`AGNTHIVE_POLICY`, `AGNTHIVE_LOG_MAX_BYTES`, `AGNTHIVE_LEDGER_MAX_BYTES`,
+  `AGNTHIVE_PROGRESS_FILE`, `AGNTHIVE_BRIEF_DIR`, `AGNTHIVE_REVIEW_DIR`) use the
+  `agnthive` brand; the legacy `CLAUDE_CREW_*` names are read as aliases for one
+  release cycle. The default progress-ledger path moved from
+  `<projectDir>/.claude-crew/progress.md` to `<projectDir>/.agnthive/progress.md`.
 
 ### Changed
 

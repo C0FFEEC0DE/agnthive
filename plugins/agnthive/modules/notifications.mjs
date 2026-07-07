@@ -4,7 +4,8 @@
 //
 // Every hook JSONL stream (notification, session-index, pre/post-compact,
 // config-change, instructions-loaded) is appended here and rotated when it
-// crosses CLAUDE_CREW_LOG_MAX_BYTES (default 1 MiB): the current file moves to
+// crosses AGNTHIVE_LOG_MAX_BYTES (default 1 MiB; legacy CLAUDE_CREW_LOG_MAX_BYTES
+// alias still honored): the current file moves to
 // <name>.old and a fresh empty file starts, so no stream grows unbounded.
 //
 // Redaction policy: payloads are built from a fixed field whitelist
@@ -18,9 +19,10 @@ import { timestampUtc } from './util.mjs';
 
 export const DEFAULT_LOG_MAX_BYTES = 1024 * 1024; // 1 MiB
 
-/** Read a numeric env override, falling back to the default on invalid/empty. */
+/** Read a numeric env override, falling back to the default on invalid/empty.
+ *  Reads AGNTHIVE_LOG_MAX_BYTES, then the legacy CLAUDE_CREW_LOG_MAX_BYTES alias. */
 export function resolveLogMaxBytes(env = process.env, fallback = DEFAULT_LOG_MAX_BYTES) {
-  const raw = env.CLAUDE_CREW_LOG_MAX_BYTES;
+  const raw = env.AGNTHIVE_LOG_MAX_BYTES ?? env.CLAUDE_CREW_LOG_MAX_BYTES;
   if (typeof raw !== 'string' || raw.length === 0) return fallback;
   const n = Number(raw);
   if (!Number.isFinite(n) || n <= 0 || !/^\d+$/.test(raw.trim())) return fallback;

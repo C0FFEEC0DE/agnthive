@@ -1,7 +1,7 @@
 // Unit tests for scripts/plugin-install-smoke.mjs
 //
 // Exercises packagePlugin() and validatePackagedPlugin() against the real
-// plugins/agent-hive/ source: package to a mkdtempSync temp dir,
+// plugins/agnthive/ source: package to a mkdtempSync temp dir,
 // validate, assert ok=true; then assert a planted stray .sh in the packaged
 // dir makes ok=false; assert a broken manifest reference is flagged.
 import { test } from 'node:test';
@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { packagePlugin, validatePackagedPlugin } from '../../scripts/plugin-install-smoke.mjs';
 
 const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url));
-const PLUGIN_SRC = join(REPO_ROOT, 'plugins', 'agent-hive');
+const PLUGIN_SRC = join(REPO_ROOT, 'plugins', 'agnthive');
 
 function freshTemp() {
   return mkdtempSync(join(tmpdir(), 'plugin-install-smoke-test-'));
@@ -24,7 +24,7 @@ test('packagePlugin + validatePackagedPlugin pass on the real plugin source', ()
   try {
     const pluginDir = packagePlugin(PLUGIN_SRC, tmp);
     // The packaged plugin lives at tmp/<basename(src)>.
-    assert.equal(join(tmp, 'agent-hive'), pluginDir);
+    assert.equal(join(tmp, 'agnthive'), pluginDir);
     assert.ok(existsSync(join(pluginDir, '.claude-plugin', 'plugin.json')));
     assert.ok(existsSync(join(pluginDir, 'hooks', 'hooks.json')));
     const r = validatePackagedPlugin(pluginDir);

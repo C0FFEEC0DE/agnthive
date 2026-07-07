@@ -52,7 +52,7 @@ import {
 import { taskFunctionalFailures } from '../../scripts/bench/lib.mjs';
 
 const REPO = join(import.meta.dirname, '..', '..');
-const PLUGIN_AGENTS = join(REPO, 'plugins', 'agent-hive', 'agents');
+const PLUGIN_AGENTS = join(REPO, 'plugins', 'agnthive', 'agents');
 
 function makeTempDir() {
   return mkdtempSync(join(tmpdir(), 'bench-runner-'));
@@ -81,7 +81,7 @@ function baseTask(overrides = {}) {
 test('buildPrompt includes task prompt + plugin context + footer template', () => {
   const prompt = buildPrompt(baseTask({ verification_required: true }), 'npm run test');
   assert.ok(prompt.includes('Add a hello function'), 'prompt contains task prompt');
-  assert.ok(prompt.includes('agent-hive Claude Code plugin'));
+  assert.ok(prompt.includes('agnthive Claude Code plugin'));
   assert.ok(prompt.includes('--plugin-dir'));
   assert.ok(prompt.includes('Verification status: <passed|failed|not run|not required>'));
   assert.ok(prompt.includes('Review outcome: <done|pending|not required>'));
@@ -250,8 +250,8 @@ test('buildAgentLabelMap reads plugin agents into an alias map', () => {
 test('buildAgentLabelMap works with a temp agents dir', () => {
   const tmp = makeTempDir();
   try {
-    const agentsDir = join(tmp, 'plugins', 'agent-hive', 'agents');
-    const assetsDir = join(tmp, 'plugins', 'agent-hive', 'assets');
+    const agentsDir = join(tmp, 'plugins', 'agnthive', 'agents');
+    const assetsDir = join(tmp, 'plugins', 'agnthive', 'assets');
     mkdirSync(agentsDir, { recursive: true });
     mkdirSync(assetsDir, { recursive: true });
     writeFileSync(

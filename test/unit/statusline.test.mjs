@@ -1,16 +1,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { formatStatusLine } from '../../plugins/agent-hive/scripts/statusline.mjs';
+import { formatStatusLine } from '../../plugins/agnthive/scripts/statusline.mjs';
 
 test('normal payload: dir | model | style', () => {
   const out = formatStatusLine({
     model: { display_name: 'Sonnet 4.5' },
-    workspace: { current_dir: '/home/me/projects/claude-crew' },
+    workspace: { current_dir: '/home/me/projects/agnthive' },
     session_id: 's-1',
     version: '1.0.0',
     output_style: { name: 'Explanatory' },
   });
-  assert.equal(out, 'claude-crew | Sonnet 4.5 | Explanatory');
+  assert.equal(out, 'agnthive | Sonnet 4.5 | Explanatory');
 });
 
 test('Default output style is omitted to keep the line short', () => {
@@ -52,9 +52,9 @@ test('falls back to model.id when display_name is absent', () => {
 test('falls back to fallbackCwd when workspace is missing', () => {
   const out = formatStatusLine(
     { model: { display_name: 'Sonnet 4.5' } },
-    { fallbackCwd: '/var/home/chaos_weaver/code/claude-crew' },
+    { fallbackCwd: '/var/home/chaos_weaver/code/agnthive' },
   );
-  assert.equal(out, 'claude-crew | Sonnet 4.5');
+  assert.equal(out, 'agnthive | Sonnet 4.5');
 });
 
 test('Unicode cwd basename is preserved', () => {

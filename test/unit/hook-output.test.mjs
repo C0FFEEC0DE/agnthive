@@ -8,7 +8,7 @@ import {
   systemMessage,
   passthrough,
   serialize,
-} from '../../plugins/agent-hive/modules/hook-output.mjs';
+} from '../../plugins/agnthive/modules/hook-output.mjs';
 
 test('blockReason: normal guard carries decision:block + reason, never continue', () => {
   const o = blockReason('need verification');

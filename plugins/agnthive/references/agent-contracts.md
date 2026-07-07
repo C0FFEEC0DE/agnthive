@@ -53,7 +53,7 @@ A benchmark task may declare a `dispatch_contract` (`mode`, `required_agents`, `
 
 The `dispatch-enforced` CI line reports whether the model actually dispatched after the guard — a visible, non-blocking capability signal, never masked.
 
-Relevant files: `plugins/agent-hive/modules/workflow.mjs` (`parseDispatchContractMarker`, `classifyPrompt`), `modules/hook-dispatcher.mjs` (`handleUserPromptSubmit`, `enforceDispatchContract`), `modules/state.mjs` (`dispatch_contract_mode`), `hooks/hooks.json` (PreToolUse `EditWrite` registration). See `docs/benchmarking.md` for the full evidence-split and gate-line semantics.
+Relevant files: `plugins/agnthive/modules/workflow.mjs` (`parseDispatchContractMarker`, `classifyPrompt`), `modules/hook-dispatcher.mjs` (`handleUserPromptSubmit`, `enforceDispatchContract`), `modules/state.mjs` (`dispatch_contract_mode`), `hooks/hooks.json` (PreToolUse `EditWrite` registration). See `docs/benchmarking.md` for the full evidence-split and gate-line semantics.
 
 ## Role Benchmark Suite
 
@@ -88,7 +88,7 @@ This is enforced by:
 
 When adding a new agent or tightening an existing one:
 
-1. Add or update the agent prompt in `plugins/agent-hive/agents/`
+1. Add or update the agent prompt in `plugins/agnthive/agents/`
 2. Add a focused smoke task in `bench/tasks/subagents/smoke/`
 3. Set `agent_alias`
 4. Add at least one required-behavior assertion:

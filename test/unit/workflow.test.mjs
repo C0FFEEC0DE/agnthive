@@ -8,7 +8,7 @@ import {
   taskTypeRequiresSpecialistHandoffs, loopBlockFields, loopBlockCount,
   recordLoopBlock, clearLoopBlockPatch, userPromptResetPatch,
   sessionBackgroundManagerPending, STOP_SAFE_HINT, parseDispatchContractMarker,
-} from '../../plugins/agent-hive/modules/workflow.mjs';
+} from '../../plugins/agnthive/modules/workflow.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const fixtures = join(here, '..', '..', 'test', 'hooks', 'fixtures');

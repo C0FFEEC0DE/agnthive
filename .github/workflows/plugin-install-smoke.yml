@@ -62,7 +62,7 @@ jobs:
         continue-on-error: true
         env:
           CLEAN_HOME: ${{ runner.temp }}/claude-clean-home
-          PLUGIN_SOURCE: ${{ github.workspace }}/plugins/agent-hive
+          PLUGIN_SOURCE: ${{ github.workspace }}/plugins/agnthive
         run: |
           set -uo pipefail
           if ! command -v claude >/dev/null 2>&1; then
@@ -75,11 +75,11 @@ jobs:
           echo "claude version: $(claude --version 2>&1 || echo unknown)"
           # Use the local marketplace add form so no network registry is required.
           if claude plugin marketplace add "$PLUGIN_SOURCE" 2>&1; then
-            claude plugin install agent-hive 2>&1 || echo "::warning::install step returned non-zero"
+            claude plugin install agnthive 2>&1 || echo "::warning::install step returned non-zero"
             claude plugin reload 2>&1 || echo "::warning::reload step returned non-zero"
             claude plugin list 2>&1 || echo "::warning::list step returned non-zero"
-            claude plugin update agent-hive 2>&1 || echo "::warning::update step returned non-zero"
-            claude plugin uninstall agent-hive 2>&1 || echo "::warning::uninstall step returned non-zero"
+            claude plugin update agnthive 2>&1 || echo "::warning::update step returned non-zero"
+            claude plugin uninstall agnthive 2>&1 || echo "::warning::uninstall step returned non-zero"
           else
             echo "::warning::marketplace add returned non-zero; CLI lifecycle skipped"
           fi

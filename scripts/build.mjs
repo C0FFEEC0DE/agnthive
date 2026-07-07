@@ -3,15 +3,16 @@
 // valid. The runtime ships as committed ES modules under modules/ — the
 // marketplace copies the source dir to its cache with no install-time build,
 // so the runtime must live in committed source. "build" is therefore
-// validation, not transpilation. dist/ is reserved for Phase 5 release
-// artifacts. No Bash, no Python — Node standard library only.
+// validation, not transpilation. dist/ is unused (gitignored); the publishable
+// artifact is built by `git archive` in the tag-cut release workflow. No Bash,
+// no Python — Node standard library only.
 //   node scripts/build.mjs            -> validate runtime
 //   node scripts/build.mjs --package  -> validate + report artifact readiness
 import { readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
-const pluginDir = 'plugins/agent-hive';
+const pluginDir = 'plugins/agnthive';
 const modulesDir = join(pluginDir, 'modules');
 const dispatcher = join(modulesDir, 'hook-dispatcher.mjs');
 const hooksJson = join(pluginDir, 'hooks', 'hooks.json');

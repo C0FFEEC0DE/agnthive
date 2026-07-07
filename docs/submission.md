@@ -1,9 +1,9 @@
 # Community Submission Packet
 
-This index assembles the artifacts for submitting `agent-hive` to
+This index assembles the artifacts for submitting `agnthive` to
 the Claude Code community plugin marketplace. The plugin is distributed as a
 **source repository marketplace**: users add this repository as a marketplace
-and install the plugin from `plugins/agent-hive/`. The actual
+and install the plugin from `plugins/agnthive/`. The actual
 submission is filed through the Anthropic community-plugin form by a human
 maintainer — this document is the packet they attach, not an automated
 publish step.
@@ -13,8 +13,8 @@ publish step.
 `0.1.0-beta.1` — declared in plugin.json as the single source of truth
 (marketplace.json omits version to avoid drift):
 
-- `plugins/agent-hive/.claude-plugin/plugin.json` — authoritative
-- `plugins/agent-hive/package.json` — matches for consistency
+- `plugins/agnthive/.claude-plugin/plugin.json` — authoritative
+- `plugins/agnthive/package.json` — matches for consistency
 - `package.json` (root) — matches for monorepo consistency
 - `.claude-plugin/marketplace.json` — no version field (plugin.json wins)
 
@@ -26,17 +26,17 @@ release flow.
 
 | Required item | Location | Notes |
 |---|---|---|
-| README (Node requirement, install, update, disable, uninstall, privacy, support, security reporting, settings limitations) | `plugins/agent-hive/README.md` | User-facing; ships inside the plugin dir |
-| Changelog | `plugins/agent-hive/CHANGELOG.md` | Keep a Changelog format; `0.1.0-beta.1` migration entry |
-| License | `plugins/agent-hive/LICENSE` | MIT, identical to repo-root `LICENSE` |
-| Security policy | `plugins/agent-hive/SECURITY.md` | Private disclosure, 72h initial response, plugin-specific scope |
-| Threat model | `plugins/agent-hive/references/threat-model.md` | Trust boundary, command policy (defense-in-depth, not a sandbox), exec-form integrity, path resolution, telemetry privacy, supply chain |
-| Privacy / network statement | `plugins/agent-hive/README.md` § Privacy & telemetry | "No network calls; nothing leaves the local machine" — grounded by a module scan (no `http`/`https`/`fetch`/`net` imports in `modules/`) |
+| README (Node requirement, install, update, disable, uninstall, privacy, support, security reporting, settings limitations) | `plugins/agnthive/README.md` | User-facing; ships inside the plugin dir |
+| Changelog | `plugins/agnthive/CHANGELOG.md` | Keep a Changelog format; `0.1.0-beta.1` migration entry |
+| License | `plugins/agnthive/LICENSE` | MIT, identical to repo-root `LICENSE` |
+| Security policy | `plugins/agnthive/SECURITY.md` | Private disclosure, 72h initial response, plugin-specific scope |
+| Threat model | `plugins/agnthive/references/threat-model.md` | Trust boundary, command policy (defense-in-depth, not a sandbox), exec-form integrity, path resolution, telemetry privacy, supply chain |
+| Privacy / network statement | `plugins/agnthive/README.md` § Privacy & telemetry | "No network calls; nothing leaves the local machine" — grounded by a module scan (no `http`/`https`/`fetch`/`net` imports in `modules/`) |
 | Release runbook | `docs/release.md` | Tag-only, clean-checkout, one-artifact, test-the-exact-artifact, SBOM attachment |
 
 ## Verification evidence (attach or cite)
 
-- `claude plugin validate plugins/agent-hive --strict` → **passed**
+- `claude plugin validate plugins/agnthive --strict` → **passed**
   (exit 0), run with `claude` CLI 2.1.185.
 - `node scripts/plugin-install-smoke.mjs` → **PASS (11 checks)** — manifest
   fields, path resolution, no `.py`/`.sh` in runtime, hook exec form

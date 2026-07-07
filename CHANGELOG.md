@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+> **Superseded.** Entries below record the legacy copied-`~/.claude` profile
+> (the `claudecfg/` layout installed via `./install.sh`, with Bash/Python hooks
+> and `scripts/*.py`). That profile was retired when the project was ported to a
+> distributable Node.js ESM Claude Code plugin and renamed `agnthive`. The
+> active, plugin-era changelog is [`plugins/agnthive/CHANGELOG.md`](plugins/agnthive/CHANGELOG.md);
+> the paths referenced below (`claudecfg/`, `scripts/*.py`, `tests/`) no longer
+> exist and are preserved here as a historical record only.
+
 ## [Unreleased]
 
 ### Added

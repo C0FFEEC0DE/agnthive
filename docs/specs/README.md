@@ -14,7 +14,7 @@ Dated design documents produced during the **brainstorm/design** phase, before a
 Design → Plan (docs/plans/) → Subagent-Driven Development → Review.
 
 The shipped workflow and contracts live in
-`plugins/agent-hive/references/`.
+`plugins/agnthive/references/`.
 
 ## Exceptions to the dated-design convention
 

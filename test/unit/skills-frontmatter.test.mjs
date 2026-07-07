@@ -1,5 +1,5 @@
 // Validates YAML frontmatter contract for plugin slash skills under
-// plugins/agent-hive/skills/<name>/SKILL.md.
+// plugins/agnthive/skills/<name>/SKILL.md.
 //
 // There are two skill shapes:
 //  - Agent-backed skills (bug, design, docs, refactor, review, test): full
@@ -17,7 +17,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, basename } from 'node:path';
 
 const REPO = join(import.meta.dirname, '..', '..');
-const PLUGIN_ROOT = join(REPO, 'plugins', 'agent-hive');
+const PLUGIN_ROOT = join(REPO, 'plugins', 'agnthive');
 const SKILLS_DIR = join(PLUGIN_ROOT, 'skills');
 const AGENT_DIR = join(PLUGIN_ROOT, 'agents');
 

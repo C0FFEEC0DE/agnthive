@@ -52,15 +52,15 @@ jobs:
         # is gitignored, so no build artifacts leak — the runtime ships as
         # committed ES modules under modules/). Archiving the HEAD:<subpath>
         # tree yields plugin-dir-relative paths; --prefix nests them under
-        # agent-hive/ so unzipping drops a named dir into plugins/.
+        # agnthive/ so unzipping drops a named dir into plugins/.
         id: package
         env:
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          artifact="agent-hive-plugin-${TAG}.zip"
-          git archive --format=zip --prefix=agent-hive/ \
-            -o "$artifact" HEAD:plugins/agent-hive
+          artifact="agnthive-plugin-${TAG}.zip"
+          git archive --format=zip --prefix=agnthive/ \
+            -o "$artifact" HEAD:plugins/agnthive
           echo "artifact=$artifact" >> "$GITHUB_OUTPUT"
           ls -lh "$artifact"
 
@@ -75,7 +75,7 @@ jobs:
           set -euo pipefail
           stage="$(mktemp -d)"
           unzip -q "$ARTIFACT" -d "$stage"
-          plugin="$stage/agent-hive"
+          plugin="$stage/agnthive"
           echo "plugin_dir=$plugin" >> "$GITHUB_OUTPUT"
           # Required structural files.
           for rel in .claude-plugin/plugin.json package.json \
@@ -137,7 +137,7 @@ jobs:
             echo "## ${TAG}"
             echo ""
             echo "Source-only Claude Code plugin distribution. The artifact"
-            echo "below is a packaged copy of \`plugins/agent-hive/\`"
+            echo "below is a packaged copy of \`plugins/agnthive/\`"
             echo "from this tag; unzip it into your marketplace \`plugins/\` dir."
             echo ""
             echo "- Artifact: \`$ARTIFACT\`"

@@ -1,4 +1,4 @@
-// Validates the plugin hook manifest (plugins/agent-hive/hooks/
+// Validates the plugin hook manifest (plugins/agnthive/hooks/
 // hooks.json) structure: every event uses exec form (command: "node" + args
 // array) routing to a single Node dispatcher, with the nested {hooks:[...]}
 // record format. This is the plugin successor to the legacy
@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const REPO = join(import.meta.dirname, '..', '..');
-const MANIFEST_PATH = join(REPO, 'plugins', 'agent-hive', 'hooks', 'hooks.json');
+const MANIFEST_PATH = join(REPO, 'plugins', 'agnthive', 'hooks', 'hooks.json');
 const DISPATCHER = '${CLAUDE_PLUGIN_ROOT}/modules/hook-dispatcher.mjs';
 
 const HOOK_EVENTS = new Set([

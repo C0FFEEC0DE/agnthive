@@ -1,5 +1,5 @@
 {
-  "description": "Agent hive hook runtime (Node.js ESM). Every registration uses exec form (command: node + args array) routing to a single dispatcher.",
+  "description": "agnthive hook runtime (Node.js ESM). Every registration uses exec form (command: node + args array) routing to a single dispatcher.",
   "hooks": {
     "SessionStart": [
       {

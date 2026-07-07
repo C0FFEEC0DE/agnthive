@@ -155,7 +155,7 @@ function checkWorkflowSyntax() {
 // ---------- agent frontmatter ----------
 function checkAgentFrontmatter() {
   console.log('--- Checking agent frontmatter ---');
-  const agentDir = join(REPO_ROOT, 'plugins', 'agent-hive', 'agents');
+  const agentDir = join(REPO_ROOT, 'plugins', 'agnthive', 'agents');
   if (!existsSync(agentDir)) { reportError(`Agent directory not found: ${agentDir}`); console.log(''); return; }
   const files = globDir(agentDir, '.md').sort();
   for (const af of files) {
@@ -191,8 +191,8 @@ function checkAgentFrontmatter() {
 //     make them a third, ambiguous shape).
 function checkSkillFrontmatter() {
   console.log('--- Checking skill frontmatter ---');
-  const skillsDir = join(REPO_ROOT, 'plugins', 'agent-hive', 'skills');
-  const agentDir = join(REPO_ROOT, 'plugins', 'agent-hive', 'agents');
+  const skillsDir = join(REPO_ROOT, 'plugins', 'agnthive', 'skills');
+  const agentDir = join(REPO_ROOT, 'plugins', 'agnthive', 'agents');
   if (!existsSync(skillsDir)) { reportError(`Skill directory not found: ${skillsDir}`); console.log(''); return; }
 
   // Known plugin agent names + aliases (for agent-backed skill `agent:` matching).
@@ -286,8 +286,8 @@ function checkSlashCommandInventory() {
   };
   const cmp = (a, b) => a < b ? -1 : a > b ? 1 : 0;
 
-  const skillsDir = join(REPO_ROOT, 'plugins', 'agent-hive', 'skills');
-  const agentDir = join(REPO_ROOT, 'plugins', 'agent-hive', 'agents');
+  const skillsDir = join(REPO_ROOT, 'plugins', 'agnthive', 'skills');
+  const agentDir = join(REPO_ROOT, 'plugins', 'agnthive', 'agents');
   const skillDirs = existsSync(skillsDir)
     ? readdirSync(skillsDir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name)
     : [];
@@ -394,7 +394,7 @@ function checkWorkflowPolicy() {
     bb.includes('scripts/download-benchmark-summary.mjs') &&
     bb.includes('render-benchmark-summary.mjs bench-output/summary.json') &&
     bb.includes('bench-output/benchmark-report.md') &&
-    bb.includes("'plugins/agent-hive/**'") &&
+    bb.includes("'plugins/agnthive/**'") &&
     bb.includes('--ref-name "${REF_NAME:-}"') &&
     !bb.includes("if: github.event_name != 'workflow_dispatch'");
   if (bbOk) console.log('OK: Behavior Benchmark Subagents Smoke PR selector');

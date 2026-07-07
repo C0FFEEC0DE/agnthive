@@ -1,6 +1,6 @@
 {
   "session_id": "test-session-12345",
-  "cwd": "/var/home/chaos_weaver/code/claude-crew",
+  "cwd": "/var/home/chaos_weaver/code/agnthive",
   "transcript_path": "/tmp/session-12345.jsonl",
   "reason": "logout",
   "sessionState": {

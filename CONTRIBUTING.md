@@ -1,4 +1,4 @@
-# Contributing to Claude Code Configuration
+# Contributing to agnthive
 
 Thank you for your interest in contributing!
 
@@ -15,7 +15,7 @@ Thank you for your interest in contributing!
 ## Project Structure
 
 ```
-plugins/agent-hive/   # The distributable Claude Code plugin
+plugins/agnthive/   # The distributable Claude Code plugin
 ├── agents/         # Agent definitions (*.md, flat)
 ├── skills/         # Skills (nested <name>/SKILL.md): agent-backed + command skills
 ├── references/     # Workflow + reference docs
@@ -27,7 +27,7 @@ plugins/agent-hive/   # The distributable Claude Code plugin
 
 ## Adding a New Agent
 
-1. Create `plugins/agent-hive/agents/[alias].md`
+1. Create `plugins/agnthive/agents/[alias].md`
 2. Use the template:
 
 ```yaml
@@ -47,12 +47,12 @@ type: AgentType
 ...
 ```
 
-3. Update `plugins/agent-hive/agents/manager.md` to include new agent
+3. Update `plugins/agnthive/agents/manager.md` to include new agent
 4. Update README.md agent table
 
 ## Adding a New Command
 
-1. Create `plugins/agent-hive/skills/[command]/SKILL.md`. For an
+1. Create `plugins/agnthive/skills/[command]/SKILL.md`. For an
    agent-backed command (one that dispatches a specialist), use the full
    agent-dispatch frontmatter:
 
@@ -90,7 +90,7 @@ Before submitting:
 - [ ] JSON files are valid
 - [ ] Agent markdown has proper frontmatter
 - [ ] Skill markdown has proper frontmatter
-- [ ] Settings invariants still hold (`outputStyle: Default`, Notification hook configured)
+- [ ] Hook registrations use exec form (`node` + args array → single dispatcher) and `userConfig` schema is valid
 - [ ] All links in documentation work
 
 ## GitHub Actions Requirements

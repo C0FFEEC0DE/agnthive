@@ -8,8 +8,8 @@ import {
   notificationPayload, instructionsLoadedPayload, preCompactPayload,
   postCompactPayload, configChangePayload, sessionEndPayload,
   DEFAULT_LOG_MAX_BYTES,
-} from '../../plugins/agent-hive/modules/notifications.mjs';
-import { timestampUtc } from '../../plugins/agent-hive/modules/util.mjs';
+} from '../../plugins/agnthive/modules/notifications.mjs';
+import { timestampUtc } from '../../plugins/agnthive/modules/util.mjs';
 
 // --- timestampUtc (regression for the getUTCMonth typo) -------------------
 
@@ -27,11 +27,11 @@ test.after(() => { rmSync(logRoot, { recursive: true, force: true }); });
 
 test('resolveLogMaxBytes: default when unset/invalid, numeric override honored', () => {
   assert.equal(resolveLogMaxBytes({}), DEFAULT_LOG_MAX_BYTES);
-  assert.equal(resolveLogMaxBytes({ CLAUDE_CREW_LOG_MAX_BYTES: '' }), DEFAULT_LOG_MAX_BYTES);
-  assert.equal(resolveLogMaxBytes({ CLAUDE_CREW_LOG_MAX_BYTES: 'abc' }), DEFAULT_LOG_MAX_BYTES);
-  assert.equal(resolveLogMaxBytes({ CLAUDE_CREW_LOG_MAX_BYTES: '0' }), DEFAULT_LOG_MAX_BYTES);
-  assert.equal(resolveLogMaxBytes({ CLAUDE_CREW_LOG_MAX_BYTES: '-5' }), DEFAULT_LOG_MAX_BYTES);
-  assert.equal(resolveLogMaxBytes({ CLAUDE_CREW_LOG_MAX_BYTES: '2048' }), 2048);
+  assert.equal(resolveLogMaxBytes({ AGNTHIVE_LOG_MAX_BYTES: '' }), DEFAULT_LOG_MAX_BYTES);
+  assert.equal(resolveLogMaxBytes({ AGNTHIVE_LOG_MAX_BYTES: 'abc' }), DEFAULT_LOG_MAX_BYTES);
+  assert.equal(resolveLogMaxBytes({ AGNTHIVE_LOG_MAX_BYTES: '0' }), DEFAULT_LOG_MAX_BYTES);
+  assert.equal(resolveLogMaxBytes({ AGNTHIVE_LOG_MAX_BYTES: '-5' }), DEFAULT_LOG_MAX_BYTES);
+  assert.equal(resolveLogMaxBytes({ AGNTHIVE_LOG_MAX_BYTES: '2048' }), 2048);
 });
 
 // --- payload builders (field whitelist + redaction) -----------------------
@@ -127,7 +127,7 @@ test('rotateJsonlIfNeeded: missing file is a no-op (no throw)', () => {
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-test('rotation threshold uses env override CLAUDE_CREW_LOG_MAX_BYTES', () => {
+test('rotation threshold uses env override AGNTHIVE_LOG_MAX_BYTES', () => {
   const root = mkdtempSync(join(tmpdir(), 'rot-env-'));
   try {
     const name = 'notification.jsonl';

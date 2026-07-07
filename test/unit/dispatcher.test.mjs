@@ -5,10 +5,10 @@ import { dirname, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dispatch, eventFromArgs } from '../../plugins/agent-hive/modules/hook-dispatcher.mjs';
+import { dispatch, eventFromArgs } from '../../plugins/agnthive/modules/hook-dispatcher.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const dispatcher = join(here, '..', '..', 'plugins', 'agent-hive', 'modules', 'hook-dispatcher.mjs');
+const dispatcher = join(here, '..', '..', 'plugins', 'agnthive', 'modules', 'hook-dispatcher.mjs');
 
 // Tests must never write into the user's real ~/.claude plugin data dir, so
 // point CLAUDE_PLUGIN_DATA at a temp dir for both in-process dispatch and the

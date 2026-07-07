@@ -26,7 +26,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 // --- repo / plugin paths ----------------------------------------------------
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '..');
-const pluginRoot = join(repoRoot, 'plugins', 'agent-hive');
+const pluginRoot = join(repoRoot, 'plugins', 'agnthive');
 const dispatcher = join(pluginRoot, 'modules', 'hook-dispatcher.mjs');
 const hooksDir = join(repoRoot, 'test', 'hooks');
 const casesPath = join(hooksDir, 'cases.json');
@@ -42,7 +42,7 @@ const { statePaths, loadState } = await import(pathToFileURL(join(pluginRoot, 'm
 
 // --- legacy-script -> dispatcher event (+ matcher) mapping ------------------
 // Each legacy claudecfg/hooks/<name>.sh maps to one dispatcher event. Matchers
-// mirror the registrations in plugins/agent-hive/hooks/hooks.json.
+// mirror the registrations in plugins/agnthive/hooks/hooks.json.
 export const SCRIPT_TO_EVENT = {
   'pre-tool-use.sh': { event: 'PreToolUse', matcher: 'Bash' },
   'permission-request.sh': { event: 'PermissionRequest', matcher: 'Bash' },

@@ -1,5 +1,5 @@
 // summary-contract.test.mjs — direct unit coverage for the footer-recognition and
-// session-decision functions in plugins/agent-hive/modules/summary-contract.mjs.
+// session-decision functions in plugins/agnthive/modules/summary-contract.mjs.
 //
 // These tests port the behavioral coverage that previously lived in the legacy
 // bash-sourcing pytest files (test/validators/test_message_mentions.py,
@@ -24,7 +24,7 @@ import {
   sessionAgentEnforcementReason,
   sessionManagerIdleReason,
   stopSafeNoChangeFooterHint,
-} from '../../plugins/agent-hive/modules/summary-contract.mjs';
+} from '../../plugins/agnthive/modules/summary-contract.mjs';
 
 // A representative prefix list mirroring the legacy helper test.
 const PREFIXES = ['Outcome:', 'Result:', 'Status:'];

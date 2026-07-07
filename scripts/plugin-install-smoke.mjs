@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // plugin-install-smoke.mjs — installation + package smoke validator for the
-// agent-hive Claude Code plugin.
+// agnthive Claude Code plugin.
 //
 // The validator PACKAGES the plugin source into a clean temp "cache/artifact"
-// layout (a verbatim recursive copy of plugins/agent-hive/ into a
+// layout (a verbatim recursive copy of plugins/agnthive/ into a
 // temp dir) and then validates the PACKAGED layout — not the source tree — so
 // the check mirrors what a user actually installs from a published artifact.
 //
@@ -45,7 +45,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url));
-const DEFAULT_PLUGIN_SRC = join(REPO_ROOT, 'plugins', 'agent-hive');
+const DEFAULT_PLUGIN_SRC = join(REPO_ROOT, 'plugins', 'agnthive');
 
 const REQUIRED_MANIFEST_FIELDS = [
   'name',

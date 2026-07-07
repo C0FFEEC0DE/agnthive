@@ -2,7 +2,7 @@
 // check-no-legacy-runtime — gate that fails when executable legacy .py/.sh
 // scripts would ship in or run as the plugin runtime.
 //
-// The plugin runtime (plugins/agent-hive/**) must be Node-only: any
+// The plugin runtime (plugins/agnthive/**) must be Node-only: any
 // .py or .sh found there is a hard failure (no allowlist). scripts/** may keep
 // only an explicit, documented allowlist of CI-only agent runners that are not
 // part of the shipped plugin runtime.
@@ -50,8 +50,8 @@ export function checkNoLegacyRuntime(repoRoot) {
   const offenses = [];
   const allowlisted = [];
 
-  // 1. plugins/agent-hive/** — no .py/.sh allowed at all.
-  const pluginDir = join(repoRoot, 'plugins', 'agent-hive');
+  // 1. plugins/agnthive/** — no .py/.sh allowed at all.
+  const pluginDir = join(repoRoot, 'plugins', 'agnthive');
   const pluginLegacy = walkLegacy(pluginDir);
   for (const p of pluginLegacy) {
     offenses.push(

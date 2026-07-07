@@ -1,6 +1,6 @@
 version: 2
 
-# Dependabot supply-chain updates for the agent-hive plugin repo.
+# Dependabot supply-chain updates for the agnthive plugin repo.
 # The plugin runtime ships as committed ES modules under modules/ — there is
 # no npm install at runtime — so the npm ecosystem entries below are retained
 # for future deps the repo may adopt (e.g. dev/build tooling). The root
@@ -25,7 +25,7 @@ updates:
 
   # npm — plugin workspace (currently no deps; entry kept for future use).
   - package-ecosystem: npm
-    directory: /plugins/agent-hive
+    directory: /plugins/agnthive
     schedule:
       interval: weekly
       day: monday
