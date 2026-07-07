@@ -44,7 +44,16 @@
     }
     h1 { font-size: clamp(34px, 7vw, 56px); line-height: 1.05; margin: 0 0 16px; letter-spacing: -0.02em; }
     h1 .dot { color: var(--accent); }
-    .lede { font-size: 19px; color: var(--muted); margin: 0 0 32px; max-width: 60ch; }
+    .lede { font-size: 19px; color: var(--muted); margin: 0 0 24px; max-width: 60ch; }
+    .install { margin: 0 0 28px; }
+    .install-label {
+      display: inline-block; font: 600 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+      color: var(--muted); letter-spacing: .08em; text-transform: uppercase; margin-bottom: 8px;
+    }
+    .install pre {
+      margin: 0; border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent);
+      font-size: 15px;
+    }
     .cta { display: flex; flex-wrap: wrap; gap: 12px; }
     a.btn {
       display: inline-block; padding: 12px 20px; border-radius: 10px; text-decoration: none;
@@ -90,14 +99,16 @@
       <span class="badge">Claude Code plugin</span>
       <h1>agnthive<span class="dot">.</span>run</h1>
       <p class="lede">
-        A hook-gated SDLC profile for Claude Code. A platform-independent Node hook
-        runtime enforces discover → design → implement → verify → review → docs,
-        eight specialist agents do the work, and a benchmark suite catches agent
-        regressions on every PR.
+        A hook-gated SDLC profile for Claude Code — Node hooks enforce
+        discover → design → implement → verify → review → docs, with eight
+        specialist agents and a benchmark suite that catches regressions on every PR.
       </p>
+      <div class="install">
+        <span class="install-label">Install</span>
+        <pre>claude plugin install ./plugins/agnthive</pre>
+      </div>
       <div class="cta">
         <a class="btn primary" href="https://github.com/C0FFEEC0DE/agnthive">View on GitHub</a>
-        <a class="btn" href="https://github.com/C0FFEEC0DE/agnthive#install">Install</a>
         <a class="btn" href="https://github.com/C0FFEEC0DE/agnthive/tree/main/docs">Docs</a>
       </div>
     </header>
@@ -138,17 +149,11 @@
       </div>
     </section>
 
-    <section>
-      <h2>Install</h2>
-      <pre>claude plugin install ./plugins/agnthive</pre>
-      <p style="color:var(--muted); margin:16px 0 0">
-        From a local checkout. Restart Claude Code, then see the
-        <a href="https://github.com/C0FFEEC0DE/agnthive/blob/main/plugins/agnthive/README.md">plugin README</a>
-        for configuration and the optional status line.
-      </p>
-    </section>
-
     <footer>
+      From a local checkout — restart Claude Code, then see the
+      <a href="https://github.com/C0FFEEC0DE/agnthive/blob/main/plugins/agnthive/README.md">plugin README</a>
+      for configuration and the optional status line.
+      <br />
       <a href="https://github.com/C0FFEEC0DE/agnthive">github.com/C0FFEEC0DE/agnthive</a>
       &nbsp;·&nbsp; MIT licensed
     </footer>
