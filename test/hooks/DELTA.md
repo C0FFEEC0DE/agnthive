@@ -1,7 +1,7 @@
 # Hook fixture runner — intentional bash → Node behavior deltas
 
 This file documents cases where the Node hook dispatcher
-(`plugins/agent-hive/modules/hook-dispatcher.mjs`) intentionally
+(`plugins/agnthive/modules/hook-dispatcher.mjs`) intentionally
 differs from the legacy bash hooks (`claudecfg/hooks/*.sh`) that the
 `test/hooks/cases.json` + `test/hooks/scenarios.json` corpus was originally
 authored against. The Node runner (`scripts/test-hooks.mjs`) carries these as

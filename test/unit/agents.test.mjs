@@ -6,10 +6,10 @@ import {
   loadAliases, canonicalizeSubagentLabel, extractSubagentLabel, extractSubagentScope,
   inferStartedRolesFromTranscript, effectiveStartedRoles, formatSubagentList,
   formatSubagentGroup, GENERIC_TYPES,
-} from '../../plugins/agent-hive/modules/agents.mjs';
+} from '../../plugins/agnthive/modules/agents.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const pluginRoot = join(here, '..', '..', 'plugins', 'agent-hive');
+const pluginRoot = join(here, '..', '..', 'plugins', 'agnthive');
 const aliases = loadAliases(pluginRoot);
 const transcripts = join(here, '..', '..', 'test', 'hooks', 'fixtures', 'transcripts');
 import { readFileSync } from 'node:fs';

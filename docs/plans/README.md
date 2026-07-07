@@ -14,4 +14,4 @@ Dated implementation plans produced from an approved design, executed via Subage
 Design (docs/specs/) → Plan → Subagent-Driven Development → Review.
 
 The shipped workflow and contracts live in
-`plugins/agent-hive/references/`.
+`plugins/agnthive/references/`.

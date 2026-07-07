@@ -5,11 +5,11 @@ import { readFileSync, writeFileSync, existsSync, mkdtempSync, rmSync } from 'no
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { resolveLogRoot } from '../../plugins/agent-hive/modules/util.mjs';
+import { resolveLogRoot } from '../../plugins/agnthive/modules/util.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..', '..');
-const dispatcher = join(root, 'plugins', 'agent-hive', 'modules', 'hook-dispatcher.mjs');
+const dispatcher = join(root, 'plugins', 'agnthive', 'modules', 'hook-dispatcher.mjs');
 
 function run(event, stdin, dataRoot, env = {}) {
   return spawnSync(process.execPath, [dispatcher, '--event', event], {
@@ -131,7 +131,7 @@ test('PostCompact: logs a marker and re-injects the durable progress ledger', ()
     // Provide a ledger via the explicit override env so the test is hermetic.
     const ledgerFile = join(proj, 'progress.md');
     writeFileSync(ledgerFile, '- [x] task one\n- [x] task two\n');
-    const res = run('PostCompact', { session_id: 'poc1', trigger: 'manual' }, dataRoot, { CLAUDE_CREW_PROGRESS_FILE: ledgerFile, CLAUDE_PROJECT_DIR: proj });
+    const res = run('PostCompact', { session_id: 'poc1', trigger: 'manual' }, dataRoot, { AGNTHIVE_PROGRESS_FILE: ledgerFile, CLAUDE_PROJECT_DIR: proj });
     assert.equal(res.status, 0, res.stderr);
     // Marker logged.
     const lines = readJsonl(dataRoot, 'post-compact.jsonl');
@@ -164,7 +164,7 @@ test('PostCompact: oversized multibyte ledger is UTF-8-safe truncated with a not
     const line = '✔ completed task item with a longer description\n';
     writeFileSync(ledgerFile, line.repeat(40));
     const res = run('PostCompact', { session_id: 'poc3', trigger: 'manual' }, dataRoot, {
-      CLAUDE_CREW_PROGRESS_FILE: ledgerFile, CLAUDE_CREW_LEDGER_MAX_BYTES: '64', CLAUDE_PROJECT_DIR: proj,
+      AGNTHIVE_PROGRESS_FILE: ledgerFile, AGNTHIVE_LEDGER_MAX_BYTES: '64', CLAUDE_PROJECT_DIR: proj,
     });
     assert.equal(res.status, 0, res.stderr);
     const msg = ctx(res);
@@ -183,7 +183,7 @@ test('rotation: a stream crossing the byte cap rolls to .old mid-lifecycle', () 
   const f = join(lr, stream);
   // Pre-create a file at the cap so the next append rotates it.
   writeFileSync(f, 'x'.repeat(1024));
-  run('Notification', { session_id: 'rot', title: 't', message: 'm' }, dataRoot, { CLAUDE_CREW_LOG_MAX_BYTES: '1024' });
+  run('Notification', { session_id: 'rot', title: 't', message: 'm' }, dataRoot, { AGNTHIVE_LOG_MAX_BYTES: '1024' });
   assert.ok(existsSync(`${f}.old`), '.old sidecar created by rotation');
   const fresh = readFileSync(f, 'utf8').trim();
   assert.ok(fresh.includes('"title":"t"'), 'fresh file holds only the new record');

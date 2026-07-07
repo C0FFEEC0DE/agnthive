@@ -42,7 +42,7 @@ test('isGlobalBehaviorChange global file', () => {
   assert.equal(isGlobalBehaviorChange(['CLAUDE.md']), true);
 });
 test('isGlobalBehaviorChange global prefix', () => {
-  assert.equal(isGlobalBehaviorChange(['plugins/agent-hive/modules/hook-dispatcher.mjs']), true);
+  assert.equal(isGlobalBehaviorChange(['plugins/agnthive/modules/hook-dispatcher.mjs']), true);
 });
 test('isGlobalBehaviorChange unrelated', () => {
   assert.equal(isGlobalBehaviorChange(['docs/readme.md']), false);
@@ -66,10 +66,10 @@ test('impactedAgents resolves and skips unknown', () => {
   AGENT_FILE_TO_ALIAS['known_agent.md'] = 'k';
   SKILL_TO_ALIAS['known_skill'] = 's';
   const aliases = impactedAgents([
-    'plugins/agent-hive/agents/known_agent.md',
-    'plugins/agent-hive/agents/unknown_agent.md',
-    'plugins/agent-hive/skills/known_skill/SKILL.md',
-    'plugins/agent-hive/skills/unknown_skill/SKILL.md',
+    'plugins/agnthive/agents/known_agent.md',
+    'plugins/agnthive/agents/unknown_agent.md',
+    'plugins/agnthive/skills/known_skill/SKILL.md',
+    'plugins/agnthive/skills/unknown_skill/SKILL.md',
     'docs/unrelated.md',
   ]);
   assert.deepEqual([...aliases], ['k', 's']);
@@ -145,7 +145,7 @@ test('selectTasks agent hit', () => {
   SKILL_TO_ALIAS['test'] = 't';
   try {
     const tasks = [task('t1', SUITE, { related_agents: ['t'] }), task('t2', SUITE, { related_agents: ['cr'] })];
-    const [sel, reasons] = selectTasks(tasks, SUITE, ['plugins/agent-hive/skills/test/SKILL.md'], 'changed');
+    const [sel, reasons] = selectTasks(tasks, SUITE, ['plugins/agnthive/skills/test/SKILL.md'], 'changed');
     assert.deepEqual(sel.map((t) => t.id), ['t1']);
     assert.ok(reasons.includes('agent_or_skill_change'));
   } finally { delete SKILL_TO_ALIAS['test']; }
@@ -285,7 +285,7 @@ test('writeGithubOutput file empty tasks', () => {
 
 test('buildAgentFileMap skips no alias', () => {
   const d = mkdtempSync(join(tmpdir(), 'sel-'));
-  const agentsDir = join(d, 'plugins', 'agent-hive', 'agents');
+  const agentsDir = join(d, 'plugins', 'agnthive', 'agents');
   mkdirSync(agentsDir, { recursive: true });
   writeFileSync(join(agentsDir, 'noalias.md'), '---\nname: NoAlias\n---\nbody');
   writeFileSync(join(agentsDir, 'has.md'), '---\nname: Has\nalias: h\n---\nbody');
@@ -297,7 +297,7 @@ test('buildAgentFileMap skips no alias', () => {
 
 test('buildSkillMap skips unmapped agent', () => {
   const d = mkdtempSync(join(tmpdir(), 'sel-'));
-  const skillsDir = join(d, 'plugins', 'agent-hive', 'skills');
+  const skillsDir = join(d, 'plugins', 'agnthive', 'skills');
   mkdirSync(skillsDir, { recursive: true });
   // Plugin skills are nested: skills/<name>/SKILL.md.
   for (const [name, body] of [['noagent', '---\n---\nbody'], ['unknown', '---\nagent: Ghost\n---\nbody'], ['known', '---\nagent: Tester\n---\nbody']]) {

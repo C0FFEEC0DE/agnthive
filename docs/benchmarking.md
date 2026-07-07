@@ -196,8 +196,8 @@ The behavioral benchmark workflow is:
 This workflow:
 
 1. installs the Claude Code CLI
-2. verifies the `plugins/agent-hive` plugin directory is present (the behavioral suite runs against the shipped plugin, not the legacy `install.sh` profile)
-3. loads the plugin via `--plugin-dir plugins/agent-hive` on every `claude` invocation (see `scripts/bench_runner_claude_code.mjs`), so CI exercises the actual Node hook runtime + agents/skills that ship with the plugin; `BENCH_CLAUDE_PROFILE_DIR` points at a nonexistent path so no `~/.claude` profile is copied into the fixture workdir (plugin-only behavior, no legacy shell hooks leaking in)
+2. verifies the `plugins/agnthive` plugin directory is present (the behavioral suite runs against the shipped plugin, not the legacy `install.sh` profile)
+3. loads the plugin via `--plugin-dir plugins/agnthive` on every `claude` invocation (see `scripts/bench_runner_claude_code.mjs`), so CI exercises the actual Node hook runtime + agents/skills that ship with the plugin; `BENCH_CLAUDE_PROFILE_DIR` points at a nonexistent path so no `~/.claude` profile is copied into the fixture workdir (plugin-only behavior, no legacy shell hooks leaking in)
 4. collects the PR diff and maps it to affected agents, fixtures, task files, and shared workflow logic
 5. selects the impacted tasks from `bench/tasks/subagents/smoke/*.json`, which contains focused canary tasks for each canonical specialist role plus a few workflow-shape tasks
 6. runs `node scripts/run-benchmark.mjs` in `command` mode with the selected task list
@@ -206,7 +206,7 @@ This workflow:
 9. fails the workflow unless every selected benchmark task passes
 
 It only runs on PRs when benchmark-relevant files changed, which keeps the benchmark from re-running on unrelated pushes.
-Agent and slash-skill changes are mapped through the frontmatter declared in `plugins/agent-hive/agents/*.md` and `plugins/agent-hive/skills/*/SKILL.md`, so full-name files like `manager.md` and skill directories like `review/` stay aligned with the canonical role aliases used by the task metadata.
+Agent and slash-skill changes are mapped through the frontmatter declared in `plugins/agnthive/agents/*.md` and `plugins/agnthive/skills/*/SKILL.md`, so full-name files like `manager.md` and skill directories like `review/` stay aligned with the canonical role aliases used by the task metadata.
 
 ## Slot-Gate Mechanism
 
@@ -227,8 +227,8 @@ Concurrent benchmark runs are limited by a two-slot gate enforced through `scrip
 
 Hooks write session events to `~/.claude/logs/*.jsonl` (notifications, compact
 markers, config changes, session index). To prevent unbounded log growth on
-long-running CI runners, `appendJsonl` in `plugins/agent-hive/modules/notifications.mjs` rotates
-every stream past `CLAUDE_CREW_LOG_MAX_BYTES` (default 1 MB): the file is moved
+long-running CI runners, `appendJsonl` in `plugins/agnthive/modules/notifications.mjs` rotates
+every stream past `AGNTHIVE_LOG_MAX_BYTES` (default 1 MB): the file is moved
 to a `.old` sidecar and a fresh log is started.
 
 **Node.js 24 requirement:**

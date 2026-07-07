@@ -12,8 +12,9 @@
 // blocks (``` ... ```) are tracked so header-like lines inside them do not
 // falsely end the task.
 //
-// Output dir: $CLAUDE_CREW_BRIEF_DIR, else .claude-crew/briefs/ under the git
-// toplevel (or cwd). That path is gitignored (see .gitignore).
+// Output dir: $AGNTHIVE_BRIEF_DIR (legacy $CLAUDE_CREW_BRIEF_DIR alias honored),
+// else .agnthive/briefs/ under the git toplevel (or cwd). That path is
+// gitignored (see .gitignore).
 import { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync, statSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join, resolve } from 'node:path';
@@ -76,10 +77,10 @@ function main() {
   if (!/^[0-9]+$/.test(nStr)) fail(`N must be a positive integer, got '${nStr}'`, 2);
   if (!existsSync(planFile)) fail(`plan file not found: ${planFile}`, 2);
 
-  let briefDir = process.env.CLAUDE_CREW_BRIEF_DIR || '';
+  let briefDir = (process.env.AGNTHIVE_BRIEF_DIR ?? process.env.CLAUDE_CREW_BRIEF_DIR) || '';
   if (!briefDir) {
     const toplevel = gitToplevel();
-    briefDir = toplevel ? join(toplevel, '.claude-crew', 'briefs') : join(process.cwd(), '.claude-crew', 'briefs');
+    briefDir = toplevel ? join(toplevel, '.agnthive', 'briefs') : join(process.cwd(), '.agnthive', 'briefs');
   }
   mkdirSync(briefDir, { recursive: true });
   const briefFile = join(briefDir, `task-${nStr}-brief.md`);

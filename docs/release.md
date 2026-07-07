@@ -1,6 +1,6 @@
 # Release Runbook
 
-This document describes how the `agent-hive` Claude Code plugin is
+This document describes how the `agnthive` Claude Code plugin is
 released. The release flow is **tag-only**, builds **one artifact** from a
 **clean checkout**, **tests the exact artifact**, attaches an **SBOM**, and
 creates a **GitHub Release** — with no npm publication involved.
@@ -10,9 +10,9 @@ The workflow lives at [`.github/workflows/release.yml`](../.github/workflows/rel
 ## Distribution model
 
 The plugin is a **source repository marketplace** distribution. Claude Code
-copies the plugin directory (`plugins/agent-hive/`) into its
+copies the plugin directory (`plugins/agnthive/`) into its
 marketplace cache with **no install-time build and no npm install**. The
-runtime ships as committed ES modules under `plugins/agent-hive/modules/`.
+runtime ships as committed ES modules under `plugins/agnthive/modules/`.
 `dist/` is gitignored and reserved for future release artifacts.
 
 Consequence: **there is no npm publication**, so **npm provenance (sigstore)
@@ -47,14 +47,14 @@ state.
 The single artifact is a zip of the plugin directory:
 
 ```bash
-git archive --format=zip --prefix=agent-hive/ \
-  -o "agent-hive-plugin-${TAG}.zip" HEAD:plugins/agent-hive
+git archive --format=zip --prefix=agnthive/ \
+  -o "agnthive-plugin-${TAG}.zip" HEAD:plugins/agnthive
 ```
 
 `git archive` is chosen over an inline Node zip writer because it is
 deterministic, git-native, and excludes gitignored files by construction. The
 `HEAD:<subpath>` tree form yields plugin-dir-relative paths; `--prefix` nests
-them under `agent-hive/`, so unzipping produces a named directory
+them under `agnthive/`, so unzipping produces a named directory
 that can be dropped straight into a marketplace `plugins/` directory.
 
 ## Test-the-exact-artifact
@@ -137,8 +137,8 @@ signing step lands.
 
 1. Ensure `main` is green (`make lint`, `make test`, `make hooks`,
    `node scripts/validate.mjs`).
-2. Update the plugin version in `plugins/agent-hive/.claude-plugin/plugin.json`
-   and `plugins/agent-hive/package.json` (and the root
+2. Update the plugin version in `plugins/agnthive/.claude-plugin/plugin.json`
+   and `plugins/agnthive/package.json` (and the root
    `package.json` if appropriate) to the target SemVer.
 3. Commit and push to `main`.
 4. Tag and push the tag:

@@ -1,15 +1,15 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
-  "name": "agent-hive",
-  "displayName": "Agent Hive",
+  "name": "agnthive",
+  "displayName": "agnthive",
   "version": "0.1.0-beta.1",
   "description": "Hook-gated multi-agent SDLC profile with a Node.js hook runtime that enforces discover -> design -> implement -> verify -> review -> docs, plus footer, specialist-role, and verification contracts.",
   "author": {
     "name": "C0FFEEC0DE",
     "url": "https://github.com/C0FFEEC0DE"
   },
-  "homepage": "https://github.com/C0FFEEC0DE/agent-hive",
-  "repository": "https://github.com/C0FFEEC0DE/agent-hive",
+  "homepage": "https://agnthive.run",
+  "repository": "https://github.com/C0FFEEC0DE/agnthive",
   "license": "MIT",
   "keywords": [
     "sdlc",

@@ -6,28 +6,42 @@ import { tmpdir } from 'node:os';
 import {
   progressLedgerPath, truncateUtf8, readLedgerForInjection,
   buildPostCompactContext, resolveLedgerMaxBytes, DEFAULT_LEDGER_MAX_BYTES,
-} from '../../plugins/agent-hive/modules/ledger.mjs';
+} from '../../plugins/agnthive/modules/ledger.mjs';
 
 // --- resolveLedgerMaxBytes ------------------------------------------------
 
 test('resolveLedgerMaxBytes: default when unset/invalid, numeric override honored', () => {
   assert.equal(resolveLedgerMaxBytes({}), DEFAULT_LEDGER_MAX_BYTES);
-  assert.equal(resolveLedgerMaxBytes({ CLAUDE_CREW_LEDGER_MAX_BYTES: '' }), DEFAULT_LEDGER_MAX_BYTES);
-  assert.equal(resolveLedgerMaxBytes({ CLAUDE_CREW_LEDGER_MAX_BYTES: 'nope' }), DEFAULT_LEDGER_MAX_BYTES);
+  assert.equal(resolveLedgerMaxBytes({ AGNTHIVE_LEDGER_MAX_BYTES: '' }), DEFAULT_LEDGER_MAX_BYTES);
+  assert.equal(resolveLedgerMaxBytes({ AGNTHIVE_LEDGER_MAX_BYTES: 'nope' }), DEFAULT_LEDGER_MAX_BYTES);
+  assert.equal(resolveLedgerMaxBytes({ AGNTHIVE_LEDGER_MAX_BYTES: '32768' }), 32768);
+});
+
+test('resolveLedgerMaxBytes: legacy CLAUDE_CREW_LEDGER_MAX_BYTES alias still honored', () => {
+  // Backward-compat: the pre-rename env name is read as a fallback for one cycle.
   assert.equal(resolveLedgerMaxBytes({ CLAUDE_CREW_LEDGER_MAX_BYTES: '32768' }), 32768);
+  // The new canonical name wins when both are set.
+  assert.equal(
+    resolveLedgerMaxBytes({ AGNTHIVE_LEDGER_MAX_BYTES: '1024', CLAUDE_CREW_LEDGER_MAX_BYTES: '32768' }),
+    1024,
+  );
 });
 
 // --- progressLedgerPath ---------------------------------------------------
 
-test('progressLedgerPath: CLAUDE_CREW_PROGRESS_FILE override wins', () => {
+test('progressLedgerPath: AGNTHIVE_PROGRESS_FILE override wins', () => {
+  assert.equal(progressLedgerPath('/repo', { AGNTHIVE_PROGRESS_FILE: '/custom/ledger.md' }), '/custom/ledger.md');
+});
+
+test('progressLedgerPath: legacy CLAUDE_CREW_PROGRESS_FILE alias still honored', () => {
   assert.equal(progressLedgerPath('/repo', { CLAUDE_CREW_PROGRESS_FILE: '/custom/ledger.md' }), '/custom/ledger.md');
 });
 
-test('progressLedgerPath: defaults to <projectDir>/.claude-crew/progress.md', () => {
+test('progressLedgerPath: defaults to <projectDir>/.agnthive/progress.md', () => {
   // Build the expected with the same platform join() the SUT uses, so the
   // assertion holds on Windows (backslash) as well as POSIX (forward slash).
-  assert.equal(progressLedgerPath('/repo'), join('/repo', '.claude-crew', 'progress.md'));
-  assert.equal(progressLedgerPath(''), join('.claude-crew', 'progress.md'));
+  assert.equal(progressLedgerPath('/repo'), join('/repo', '.agnthive', 'progress.md'));
+  assert.equal(progressLedgerPath(''), join('.agnthive', 'progress.md'));
 });
 
 // --- truncateUtf8 ---------------------------------------------------------

@@ -1,8 +1,8 @@
-# agent-hive
+# agnthive
 
-[![Repository Checks](https://github.com/C0FFEEC0DE/agent-hive/actions/workflows/validate.yml/badge.svg?branch=main)](https://github.com/C0FFEEC0DE/agent-hive/actions/workflows/validate.yml)
-[![Hook Contracts](https://github.com/C0FFEEC0DE/agent-hive/actions/workflows/hooks-test.yml/badge.svg?branch=main)](https://github.com/C0FFEEC0DE/agent-hive/actions/workflows/hooks-test.yml)
-[![Security Checks](https://github.com/C0FFEEC0DE/agent-hive/actions/workflows/security-scan.yml/badge.svg?branch=main)](https://github.com/C0FFEEC0DE/agent-hive/actions/workflows/security-scan.yml)
+[![Repository Checks](https://github.com/C0FFEEC0DE/agnthive/actions/workflows/validate.yml/badge.svg?branch=main)](https://github.com/C0FFEEC0DE/agnthive/actions/workflows/validate.yml)
+[![Hook Contracts](https://github.com/C0FFEEC0DE/agnthive/actions/workflows/hooks-test.yml/badge.svg?branch=main)](https://github.com/C0FFEEC0DE/agnthive/actions/workflows/hooks-test.yml)
+[![Security Checks](https://github.com/C0FFEEC0DE/agnthive/actions/workflows/security-scan.yml/badge.svg?branch=main)](https://github.com/C0FFEEC0DE/agnthive/actions/workflows/security-scan.yml)
 
 A **hook-gated SDLC profile for Claude Code**: a platform-independent Node hook
 runtime enforces a discover → design → implement → verify → review → docs flow,
@@ -19,10 +19,10 @@ plugin.
 Install the plugin from a local checkout:
 
 ```bash
-claude plugin install ./plugins/agent-hive
+claude plugin install ./plugins/agnthive
 ```
 
-Restart Claude Code. See `plugins/agent-hive/README.md` for
+Restart Claude Code. See `plugins/agnthive/README.md` for
 requirements, configuration, the optional status line, and legacy-migration
 notes (if you previously installed the old `~/.claude` profile via `./install.sh`).
 
@@ -40,7 +40,7 @@ flowchart LR
     G -->|all pass| H[Done]
 ```
 
-Full diagram and the pieces: [`plugins/agent-hive/references/architecture.md`](plugins/agent-hive/references/architecture.md).
+Full diagram and the pieces: [`plugins/agnthive/references/architecture.md`](plugins/agnthive/references/architecture.md).
 
 ## Agents
 
@@ -92,19 +92,22 @@ These are the documented entry points; the hooks enforce the actual handoff and 
 
 ## Configuration
 
-- **Model:** none pinned — your runtime default applies. Set `"model": "…"` in your Claude Code settings to fix one.
-- **`effortLevel`:** defaults to `medium` (lower spend); raise to `high` for hard design/verify/judge stages.
-- **Safety:** `permissions.deny` blocks `sudo`, `mkfs`, `dd`, `rm -rf /`, `rm -rf ~`, force-push, and secret reads. Auto-execution only inside project folders.
-- **Observability:** `Notification` and other runtime events log to `~/.claude/logs/*.jsonl` (rotated at 1 MB).
-- See [`plugins/agent-hive/references/token-cost.md`](plugins/agent-hive/references/token-cost.md) for the full spend story.
+All configuration is **environment variables and the plugin-scoped `userConfig`**. The plugin never reads or writes `~/.claude/settings.json`, so installation is non-destructive.
+
+- **Command policy mode:** `userConfig.enforcement_mode` (default `advisory`) or the `AGNTHIVE_POLICY` env var (`advisory` fail-open vs `enforce` fail-closed on unparseable indirection). The legacy `CLAUDE_CREW_POLICY` alias is still honored.
+- **Log rotation / ledger size:** `AGNTHIVE_LOG_MAX_BYTES` (1 MiB default) and `AGNTHIVE_LEDGER_MAX_BYTES` (64 KiB default), with `CLAUDE_CREW_*` legacy aliases.
+- **Progress ledger:** `AGNTHIVE_PROGRESS_FILE` overrides the location; default `<projectDir>/.agnthive/progress.md` (gitignored).
+- **Observability:** `Notification` and other runtime hook events write structured JSONL streams under `${CLAUDE_PLUGIN_DATA}/logs` (rotated at `AGNTHIVE_LOG_MAX_BYTES`), not `~/.claude/logs/`.
+- See [`plugins/agnthive/README.md`](plugins/agnthive/README.md) for the full knob table and [`plugins/agnthive/references/token-cost.md`](plugins/agnthive/references/token-cost.md) for the spend story.
 
 ## Docs
 
-- [`plugins/agent-hive/README.md`](plugins/agent-hive/README.md) — plugin cheatsheet
-- [`plugins/agent-hive/references/architecture.md`](plugins/agent-hive/references/architecture.md) — how the hooks fit together
-- [`plugins/agent-hive/references/token-cost.md`](plugins/agent-hive/references/token-cost.md) — minimal token spend
+- [`plugins/agnthive/README.md`](plugins/agnthive/README.md) — plugin cheatsheet
+- [`plugins/agnthive/references/architecture.md`](plugins/agnthive/references/architecture.md) — how the hooks fit together
+- [`plugins/agnthive/references/token-cost.md`](plugins/agnthive/references/token-cost.md) — minimal token spend
 - [`docs/benchmarking.md`](docs/benchmarking.md) — benchmark setup, including `make bench-precheck` to reproduce the smoke precheck locally without a model
-- [`plugins/agent-hive/references/agent-contracts.md`](plugins/agent-hive/references/agent-contracts.md) — agent contracts
+- [`plugins/agnthive/references/agent-contracts.md`](plugins/agnthive/references/agent-contracts.md) — agent contracts
+- [`docs/website.md`](docs/website.md) — hosting the project site at <https://agnthive.run> via GitHub Pages (DNS records + setup)
 
 ## Contributing
 

@@ -22,7 +22,7 @@ function walk(dir, out = []) {
   return out;
 }
 
-const roots = ['scripts', 'plugins/agent-hive', 'test'];
+const roots = ['scripts', 'plugins/agnthive', 'test'];
 const files = [];
 for (const r of roots) walk(r, files);
 

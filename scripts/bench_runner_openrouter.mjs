@@ -243,7 +243,7 @@ export async function callOpenRouter(messages, opts) {
     model = 'anthropic/claude-sonnet-4.5',
     baseUrl = 'https://openrouter.ai/api/v1/chat/completions',
     siteUrl = 'https://github.com',
-    appName = 'agent-hive-benchmark',
+    appName = 'agnthive-benchmark',
     fetchFn,
     timeoutMs = 180000,
   } = opts;
@@ -346,14 +346,14 @@ export async function runMain(env, opts = {}) {
   const model = envOrDefault(env, 'OPENROUTER_MODEL', 'anthropic/claude-sonnet-4.5');
   const baseUrl = envOrDefault(env, 'OPENROUTER_BASE_URL', 'https://openrouter.ai/api/v1/chat/completions');
   const siteUrl = envOrDefault(env, 'OPENROUTER_SITE_URL', 'https://github.com');
-  const appName = envOrDefault(env, 'OPENROUTER_APP_NAME', 'agent-hive-benchmark');
+  const appName = envOrDefault(env, 'OPENROUTER_APP_NAME', 'agnthive-benchmark');
 
   const task = JSON.parse(readFileSync(taskFile, 'utf-8'));
   const fixtureFiles = collectFixtureFiles(workdir);
   const before = snapshotFiles(workdir);
 
   const claudeMd = readTextIfExists(join(repoRoot, 'CLAUDE.md'));
-  const guideMd = readTextIfExists(join(repoRoot, 'plugins', 'agent-hive', 'README.md'));
+  const guideMd = readTextIfExists(join(repoRoot, 'plugins', 'agnthive', 'README.md'));
 
   const rawResponse = await callOpenRouter(buildPrompt(task, fixtureFiles, claudeMd, guideMd), {
     apiKey, model, baseUrl, siteUrl, appName, fetchFn: opts.fetchFn,

@@ -3,11 +3,11 @@
 The controller can keep completed work across context compaction in a plain
 Markdown ledger. The runtime resolves its location in this order:
 
-1. `CLAUDE_CREW_PROGRESS_FILE`, when set.
-2. `<projectDir>/.claude-crew/progress.md`.
-3. `<cwd>/.claude-crew/progress.md` when no project directory is available.
+1. `AGNTHIVE_PROGRESS_FILE`, when set.
+2. `<projectDir>/.agnthive/progress.md`.
+3. `<cwd>/.agnthive/progress.md` when no project directory is available.
 
-`.claude-crew/` is scratch data and is gitignored. A compact entry is enough:
+`.agnthive/` is scratch data and is gitignored. A compact entry is enough:
 
 ```text
 Task N: complete (commits <base7>..<head7>, review clean)

@@ -13,7 +13,7 @@
 //     iwr|iex / curl|iex bootstrap, Start-Process -Verb Runas escalation.
 //   - CMD: rd/rmdir /s /q, del/erase /f /s, format <drive>, runas escalation.
 //
-// Modes (CLAUDE_CREW_POLICY):
+// Modes (AGNTHIVE_POLICY; the legacy CLAUDE_CREW_POLICY alias is still honored):
 //   - advisory (default): deny known-dangerous; allow unparseable indirection.
 //   - enforce: deny known-dangerous AND deny unparseable indirection with an
 //     explanation (fail-closed), per the spec's hard rule.
@@ -25,9 +25,11 @@
 
 // --- mode resolution ------------------------------------------------------
 
-/** Resolve the policy mode from env. 'enforce' is opt-in; anything else is advisory. */
+/** Resolve the policy mode from env. 'enforce' is opt-in; anything else is advisory.
+ *  Reads AGNTHIVE_POLICY, falling back to the legacy CLAUDE_CREW_POLICY alias. */
 export function resolveMode(env = process.env) {
-  const raw = typeof env.CLAUDE_CREW_POLICY === 'string' ? env.CLAUDE_CREW_POLICY.trim().toLowerCase() : '';
+  const src = env.AGNTHIVE_POLICY ?? env.CLAUDE_CREW_POLICY;
+  const raw = typeof src === 'string' ? src.trim().toLowerCase() : '';
   return raw === 'enforce' ? 'enforce' : 'advisory';
 }
 

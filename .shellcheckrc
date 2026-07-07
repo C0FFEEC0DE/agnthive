@@ -1,4 +1,4 @@
-# Global shellcheck configuration for claude-crew
+# Global shellcheck configuration for agnthive
 # SC2016: jq programs intentionally use single-quoted $var syntax
 #         (jq variables, not shell variables). Suppressed globally
 #         because every hook that calls jq with --arg uses this pattern.

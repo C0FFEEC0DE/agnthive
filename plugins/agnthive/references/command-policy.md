@@ -48,7 +48,7 @@ OS-agnostic, so their patterns are shared across all three families.
 
 ## 3. Advisory and enforce modes
 
-The policy runs in one of two modes, selected by `CLAUDE_CREW_POLICY`:
+The policy runs in one of two modes, selected by `AGNTHIVE_POLICY`:
 
 - **`advisory` (default, fail-open on the unknown).** A command the policy can
   identify as dangerous is denied. A command the policy can identify as safe, or

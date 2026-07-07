@@ -2,12 +2,12 @@
 
 ## Status and outcome
 
-This plan converts `agent-hive` from a copied `~/.claude` profile
+This plan converts `agnthive` from a copied `~/.claude` profile
 into a distributable Claude Code plugin, removes execution-critical Bash and
 Python from the repository, and prepares a submission to the Anthropic
 community marketplace.
 
-The target plugin identifier is **`agent-hive`**. Confirm that the
+The target plugin identifier is **`agnthive`**. Confirm that the
 name is available before publishing; all source and release work should use it
 consistently as the plugin namespace.
 
@@ -63,7 +63,7 @@ new fixtures with a documented reason.
 .claude-plugin/
   marketplace.json
 plugins/
-  agent-hive/
+  agnthive/
     .claude-plugin/
       plugin.json
     hooks/
@@ -124,7 +124,7 @@ scripts/
 ```
 
 The root marketplace entry will use
-`"source": "./plugins/agent-hive"`. A self-hosted marketplace is
+`"source": "./plugins/agnthive"`. A self-hosted marketplace is
 useful for local and beta validation; community distribution uses the reviewed
 submission flow instead.
 
@@ -210,7 +210,7 @@ semantics:
   transcript compatibility needs it.
 - Convert all flat command Markdown and legacy skill Markdown to
   `skills/<name>/SKILL.md`. Update references to their namespaced invocation,
-  for example `/agent-hive:review`.
+  for example `/agnthive:review`.
 - Turn `workflows/` into skill references so workflows load on demand instead
   of adding permanent session context.
 - Provide an optional Node status-line helper and a copy-paste user settings
@@ -244,11 +244,11 @@ or branch and owns only the paths named below.
 3. **Create the marketplace and plugin manifests.**
    - Owner: plugin/core agent.
    - Add `.claude-plugin/marketplace.json` and
-     `plugins/agent-hive/.claude-plugin/plugin.json` with SPDX
+     `plugins/agnthive/.claude-plugin/plugin.json` with SPDX
      license, repository, homepage, description, keywords, author metadata,
      SemVer version, and user configuration.
    - Verify: `claude plugin validate . --strict` and
-     `claude plugin validate plugins/agent-hive --strict` pass.
+     `claude plugin validate plugins/agnthive --strict` pass.
 
 4. **Create the Node workspace.**
    - Owner: plugin/core agent.

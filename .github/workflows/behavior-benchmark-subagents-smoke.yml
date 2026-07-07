@@ -27,7 +27,7 @@ on:
       - 'scripts/select-benchmark-tasks.mjs'
       - 'scripts/wait-for-benchmark-slot.mjs'
       - 'CLAUDE.md'
-      - 'plugins/agent-hive/**'
+      - 'plugins/agnthive/**'
   workflow_dispatch:
     inputs:
       selection_mode:
@@ -281,8 +281,8 @@ jobs:
           # scripts/bench_runner_claude_code.mjs), not the legacy install.sh
           # profile. Fail fast if the plugin directory is missing so the run
           # does not silently proceed with no SDLC hooks/agents loaded.
-          test -d plugins/agent-hive
-          node -e "require('node:fs').accessSync('plugins/agent-hive/.claude-plugin/plugin.json')"
+          test -d plugins/agnthive
+          node -e "require('node:fs').accessSync('plugins/agnthive/.claude-plugin/plugin.json')"
 
       - name: Run subagent smoke benchmark
         shell: bash

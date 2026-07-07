@@ -8,7 +8,7 @@ import {
   tailJsonlLines, extractLastAssistantMessageFromJsonlStream,
   extractLastAssistantMessageFromTranscript, resolvedLastAssistantMessage,
   transcriptIndicatesBackgroundedAgent,
-} from '../../plugins/agent-hive/modules/transcripts.mjs';
+} from '../../plugins/agnthive/modules/transcripts.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const transcripts = join(here, '..', '..', 'test', 'hooks', 'fixtures', 'transcripts');

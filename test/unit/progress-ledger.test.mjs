@@ -1,5 +1,5 @@
 // Tests the durable progress-ledger re-injection on PostCompact via the
-// plugin's Node hook dispatcher (plugins/agent-hive/modules/
+// plugin's Node hook dispatcher (plugins/agnthive/modules/
 // hook-dispatcher.mjs). Ported from the legacy shell-based
 // tests/test_progress_ledger.py, which exercised the removed
 // claudecfg/hooks/post-compact.sh. The ledger is re-injected as
@@ -13,7 +13,7 @@ import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 
 const REPO = join(import.meta.dirname, '..', '..');
-const PLUGIN = join(REPO, 'plugins', 'agent-hive');
+const PLUGIN = join(REPO, 'plugins', 'agnthive');
 const DISPATCHER = join(PLUGIN, 'modules', 'hook-dispatcher.mjs');
 
 function freshDir(label) {
@@ -24,7 +24,7 @@ function freshDir(label) {
 
 // Build the per-spawn env mirroring scripts/test-hooks.mjs: a hermetic HOME,
 // CLAUDE_PLUGIN_ROOT + CLAUDE_PLUGIN_DATA pointed at the temp home, and
-// CLAUDE_PROJECT_DIR set to the temp project dir. CLAUDE_CREW_PROGRESS_FILE
+// CLAUDE_PROJECT_DIR set to the temp project dir. AGNTHIVE_PROGRESS_FILE
 // pinpoints the ledger (existing or absent) so the dispatcher's
 // progressLedgerPath resolves deterministically regardless of cwd.
 function baseEnv(tmp, ledgerFile) {
@@ -35,8 +35,8 @@ function baseEnv(tmp, ledgerFile) {
     CLAUDE_PLUGIN_DATA: join(tmp, 'home', '.claude'),
     CLAUDE_PROJECT_DIR: tmp,
   };
-  delete env.CLAUDE_CREW_LEDGER_MAX_BYTES;
-  env.CLAUDE_CREW_PROGRESS_FILE = ledgerFile ?? join(tmp, 'absent.md');
+  delete env.AGNTHIVE_LEDGER_MAX_BYTES;
+  env.AGNTHIVE_PROGRESS_FILE = ledgerFile ?? join(tmp, 'absent.md');
   return env;
 }
 

@@ -1,7 +1,7 @@
 # Plugin threat model
 
 A focused, honest threat model for the
-`agent-hive` Claude Code plugin. It covers what the plugin's Node.js
+`agnthive` Claude Code plugin. It covers what the plugin's Node.js
 hook runtime does, the boundaries it enforces, and the risks that remain. It is
 written for a reviewer, not for marketing: where a guarantee is bounded, the
 bound is stated.
@@ -54,7 +54,7 @@ Mode-dependent behavior:
   variable, decoded payloads, variable-only commands) is **allowed**.
 - **`enforce`** — fail-closed on the unparseable. The same indirection is **denied
   with an explanation**. This is the hardened-mode contract; set
-  `CLAUDE_CREW_POLICY=enforce` only in hardened contexts.
+  `AGNTHIVE_POLICY=enforce` only in hardened contexts.
 
 The one hard rule that holds in both modes: a command the policy identifies as
 dangerous is always denied. Mode only changes what happens to commands it cannot
@@ -93,8 +93,8 @@ execution always resolves inside the plugin directory. The
 target does not exist inside it.
 
 The runtime writes state only under `${CLAUDE_PLUGIN_DATA}` (per-plugin data root)
-or project-provided paths (the progress ledger under `<projectDir>/.claude-crew/`,
-controlled by `CLAUDE_CREW_PROGRESS_FILE`). It does **not** write into
+or project-provided paths (the progress ledger under `<projectDir>/.agnthive/`,
+controlled by `AGNTHIVE_PROGRESS_FILE`). It does **not** write into
 `${CLAUDE_PLUGIN_ROOT}` or outside the paths hooks are explicitly given. This is
 the public compatibility policy recorded in
 `docs/specs/claude-code-plugin-node-migration.md` ("State location"): "Mutable
@@ -107,7 +107,7 @@ built from a **fixed field whitelist** (session id, cwd, transcript path, reason
 title, message, subtype, etc.) and serialized with `JSON.stringify`, which escapes
 quotes, backslashes, and control characters — so a crafted field value cannot
 break out of its JSON field or inject another record. Each stream rotates to
-`<name>.old` at `CLAUDE_CREW_LOG_MAX_BYTES` (1 MiB default), so no stream grows
+`<name>.old` at `AGNTHIVE_LOG_MAX_BYTES` (1 MiB default), so no stream grows
 unbounded.
 
 **What is never logged:** no credentials, no full environment variables, and no
@@ -120,7 +120,7 @@ plugin README, "Privacy & telemetry").
 
 The runtime makes **no network calls** and sends **nothing** off the local machine.
 All state is local under `${CLAUDE_PLUGIN_DATA}` or project-provided paths. This
-was verified by scanning `plugins/agent-hive/modules/` and `scripts/`
+was verified by scanning `plugins/agnthive/modules/` and `scripts/`
 for network primitives: no `fetch`, `http`/`https`/`net`/`dns`/`undici` imports, no
 `child_process` usage in the runtime (the only `child_process` reference is in the
 off-runtime `plugin-install-smoke.mjs` validator, which uses `spawnSync` with an

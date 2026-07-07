@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import {
   detectNodeScript, detectMakeTarget, detectTestCmd, detectLintCmd,
   detectBuildCmd, commandClass, isReleaseOrDeployCommand, verificationOutcome,
-} from '../../plugins/agent-hive/modules/verification.mjs';
+} from '../../plugins/agnthive/modules/verification.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const projects = join(here, '..', '..', 'test', 'hooks', 'projects');

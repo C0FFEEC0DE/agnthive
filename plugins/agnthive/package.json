@@ -1,9 +1,9 @@
 {
-  "name": "agent-hive-plugin",
+  "name": "agnthive-plugin",
   "version": "0.1.0-beta.1",
   "private": true,
   "type": "module",
-  "description": "Node.js hook runtime for the agent-hive Claude Code plugin.",
+  "description": "Node.js hook runtime for the agnthive Claude Code plugin.",
   "license": "MIT",
   "engines": {
     "node": ">=22"

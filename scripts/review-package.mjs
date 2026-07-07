@@ -9,8 +9,9 @@
 //   resolves to git merge-base of the default branch and HEAD (use for the
 //   final whole-branch review).
 //
-// Output dir: $CLAUDE_CREW_REVIEW_DIR, else .claude-crew/reviews/ under the git
-// toplevel (or cwd). That path is gitignored (see .gitignore).
+// Output dir: $AGNTHIVE_REVIEW_DIR (legacy $CLAUDE_CREW_REVIEW_DIR alias honored),
+// else .agnthive/reviews/ under the git toplevel (or cwd). That path is
+// gitignored (see .gitignore).
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
@@ -75,10 +76,10 @@ function main() {
   const base7 = baseSha.slice(0, 7);
   const head7 = headSha.slice(0, 7);
 
-  let reviewDir = process.env.CLAUDE_CREW_REVIEW_DIR || '';
+  let reviewDir = (process.env.AGNTHIVE_REVIEW_DIR ?? process.env.CLAUDE_CREW_REVIEW_DIR) || '';
   if (!reviewDir) {
     const toplevel = gitToplevel();
-    reviewDir = toplevel ? join(toplevel, '.claude-crew', 'reviews') : join(process.cwd(), '.claude-crew', 'reviews');
+    reviewDir = toplevel ? join(toplevel, '.agnthive', 'reviews') : join(process.cwd(), '.agnthive', 'reviews');
   }
   mkdirSync(reviewDir, { recursive: true });
   const reviewFile = join(reviewDir, `${base7}..${head7}-review.md`);

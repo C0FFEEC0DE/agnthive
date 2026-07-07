@@ -12,9 +12,11 @@ htmlcov/
 .codex
 .codex/
 .claude-crew/
+.agnthive/
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.ruff_cache/
 
 # Benchmark per-task output (logs, transcripts, workspace patches). The
 # benchmark runner writes these under BENCH_OUTPUT_DIR (default /tmp/claude-bench

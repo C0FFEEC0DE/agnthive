@@ -260,7 +260,7 @@ export function githubHeaders(token) {
   const h = {
     Accept: 'application/vnd.github+json',
     'X-GitHub-Api-Version': '2022-11-28',
-    'User-Agent': 'agent-hive-benchmark-slot-gate',
+    'User-Agent': 'agnthive-benchmark-slot-gate',
   };
   if (token) h.Authorization = `Bearer ${token}`;
   return h;

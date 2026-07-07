@@ -21,7 +21,7 @@ You should receive an initial response within 72 hours. Please allow reasonable
 time for a fix before public disclosure.
 
 This reporting path and the 72-hour initial-response target are consistent with the
-repository-root [`SECURITY.md`](https://github.com/C0FFEEC0DE/agent-hive/blob/main/SECURITY.md).
+repository-root [`SECURITY.md`](https://github.com/C0FFEEC0DE/agnthive/blob/main/SECURITY.md).
 
 ## Scope
 
@@ -51,7 +51,7 @@ for how they fit together:
 - The command policy (`modules/command-policy.mjs`) blocks destructive, privileged,
   and remote-bootstrap commands. It runs in `advisory` mode by default (fail-open on
   the unknown) or `enforce` mode (fail-closed on unparseable input) — set via the
-  plugin's `enforcement_mode` user config or `CLAUDE_CREW_POLICY`.
+  plugin's `enforcement_mode` user config or `AGNTHIVE_POLICY`.
 - Every hook uses exec form (`command: "node"` + `args` array, no `shell: true`), so
   crafted paths cannot reach a shell interpreter.
 - The runtime makes **no network calls** and sends nothing off the local machine.

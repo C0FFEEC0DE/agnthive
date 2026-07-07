@@ -1,4 +1,4 @@
-# Agent Hive
+# agnthive
 
 A **hook-gated SDLC profile for Claude Code**, packaged as a distributable
 plugin. The Node.js hook runtime enforces a `discover → design → implement →
@@ -24,19 +24,19 @@ Two paths.
 **(a) From the community marketplace** (once published):
 
 ```bash
-claude plugin marketplace add C0FFEEC0DE/agent-hive
-claude plugin install agent-hive@C0FFEEC0DE
+claude plugin marketplace add C0FFEEC0DE/agnthive
+claude plugin install agnthive@C0FFEEC0DE
 ```
 
 **(b) Local / dev install** from a checkout of this repository:
 
 ```bash
 # add this repo as a local marketplace, then install the plugin
-claude plugin marketplace add /path/to/agent-hive
-claude plugin install agent-hive@C0FFEEC0DE
+claude plugin marketplace add /path/to/agnthive
+claude plugin install agnthive@C0FFEEC0DE
 
 # or load the plugin directory directly for development
-claude --plugin-dir /path/to/agent-hive/plugins/agent-hive
+claude --plugin-dir /path/to/agnthive/plugins/agnthive
 ```
 
 Restart Claude Code after installing. The marketplace name (`C0FFEEC0DE`) is the
@@ -45,7 +45,7 @@ publisher identifier declared in `.claude-plugin/plugin.json`.
 ## Update
 
 ```bash
-claude plugin update agent-hive@C0FFEEC0DE
+claude plugin update agnthive@C0FFEEC0DE
 ```
 
 If you installed from a local marketplace, re-run the install command you used
@@ -60,24 +60,24 @@ All configuration is **environment variables and the plugin-scoped
 `userConfig`**. The plugin never reads or writes `~/.claude/settings.json`, so
 installation is non-destructive and nothing leaks into your global config.
 
-### Command policy mode (`userConfig.enforcement_mode` / `CLAUDE_CREW_POLICY`)
+### Command policy mode (`userConfig.enforcement_mode` / `AGNTHIVE_POLICY`)
 
 The command policy has two modes. Set it through the plugin's
 `enforcement_mode` user config (default `advisory`) or override with the
-`CLAUDE_CREW_POLICY` env var. See [`references/command-policy.md`](references/command-policy.md) for the full
+`AGNTHIVE_POLICY` env var. See [`references/command-policy.md`](references/command-policy.md) for the full
 contract.
 
 | Knob | Default | Effect |
 |---|---|---|
-| `CLAUDE_CREW_POLICY` | `advisory` | `advisory` denies known-dangerous commands and allows commands whose real target cannot be statically determined (fail-open on the unknown). `enforce` also denies unparseable indirection with an explanation (fail-closed). A command identified as dangerous is always denied in both modes. Any value other than `enforce` is treated as `advisory` by the runtime. |
+| `AGNTHIVE_POLICY` | `advisory` | `advisory` denies known-dangerous commands and allows commands whose real target cannot be statically determined (fail-open on the unknown). `enforce` also denies unparseable indirection with an explanation (fail-closed). A command identified as dangerous is always denied in both modes. Any value other than `enforce` is treated as `advisory` by the runtime. |
 
 ### Log rotation and ledger size
 
 | Knob | Default | Effect |
 |---|---|---|
-| `CLAUDE_CREW_LOG_MAX_BYTES` | `1048576` (1 MiB) | A telemetry JSONL stream is rotated to `<name>.old` when it reaches this many bytes, so no stream grows unbounded. Invalid/non-numeric values fall back to the default. |
-| `CLAUDE_CREW_LEDGER_MAX_BYTES` | `65536` (64 KiB) | Byte cap on the durable progress ledger re-injected after context compaction. Truncation is UTF-8 safe (a cut inside a multibyte sequence drops the partial sequence rather than emitting invalid UTF-8). Invalid/non-numeric values fall back to the default. |
-| `CLAUDE_CREW_PROGRESS_FILE` | unset | Overrides the progress-ledger location. By default the ledger lives at `<projectDir>/.claude-crew/progress.md` (gitignored scratch, never committed). |
+| `AGNTHIVE_LOG_MAX_BYTES` | `1048576` (1 MiB) | A telemetry JSONL stream is rotated to `<name>.old` when it reaches this many bytes, so no stream grows unbounded. Invalid/non-numeric values fall back to the default. |
+| `AGNTHIVE_LEDGER_MAX_BYTES` | `65536` (64 KiB) | Byte cap on the durable progress ledger re-injected after context compaction. Truncation is UTF-8 safe (a cut inside a multibyte sequence drops the partial sequence rather than emitting invalid UTF-8). Invalid/non-numeric values fall back to the default. |
+| `AGNTHIVE_PROGRESS_FILE` | unset | Overrides the progress-ledger location. By default the ledger lives at `<projectDir>/.agnthive/progress.md` (gitignored scratch, never committed). |
 
 ### Paths provided by the Claude Code runtime
 
@@ -86,7 +86,7 @@ can reason about where state lands when you run hooks directly (for debugging).
 
 | Variable | Meaning |
 |---|---|
-| `CLAUDE_PLUGIN_DATA` | Per-plugin data root. All hook state and logs write under here. Falls back to `~/.claude/plugins/data/agent-hive` when unset. |
+| `CLAUDE_PLUGIN_DATA` | Per-plugin data root. All hook state and logs write under here. Falls back to `~/.claude/plugins/data/agnthive` when unset. |
 | `CLAUDE_PROJECT_DIR` | The project directory the hook is running in. Falls back to the hook's cwd. |
 | `CLAUDE_PLUGIN_ROOT` | The plugin root, used to locate bundled assets. Falls back to the module's own directory. |
 
@@ -126,7 +126,7 @@ The plugin scopes itself and never touches your global config:
 ## Privacy & telemetry
 
 The runtime appends structured JSONL records under `${CLAUDE_PLUGIN_DATA}/logs`
-and rotates each stream at 1 MiB (`CLAUDE_CREW_LOG_MAX_BYTES`). The streams are:
+and rotates each stream at 1 MiB (`AGNTHIVE_LOG_MAX_BYTES`). The streams are:
 
 - `notification.jsonl` — runtime notification events (title, message, subtype, context).
 - `session-index.jsonl` — session-end index entries (session id, cwd, transcript path, reason, state snapshot).
@@ -153,14 +153,14 @@ scanning the shipped modules.
 To stop the hooks from running without removing the plugin:
 
 ```bash
-claude plugin disable agent-hive@C0FFEEC0DE
+claude plugin disable agnthive@C0FFEEC0DE
 ```
 
 Disabled plugins stay installed but their hooks no longer fire, so the
 workflow gates and footer contracts go quiet until you re-enable:
 
 ```bash
-claude plugin enable agent-hive@C0FFEEC0DE
+claude plugin enable agnthive@C0FFEEC0DE
 ```
 
 Use this when you want a vanilla Claude Code session in a project that has the
@@ -169,7 +169,7 @@ plugin loaded. For a full removal, see [Uninstallation](#uninstallation).
 ## Uninstallation
 
 ```bash
-claude plugin uninstall agent-hive@C0FFEEC0DE
+claude plugin uninstall agnthive@C0FFEEC0DE
 claude plugin marketplace remove C0FFEEC0DE   # if you no longer want the marketplace
 ```
 
@@ -177,7 +177,7 @@ Because the plugin never touched `~/.claude/settings.json`, there is nothing to
 restore there. Confirm with:
 
 ```bash
-claude plugin list   # agent-hive should no longer appear
+claude plugin list   # agnthive should no longer appear
 ```
 
 Only plugin-scoped data under `${CLAUDE_PLUGIN_DATA}` (logs and session state)
@@ -209,20 +209,20 @@ If you relied on the old `statusline.sh`, switch to the plugin's
   them.
 - **Enforce mode is denying legitimate commands.** Switch back to `advisory`
   (the default) by setting `enforcement_mode` to `advisory` or unsetting
-  `CLAUDE_CREW_POLICY`. Enforce fails closed on commands whose real target
+  `AGNTHIVE_POLICY`. Enforce fails closed on commands whose real target
   cannot be statically resolved; advisory allows them.
 - **Where are the logs?** Under `${CLAUDE_PLUGIN_DATA}/logs` (default
-  `~/.claude/plugins/data/agent-hive/logs`). Each stream rotates to
+  `~/.claude/plugins/data/agnthive/logs`). Each stream rotates to
   `<name>.old` at 1 MiB.
 - **Progress ledger not surviving compaction.** Check
-  `CLAUDE_CREW_PROGRESS_FILE` and that `<projectDir>/.claude-crew/progress.md`
-  is writable. The ledger is capped at `CLAUDE_CREW_LEDGER_MAX_BYTES` (64 KiB
+  `AGNTHIVE_PROGRESS_FILE` and that `<projectDir>/.agnthive/progress.md`
+  is writable. The ledger is capped at `AGNTHIVE_LEDGER_MAX_BYTES` (64 KiB
   default); larger ledgers are UTF-8-safe truncated with a note.
 
 ## Support & security reporting
 
 - **Bugs and feature requests:** open an issue at
-  <https://github.com/C0FFEEC0DE/agent-hive/issues>.
+  <https://github.com/C0FFEEC0DE/agnthive/issues>.
 - **Security vulnerabilities:** do **not** open a public issue. Report
   privately via GitHub's "Report a vulnerability" option under the repository's
   Security tab, or email the maintainer directly (see `SECURITY.md` for the

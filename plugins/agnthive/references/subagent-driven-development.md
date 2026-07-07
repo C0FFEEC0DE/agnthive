@@ -45,7 +45,7 @@ dispatch. Hand artifacts over as files:
 
 ```bash
 node scripts/task-brief.mjs docs/plans/<date>-<slug>.md <N>
-# prints: .claude-crew/briefs/task-<N>-brief.md  (your single source of requirements)
+# prints: .agnthive/briefs/task-<N>-brief.md  (your single source of requirements)
 ```
 
 Compose the dispatch so the brief is the single source of requirements. The
@@ -87,7 +87,7 @@ constraints that bind the task:
 
 ```bash
 node scripts/review-package.mjs <BASE> HEAD
-# prints: .claude-crew/reviews/<base7>..<head7>-review.md
+# prints: .agnthive/reviews/<base7>..<head7>-review.md
 ```
 
 `<BASE>` is the commit you recorded **before** dispatching the implementer —
@@ -126,7 +126,7 @@ with the whole-branch review package:
 
 ```bash
 node scripts/review-package.mjs MERGE_BASE HEAD
-# prints: .claude-crew/reviews/<mergebase7>..<head7>-review.md
+# prints: .agnthive/reviews/<mergebase7>..<head7>-review.md
 ```
 
 If it returns findings, dispatch **one** fix subagent with the complete findings

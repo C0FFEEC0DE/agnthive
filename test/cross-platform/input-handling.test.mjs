@@ -122,7 +122,7 @@ test('plugin cache path constructed from env vars is valid and writable on every
   const base =
     process.env.CLAUDE_PLUGIN_CACHE_DIR ??
     scratchPath('plugin-cache');
-  const owner = process.env.CLAUDE_PLUGIN_OWNER ?? 'claude-crew';
+  const owner = process.env.CLAUDE_PLUGIN_OWNER ?? 'agnthive';
   const pluginId = process.env.CLAUDE_PLUGIN_ID ?? 'xplat-probe';
 
   const cachePath = normalize(join(base, 'plugins', owner, pluginId));

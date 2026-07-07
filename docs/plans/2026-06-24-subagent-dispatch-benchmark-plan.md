@@ -79,7 +79,7 @@ Note (2026-06-25): The benchmark fixtures have since been ported from Python to 
 BENCHMARK_DISPATCH_CONTRACT: root_only; mode=observed; roles=bug
 ```
 
-3. В `plugins/agent-hive/modules/workflow.mjs` распарсить marker.
+3. В `plugins/agnthive/modules/workflow.mjs` распарсить marker.
    Если он есть:
    - `required_subagents` взять только из marker;
    - `required_subagent_any_of` очистить;
@@ -91,7 +91,7 @@ BENCHMARK_DISPATCH_CONTRACT: root_only; mode=observed; roles=bug
 
 Сравнить и выровнять `bug` с рабочими агентскими skills.
 
-1. Превратить `plugins/agent-hive/skills/bug/SKILL.md` из
+1. Превратить `plugins/agnthive/skills/bug/SKILL.md` из
    минимального command-skill в agent-backed skill по форме `skills/test`:
    - `agent: Bugbuster`;
    - `context: fork`;
@@ -119,7 +119,7 @@ BENCHMARK_DISPATCH_CONTRACT: root_only; mode=observed; roles=bug
 }
 ```
 
-2. В `plugins/agent-hive/hooks/hooks.json` зарегистрировать
+2. В `plugins/agnthive/hooks/hooks.json` зарегистрировать
    `PreToolUse` также для `Edit|MultiEdit|Write|NotebookEdit`.
 3. В `handlePreToolUse`:
    - до старта обязательной роли отклонять parent `Edit`/`Write`;
@@ -194,7 +194,7 @@ check. Если strict-dispatch обязан блокировать merge, он 
 
 ```
 ANTHROPIC_BASE_URL=http://127.0.0.1:11434 ANTHROPIC_AUTH_TOKEN=dummy-local-not-used \
-OLLAMA_MODEL=glm-5.2:cloud claude -p ... --plugin-dir plugins/agent-hive
+OLLAMA_MODEL=glm-5.2:cloud claude -p ... --plugin-dir plugins/agnthive
 ```
 
 Замер: 3 маршрута (A=alias `@bug`, B=slash `/bug`, C=явный Agent tool с
@@ -252,7 +252,7 @@ prompt), модель работала через локальный прокс�
 `scripts/bench_runner_claude_code.mjs`) на одной задаче
 `subagent-bugbuster-zero-division-lite` с dummy-токеном, реальным
 `buildPrompt`, изолированным workdir, `OLLAMA_MODEL=glm-5.2:cloud`,
-`--plugin-dir plugins/agent-hive`, `--max-turns 8`:
+`--plugin-dir plugins/agnthive`, `--max-turns 8`:
 
 Поля `result.json` runner'а:
 

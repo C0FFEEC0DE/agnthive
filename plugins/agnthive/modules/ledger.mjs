@@ -8,7 +8,8 @@
 // file at skill start; PostCompact best-effort re-surfaces it in the freshly
 // compacted context. When no ledger exists, the hook emits nothing.
 //
-// Truncation is byte-capped (CLAUDE_CREW_LEDGER_MAX_BYTES, default 64 KiB) and
+// Truncation is byte-capped (AGNTHIVE_LEDGER_MAX_BYTES, default 64 KiB; legacy
+// CLAUDE_CREW_LEDGER_MAX_BYTES alias still honored) and
 // UTF-8 safe: a cap that lands inside a multibyte sequence drops the partial
 // sequence rather than emitting invalid UTF-8 to JSON serialization.
 import { readFileSync, statSync, existsSync } from 'node:fs';
@@ -17,9 +18,10 @@ import { isNonEmpty } from './util.mjs';
 
 export const DEFAULT_LEDGER_MAX_BYTES = 64 * 1024; // 64 KiB
 
-/** Resolve a numeric byte cap from env, falling back to the default on invalid. */
+/** Resolve a numeric byte cap from env, falling back to the default on invalid.
+ *  Reads AGNTHIVE_LEDGER_MAX_BYTES, then the legacy CLAUDE_CREW_LEDGER_MAX_BYTES alias. */
 export function resolveLedgerMaxBytes(env = process.env, fallback = DEFAULT_LEDGER_MAX_BYTES) {
-  const raw = env.CLAUDE_CREW_LEDGER_MAX_BYTES;
+  const raw = env.AGNTHIVE_LEDGER_MAX_BYTES ?? env.CLAUDE_CREW_LEDGER_MAX_BYTES;
   if (typeof raw !== 'string' || raw.length === 0) return fallback;
   const trimmed = raw.trim();
   if (!/^\d+$/.test(trimmed)) return fallback;
@@ -29,15 +31,16 @@ export function resolveLedgerMaxBytes(env = process.env, fallback = DEFAULT_LEDG
 }
 
 /**
- * Durable progress-ledger location. Honors CLAUDE_CREW_PROGRESS_FILE;
- * otherwise resolves to <projectDir>/.claude-crew/progress.md (gitignored
- * scratch, never committed). Mirrors lib.sh progress_ledger_path.
+ * Durable progress-ledger location. Honors AGNTHIVE_PROGRESS_FILE (legacy
+ * CLAUDE_CREW_PROGRESS_FILE alias still honored); otherwise resolves to
+ * <projectDir>/.agnthive/progress.md (gitignored scratch, never committed).
+ * Mirrors lib.sh progress_ledger_path.
  */
 export function progressLedgerPath(projectDir, env = process.env) {
-  const explicit = env.CLAUDE_CREW_PROGRESS_FILE;
+  const explicit = env.AGNTHIVE_PROGRESS_FILE ?? env.CLAUDE_CREW_PROGRESS_FILE;
   if (typeof explicit === 'string' && explicit.length > 0) return explicit;
   const base = isNonEmpty(projectDir) ? projectDir : '.';
-  return join(base, '.claude-crew', 'progress.md');
+  return join(base, '.agnthive', 'progress.md');
 }
 
 /**

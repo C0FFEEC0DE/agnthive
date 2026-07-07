@@ -1,6 +1,6 @@
 # Plugin architecture
 
-`agent-hive` is self-contained inside this plugin directory. Claude
+`agnthive` is self-contained inside this plugin directory. Claude
 Code loads the manifest, then every hook invokes the shared Node entry point at
 `modules/hook-dispatcher.mjs`.
 
@@ -36,7 +36,7 @@ flowchart TD
 Mutable state is written outside the installed plugin tree. Claude Code supplies
 `CLAUDE_PLUGIN_DATA`; the runtime falls back to its documented Claude data
 directory when that variable is absent. The project-local progress ledger is
-`<projectDir>/.claude-crew/progress.md` unless `CLAUDE_CREW_PROGRESS_FILE` is
+`<projectDir>/.agnthive/progress.md` unless `AGNTHIVE_PROGRESS_FILE` is
 set. Both locations keep installation files immutable.
 
 Notification and lifecycle logs are JSONL streams under plugin data and rotate

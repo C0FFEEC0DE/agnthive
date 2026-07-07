@@ -31,7 +31,7 @@ function commit(repo, env, msg, content) {
 }
 
 function runPkg(repo, env, base, head, reviewDir) {
-  const e = { ...env, CLAUDE_CREW_REVIEW_DIR: reviewDir };
+  const e = { ...env, AGNTHIVE_REVIEW_DIR: reviewDir };
   return spawnSync(process.execPath, [SCRIPT, base, head], { encoding: 'utf-8', env: e, cwd: repo });
 }
 

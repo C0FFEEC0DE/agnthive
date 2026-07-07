@@ -1,7 +1,7 @@
 # Traceability matrix: Claude Code plugin and Node.js migration
 
 Status: **Completed — historical traceability record.** The Node runtime now
-ships under `plugins/agent-hive/modules/`; the Bash runtime was
+ships under `plugins/agnthive/modules/`; the Bash runtime was
 removed. This document preserves the source-to-target mapping and the accepted
 behavioral deltas from the migration.
 
@@ -268,7 +268,7 @@ JSON fixture and assertion.
    compatibility needs it; no packaged symlinks.
 6. **Commands/skills:** flat command Markdown + legacy skill Markdown →
    `skills/<name>/SKILL.md` with namespaced invocation
-   (`/agent-hive:review`).
+   (`/agnthive:review`).
 7. **Workflows:** `workflows/` → on-demand skill references (no permanent
    session context).
 8. **Settings:** plugin cannot silently take over global settings/statusline;

@@ -4,7 +4,7 @@
 // every deny reason must contain the spec §6 substring.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { classifyCommand, resolveMode, normalizeCommand, permissionDeniedOutcome, isBenchmarkCi, CODE } from '../../plugins/agent-hive/modules/command-policy.mjs';
+import { classifyCommand, resolveMode, normalizeCommand, permissionDeniedOutcome, isBenchmarkCi, CODE } from '../../plugins/agnthive/modules/command-policy.mjs';
 import { CORPUS, expandExpectations } from './command-policy.corpus.mjs';
 
 // --- full corpus -----------------------------------------------------------
@@ -50,11 +50,19 @@ test('unparseable cases: advisory allows, enforce denies, with the resolved-reas
 
 test('resolveMode: enforce is opt-in, anything else is advisory', () => {
   assert.equal(resolveMode({}), 'advisory');
-  assert.equal(resolveMode({ CLAUDE_CREW_POLICY: '' }), 'advisory');
-  assert.equal(resolveMode({ CLAUDE_CREW_POLICY: 'advisory' }), 'advisory');
+  assert.equal(resolveMode({ AGNTHIVE_POLICY: '' }), 'advisory');
+  assert.equal(resolveMode({ AGNTHIVE_POLICY: 'advisory' }), 'advisory');
+  assert.equal(resolveMode({ AGNTHIVE_POLICY: 'enforce' }), 'enforce');
+  assert.equal(resolveMode({ AGNTHIVE_POLICY: 'ENFORCE' }), 'enforce');
+  assert.equal(resolveMode({ AGNTHIVE_POLICY: 'strict' }), 'advisory'); // unknown -> advisory
+});
+
+test('resolveMode: legacy CLAUDE_CREW_POLICY alias still honored, new name wins', () => {
+  // Backward-compat: the pre-rename env name is read as a fallback for one cycle.
   assert.equal(resolveMode({ CLAUDE_CREW_POLICY: 'enforce' }), 'enforce');
-  assert.equal(resolveMode({ CLAUDE_CREW_POLICY: 'ENFORCE' }), 'enforce');
-  assert.equal(resolveMode({ CLAUDE_CREW_POLICY: 'strict' }), 'advisory'); // unknown -> advisory
+  assert.equal(resolveMode({ CLAUDE_CREW_POLICY: 'advisory' }), 'advisory');
+  // The new canonical name takes precedence when both are set.
+  assert.equal(resolveMode({ AGNTHIVE_POLICY: 'advisory', CLAUDE_CREW_POLICY: 'enforce' }), 'advisory');
 });
 
 // --- normalization ---------------------------------------------------------
@@ -82,8 +90,8 @@ test('permissionDeniedOutcome: hard-denied -> no retry; safe -> retry; benchmark
 });
 
 test('permissionDeniedOutcome: in enforce mode an unparseable command is hard-denied -> no retry', () => {
-  assert.equal(permissionDeniedOutcome('eval "$cmd"', { CLAUDE_CREW_POLICY: 'enforce' }).retry, false);
-  assert.equal(permissionDeniedOutcome('eval "$cmd"', { CLAUDE_CREW_POLICY: 'advisory' }).retry, true);
+  assert.equal(permissionDeniedOutcome('eval "$cmd"', { AGNTHIVE_POLICY: 'enforce' }).retry, false);
+  assert.equal(permissionDeniedOutcome('eval "$cmd"', { AGNTHIVE_POLICY: 'advisory' }).retry, true);
 });
 
 test('isBenchmarkCi: any of the three bench env vars set is benchmark context', () => {
@@ -129,7 +137,7 @@ test('cross-shell: named-target recursive delete is allowed (narrow targeting)',
 
 test('command-policy module never imports child_process or spawns a shell', async () => {
   const src = await import('node:fs').then((fs) => fs.readFileSync(
-    new URL('../../plugins/agent-hive/modules/command-policy.mjs', import.meta.url), 'utf8'));
+    new URL('../../plugins/agnthive/modules/command-policy.mjs', import.meta.url), 'utf8'));
   // Check actual import/require statements, not the header comment which says
   // "no child_process" by design.
   assert.ok(!/import\s+.*child_process|from\s+['"]node:child_process|require\s*\(\s*['"]child_process/.test(src), 'must not import child_process');
