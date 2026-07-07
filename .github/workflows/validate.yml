@@ -28,7 +28,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       # Go is only needed to `go install` actionlint, which is installed on
       # Linux only (see below), so the Go toolchain is not set up elsewhere.
