@@ -103,14 +103,14 @@ test('ref without value exits two', () => {
   assert.match(result.stderr, /--ref needs a value/);
 });
 
-test('detached head exits two', () => {
+test('detached head exits two', stubSubprocessOnly, () => {
   const d = mkdtempSync(join(tmpdir(), 'rr-'));
   const { result } = runCli(d, [], { FAKE_GIT_REF: 'HEAD' });
   assert.equal(result.status, 2);
   assert.match(result.stderr, /detached HEAD/);
 });
 
-test('no ref no git exits two', () => {
+test('no ref no git exits two', stubSubprocessOnly, () => {
   const d = mkdtempSync(join(tmpdir(), 'rr-'));
   const { result } = runCli(d, []);
   assert.equal(result.status, 2);
