@@ -1,9 +1,9 @@
 {
-  "name": "agnthive-plugin",
+  "name": "agnthive",
   "version": "0.1.0-beta.1",
   "private": true,
   "type": "module",
-  "description": "Node.js hook runtime for the agnthive Claude Code plugin.",
+  "description": "Hook-gated SDLC profile for Claude Code — discover → design → implement → verify → review → docs, with specialist agents and a benchmark suite that catches regressions.",
   "license": "MIT",
   "engines": {
     "node": ">=22"

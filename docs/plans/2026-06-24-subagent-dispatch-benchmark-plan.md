@@ -214,7 +214,7 @@ OLLAMA_MODEL=glm-5.2:cloud claude -p ... --plugin-dir plugins/agnthive
 по всем трём маршрутам (`SubagentStart` срабатывает 6–12 раз за запуск).
 Реальная причина провала — **сабагент не остаётся в изолированном workdir
 бенчмарка**: он `cd` в настоящий fixture репо
-(`/var/home/chaos_weaver/code/claude-crew/bench/fixtures/python-math/`) и
+(`bench/fixtures/python-math/`, since ported to Node as `bench/fixtures/python-math/` with `calculator.mjs`) и
 редактирует/тестирует его, а не копию в workdir задачи. Поэтому runner видит
 `workspace_changed=false` (копия нетронута) и ставит задаче fail, хотя сабот
 реально выполнен — но в неправильном месте. Ни один запуск не сослался на

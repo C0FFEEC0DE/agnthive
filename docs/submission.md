@@ -37,7 +37,7 @@ release flow.
 ## Verification evidence (attach or cite)
 
 - `claude plugin validate plugins/agnthive --strict` → **passed**
-  (exit 0), run with `claude` CLI 2.1.185.
+  (exit 0), run with `claude` CLI ≥ 2.1.
 - `node scripts/plugin-install-smoke.mjs` → **PASS (11 checks)** — manifest
   fields, path resolution, no `.py`/`.sh` in runtime, hook exec form
   (command `node` + args array, no `shell:true`), statusline parse.
@@ -46,7 +46,7 @@ release flow.
   paths, CRLF, UTF-8 multi-byte splits, partial UTF-8, cache paths.
 - Supply chain: CodeQL (js-ts), dependency-review, SBOM (syft), Dependabot,
   minimal token scopes — see `.github/workflows/`.
-- Local gates: `make lint` (Node ESM syntax check, 86 files), `make test`
+- Local gates: `make lint` (Node ESM syntax check), `make test`
   (Node --test, node-only — no pytest), `make cov` (alias of `make test`,
   node-only), `make hooks` (157 cases / 2 scenarios),
   `node scripts/validate.mjs` (All checks passed).
@@ -81,8 +81,9 @@ release flow.
 
 ## Remaining human actions
 
-1. Push `feat/plugin-node-migration` and open/merge the PR to `main` (or
-   squash) so the tagged tree is what the marketplace clones.
+1. The migration has been merged to `main`. Push any remaining release-prep
+   commits directly to `main` (or a short-lived branch) so the tagged tree
+   is what the marketplace clones.
 2. Cut `v0.1.0-beta.1` and push the tag; confirm the Release workflow is green
    and the artifact + SBOM are attached.
 3. Collect Windows/macOS/Linux beta-tester results against the tagged artifact.

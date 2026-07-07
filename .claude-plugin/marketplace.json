@@ -1,6 +1,6 @@
 {
   "name": "agnthive",
-  "description": "Self-hosted marketplace for the agnthive Claude Code plugin: a hook-gated SDLC profile with a Node.js hook runtime.",
+  "description": "Self-hosted marketplace for the agnthive Claude Code plugin — a hook-gated SDLC profile with specialist agents and benchmark-driven regression coverage.",
   "owner": {
     "name": "C0FFEEC0DE",
     "url": "https://github.com/C0FFEEC0DE"

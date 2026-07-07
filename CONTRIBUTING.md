@@ -95,7 +95,7 @@ Before submitting:
 
 ## GitHub Actions Requirements
 
-**Node.js 20 is deprecated on GitHub Actions runners** (removed September 2026). All workflows must target Node.js 24:
+**Node.js 20 is deprecated on GitHub Actions runners** (scheduled for removal in September 2026). All workflows must target Node.js 24:
 
 - Set `env: FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true` at the workflow level
 - Use `actions/cache@v5` (not v4) — v4 targets Node.js 20

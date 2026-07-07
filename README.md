@@ -89,8 +89,7 @@ claude plugin install ./plugins/agnthive
 ```
 
 Restart Claude Code. See `plugins/agnthive/README.md` for requirements,
-configuration, the optional status line, and legacy-migration notes (if you
-previously installed the old `~/.claude` profile via `./install.sh`).
+configuration, the optional status line, and legacy-migration notes.
 
 ## Configuration
 
