@@ -1,21 +1,19 @@
 # agnthive
 
-Install — not in the plugin directory yet, so install from source:
+Install — not in the plugin directory yet, so install from source in one command:
 
 ```bash
-git clone https://github.com/C0FFEEC0DE/agnthive.git
-cd agnthive
-claude plugin install ./plugins/agnthive
+git clone https://github.com/C0FFEEC0DE/agnthive.git && cd agnthive && claude plugin install ./plugins/agnthive
 ```
 
 [![Repository Checks](https://github.com/C0FFEEC0DE/agnthive/actions/workflows/validate.yml/badge.svg?branch=main)](https://github.com/C0FFEEC0DE/agnthive/actions/workflows/validate.yml)
 [![Hook Contracts](https://github.com/C0FFEEC0DE/agnthive/actions/workflows/hooks-test.yml/badge.svg?branch=main)](https://github.com/C0FFEEC0DE/agnthive/actions/workflows/hooks-test.yml)
 [![Security Checks](https://github.com/C0FFEEC0DE/agnthive/actions/workflows/security-scan.yml/badge.svg?branch=main)](https://github.com/C0FFEEC0DE/agnthive/actions/workflows/security-scan.yml)
 
-A **hook-gated SDLC profile for Claude Code**: a platform-independent Node hook
-runtime enforces a discover → design → implement → verify → review → docs flow,
-eight specialist agents do the work, and a benchmark suite catches agent
-regressions on every PR.
+Claude Code with a software engineering discipline built in — a **hook-gated SDLC
+profile** wraps every prompt in discover → design → implement → verify → review →
+docs, eight specialist agents collaborate with guardrails on, and a benchmark
+suite catches regressions before they ship.
 
 ## How it works
 
