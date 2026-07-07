@@ -55,14 +55,8 @@
     a.btn.primary:hover { transform: translateY(-1px); }
     section { padding: 48px 0; border-bottom: 1px solid var(--border); }
     h2 { font-size: 24px; margin: 0 0 20px; letter-spacing: -0.01em; }
-    ul.features { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; }
-    ul.features li { padding-left: 26px; position: relative; }
-    ul.features li::before {
-      content: ""; position: absolute; left: 0; top: 9px; width: 8px; height: 8px;
-      border-radius: 2px; background: var(--accent-2); transform: rotate(45deg);
-    }
-    ul.features b { color: var(--fg); }
-    ul.features p { margin: 4px 0 0; color: var(--muted); }
+    .note { font-size: 14px; color: var(--muted); margin: 14px 0 28px; }
+    .hint { color: var(--muted); margin: 0 0 16px; }
     .agents { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
     .chip {
       font: 500 13px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -93,8 +87,11 @@
         specialist agents and a benchmark suite that catches regressions on every PR.
       </p>
       <div class="install">
-        <pre>claude plugin install ./plugins/agnthive</pre>
+        <pre>git clone https://github.com/C0FFEEC0DE/agnthive.git
+cd agnthive
+claude plugin install ./plugins/agnthive</pre>
       </div>
+      <p class="note">Not in the Claude Code plugin directory yet — install from source.</p>
       <div class="cta">
         <a class="btn primary" href="https://github.com/C0FFEEC0DE/agnthive">View on GitHub</a>
         <a class="btn" href="https://github.com/C0FFEEC0DE/agnthive/tree/main/docs">Docs</a>
@@ -102,25 +99,12 @@
     </header>
 
     <section>
-      <h2>What it gives you</h2>
-      <ul class="features">
-        <li>
-          <b>Deterministic handoff &amp; stop contracts</b>
-          <p>Footer markers, specialist-role enforcement, and verification gates are checked by Node hooks — not vibes.</p>
-        </li>
-        <li>
-          <b>Defense-in-depth command blocking</b>
-          <p>A command policy blocks dangerous tool calls with exec-form integrity and path resolution, advisory or enforce mode.</p>
-        </li>
-        <li>
-          <b>Token-spend discipline</b>
-          <p>Minimal-context agents and explicit role markers keep spend predictable.</p>
-        </li>
-        <li>
-          <b>Benchmark-driven regression coverage</b>
-          <p>Per-role smoke tasks and a two-slot CI gate catch agent regressions before they land.</p>
-        </li>
-      </ul>
+      <h2>Usage</h2>
+      <p class="hint">Address specialist agents with <code class="inline">@aliases</code> in any Claude Code prompt:</p>
+      <pre>@e explore the auth module
+@cr review api.mjs
+@t write tests for utils
+@manager implement new feature: user authentication</pre>
     </section>
 
     <section>
