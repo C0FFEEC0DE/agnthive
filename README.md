@@ -1,8 +1,10 @@
 # agnthive
 
-Install:
+Install — not in the plugin directory yet, so install from source:
 
 ```bash
+git clone https://github.com/C0FFEEC0DE/agnthive.git
+cd agnthive
 claude plugin install ./plugins/agnthive
 ```
 
@@ -81,15 +83,16 @@ These are the documented entry points; the hooks enforce the actual handoff and 
 
 ## Install
 
-Install the plugin from a local checkout, then restart Claude Code:
+agnthive isn't in the Claude Code plugin directory yet, so install from source:
+clone this repo, then from the checkout run:
 
 ```bash
 claude plugin install ./plugins/agnthive
 ```
 
-See `plugins/agnthive/README.md` for requirements, configuration, the optional
-status line, and legacy-migration notes (if you previously installed the old
-`~/.claude` profile via `./install.sh`).
+Restart Claude Code. See `plugins/agnthive/README.md` for requirements,
+configuration, the optional status line, and legacy-migration notes (if you
+previously installed the old `~/.claude` profile via `./install.sh`).
 
 ## Configuration
 
