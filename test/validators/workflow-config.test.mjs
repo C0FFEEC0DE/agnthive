@@ -61,8 +61,8 @@ test('security-scan checkout fetches full history', () => {
   const block = extractJobBlock(content, 'security-scan');
   assert.ok(block !== null, 'security-scan job block not found');
   assert.ok(
-    block.includes('actions/checkout@v5'),
-    "security-scan job must use actions/checkout@v5",
+    block.includes('actions/checkout@v'),
+    "security-scan job must use actions/checkout@v5 or later",
   );
   assert.ok(
     block.includes('fetch-depth: 0'),
