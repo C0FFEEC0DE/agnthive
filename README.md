@@ -1,5 +1,11 @@
 # agnthive
 
+Install:
+
+```bash
+claude plugin install ./plugins/agnthive
+```
+
 [![Repository Checks](https://github.com/C0FFEEC0DE/agnthive/actions/workflows/validate.yml/badge.svg?branch=main)](https://github.com/C0FFEEC0DE/agnthive/actions/workflows/validate.yml)
 [![Hook Contracts](https://github.com/C0FFEEC0DE/agnthive/actions/workflows/hooks-test.yml/badge.svg?branch=main)](https://github.com/C0FFEEC0DE/agnthive/actions/workflows/hooks-test.yml)
 [![Security Checks](https://github.com/C0FFEEC0DE/agnthive/actions/workflows/security-scan.yml/badge.svg?branch=main)](https://github.com/C0FFEEC0DE/agnthive/actions/workflows/security-scan.yml)
@@ -8,23 +14,6 @@ A **hook-gated SDLC profile for Claude Code**: a platform-independent Node hook
 runtime enforces a discover → design → implement → verify → review → docs flow,
 eight specialist agents do the work, and a benchmark suite catches agent
 regressions on every PR.
-
-It gives you: deterministic handoff/stop contracts, token-spend discipline,
-explicit `Handoff evidence: @alias ...` markers for benchmark-visible role use,
-and defense-in-depth command blocking — all as a distributable Claude Code
-plugin.
-
-## Install
-
-Install the plugin from a local checkout:
-
-```bash
-claude plugin install ./plugins/agnthive
-```
-
-Restart Claude Code. See `plugins/agnthive/README.md` for
-requirements, configuration, the optional status line, and legacy-migration
-notes (if you previously installed the old `~/.claude` profile via `./install.sh`).
 
 ## How it works
 
@@ -89,6 +78,18 @@ These are the documented entry points; the hooks enforce the actual handoff and 
 | refactor | verification or `@t` + `@cr` + (`@a` or `@e`) |
 | review | `@cr` |
 | docs | `@doc` |
+
+## Install
+
+Install the plugin from a local checkout, then restart Claude Code:
+
+```bash
+claude plugin install ./plugins/agnthive
+```
+
+See `plugins/agnthive/README.md` for requirements, configuration, the optional
+status line, and legacy-migration notes (if you previously installed the old
+`~/.claude` profile via `./install.sh`).
 
 ## Configuration
 
