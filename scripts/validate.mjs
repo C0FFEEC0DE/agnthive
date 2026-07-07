@@ -367,8 +367,8 @@ function checkWorkflowPolicy() {
     // neither installs Python, runs `compileall`, or runs `ruff`. validate.yml
     // still sets up Go on Linux to build actionlint; pin that toolchain.
     ['validate.yml', 'uses: actions/setup-go@v6', 'Repository Checks uses setup-go@v6', 'Repository Checks must use setup-go@v6'],
-    ['validate.yml', 'uses: actions/setup-node@v5', 'Repository Checks uses setup-node@v5', 'Repository Checks must use setup-node@v5'],
-    ['lint.yml', 'uses: actions/setup-node@v5', 'Lint uses setup-node@v5', 'Lint must use setup-node@v5'],
+    ['validate.yml', 'uses: actions/setup-node@v', 'Repository Checks uses setup-node@v5+', 'Repository Checks must use setup-node@v5 or later'],
+    ['lint.yml', 'uses: actions/setup-node@v', 'Lint uses setup-node@v5+', 'Lint must use setup-node@v5 or later'],
   ];
   for (const [file, needle, ok, err] of checks) {
     const txt = readWorkflow(file);
@@ -407,8 +407,8 @@ function checkNode24Readiness() {
   console.log('--- Checking GitHub Actions Node.js 24 readiness ---');
   const wfs = walkGlob(join(REPO_ROOT, '.github', 'workflows'), '.yml');
   const all = wfs.map((f) => readFileSync(f, 'utf-8')).join('\n');
-  if (all.includes('actions/cache@v4')) reportError('actions/cache@v4 targets deprecated Node.js 20 — use v5');
-  else console.log('OK: No actions/cache@v4 (uses v5)');
+  if (all.includes('actions/cache@v4')) reportError('actions/cache@v4 targets deprecated Node.js 20 — use v5 or v6');
+  else console.log('OK: No actions/cache@v4 (uses v5 or v6)');
   if (all.includes('FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true')) console.log('OK: FORCE_JAVASCRIPT_ACTIONS_TO_NODE24 set');
   else reportError('Benchmark workflows must set env: FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true');
   console.log('');
