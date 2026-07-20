@@ -34,7 +34,7 @@ jobs:
       # Linux only (see below), so the Go toolchain is not set up elsewhere.
       - name: Set up Go
         if: runner.os == 'Linux'
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version: '1.23'
 
