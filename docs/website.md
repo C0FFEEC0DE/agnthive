@@ -83,3 +83,11 @@ CNAME to `C0FFEEC0DE.github.io`. The Pages **Custom domain** UI will show
   propagation.
 - This doc describes hosting only; release/deploy automation stays disabled per
   the profile. Pages deployment is GitHub's branch-based action, not repo CI.
+- `index.html` is built on **Bootstrap 5.3** loaded from the jsDelivr CDN
+  (`https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css`),
+  with the dark CRT/neon brand applied as a custom CSS layer on top of
+  Bootstrap dark mode. There is still **no build step and no npm** — the page is
+  hand-authored static HTML; the only new dependency is that single runtime CDN
+  request for the stylesheet. If you need a fully self-hosted page (no external
+  request), vendor `bootstrap.min.css` into the repo root and point the `<link>`
+  at the local file instead.
