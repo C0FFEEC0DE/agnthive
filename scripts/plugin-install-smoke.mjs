@@ -11,7 +11,10 @@
 //   1. .claude-plugin/plugin.json parses and has required manifest fields
 //      (name, version, displayName, description, author, license); userConfig,
 //      if present, is well-formed (object whose entries each declare type,
-//      title, description, and a default).
+//      title, description, and a default). Strict tier-1 schema checks also
+//      enforce that each userConfig `type` is one of the allowed kinds and that
+//      `default` matches the declared type (e.g. a number key has a numeric
+//      default).
 //   2. Every path declared in the manifest resolves inside the packaged dir:
 //      the `hooks` manifest field, every `${CLAUDE_PLUGIN_ROOT}/...` target
 //      referenced in hooks.json, and the conventional agents/, skills/, and
@@ -22,6 +25,11 @@
 //   4. Hook entries use exec form: command === "node" with a non-empty args
 //      array; no shell string and no shell:true flag.
 //   5. The statusline helper (scripts/statusline.mjs) parses (node --check).
+//   6. The subagent statusline helper (scripts/subagent-statusline.mjs), if
+//      shipped, parses (node --check, explicit argv).
+//   7. The plugin settings.json (settings.json), if shipped, uses only keys a
+//      plugin is allowed to declare (agent, subagentStatusLine) — it must not
+//      carry main-session keys like statusLine, outputStyle, permissions, or env.
 //
 // Exports packagePlugin(srcDir, destDir) and validatePackagedPlugin(pluginDir)
 // for unit testing; CLI main() packages to a mkdtempSync temp dir, validates,
@@ -160,6 +168,30 @@ export function validatePackagedPlugin(pluginDir) {
         for (const req of ['type', 'title', 'description', 'default']) {
           if (!(req in def)) {
             errors.push(`manifest userConfig.${key} missing required field: ${req}`);
+            ucOk = false;
+          }
+        }
+        // Strict tier-1 schema: `type` must be a supported kind, and `default`
+        // must match the declared type (string->string, number->finite number,
+        // boolean->boolean). directory/file defaults are left unconstrained.
+        const ALLOWED_UC_TYPES = new Set(['string', 'number', 'boolean', 'directory', 'file']);
+        if (typeof def.type === 'string' && def.type.length > 0 && !ALLOWED_UC_TYPES.has(def.type)) {
+          errors.push(
+            `manifest userConfig.${key} has unsupported type: ${def.type} (allowed: ${[...ALLOWED_UC_TYPES].join(', ')})`,
+          );
+          ucOk = false;
+        }
+        if ('default' in def && typeof def.type === 'string') {
+          const t = def.type;
+          const dft = def.default;
+          const mismatch =
+            (t === 'number' && (typeof dft !== 'number' || !Number.isFinite(dft))) ||
+            (t === 'string' && typeof dft !== 'string') ||
+            (t === 'boolean' && typeof dft !== 'boolean');
+          if (mismatch) {
+            errors.push(
+              `manifest userConfig.${key} default does not match its type ${t}: ${JSON.stringify(dft)}`,
+            );
             ucOk = false;
           }
         }
@@ -305,6 +337,47 @@ export function validatePackagedPlugin(pluginDir) {
       errors.push(`statusline.mjs failed to parse (node --check): ${detail || `exit ${r.status}`}`);
     } else {
       checks.push('statusline helper scripts/statusline.mjs parses (node --check)');
+    }
+  }
+
+  // ---- Check 6: subagent statusline helper parses (if shipped).
+  const subStatuslinePath = join(pluginDir, 'scripts', 'subagent-statusline.mjs');
+  if (existsSync(subStatuslinePath)) {
+    const r2 = spawnSync(process.execPath, ['--check', subStatuslinePath], { stdio: 'pipe' });
+    if (r2.status !== 0) {
+      const detail = (r2.stderr ? r2.stderr.toString().trim() : '').split('\n').slice(0, 3).join(' | ');
+      errors.push(`subagent-statusline.mjs failed to parse (node --check): ${detail || `exit ${r2.status}`}`);
+    } else {
+      checks.push('subagent statusline helper scripts/subagent-statusline.mjs parses (node --check)');
+    }
+  }
+
+  // ---- Check 7: plugin settings.json uses only supported keys (if shipped).
+  // A plugin settings.json supports `agent` and `subagentStatusLine` only; it
+  // must NOT carry main-session keys (statusLine, outputStyle, permissions, env)
+  // that a plugin cannot meaningfully set and that would mislead users.
+  const settingsPath = join(pluginDir, 'settings.json');
+  if (existsSync(settingsPath)) {
+    const ALLOWED_SETTINGS_KEYS = new Set(['agent', 'subagentStatusLine']);
+    let settings = null;
+    try {
+      settings = JSON.parse(readFileSync(settingsPath, 'utf-8'));
+    } catch (e) {
+      errors.push(`plugin settings.json failed to parse as JSON: ${e.message}`);
+    }
+    if (settings !== null) {
+      if (typeof settings !== 'object' || Array.isArray(settings) || settings === null) {
+        errors.push('plugin settings.json must be a JSON object');
+      } else {
+        const bad = Object.keys(settings).filter((k) => !ALLOWED_SETTINGS_KEYS.has(k));
+        if (bad.length > 0) {
+          errors.push(
+            `plugin settings.json declares unsupported key(s): ${bad.join(', ')} (a plugin settings.json supports only: ${[...ALLOWED_SETTINGS_KEYS].join(', ')})`,
+          );
+        } else {
+          checks.push(`plugin settings.json uses only supported keys: ${Object.keys(settings).join(', ') || 'none'}`);
+        }
+      }
     }
   }
 

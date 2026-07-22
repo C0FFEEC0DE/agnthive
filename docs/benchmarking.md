@@ -208,6 +208,8 @@ This workflow:
 It only runs on PRs when benchmark-relevant files changed, which keeps the benchmark from re-running on unrelated pushes.
 Agent and slash-skill changes are mapped through the frontmatter declared in `plugins/agnthive/agents/*.md` and `plugins/agnthive/skills/*/SKILL.md`, so full-name files like `manager.md` and skill directories like `review/` stay aligned with the canonical role aliases used by the task metadata.
 
+**Agent frontmatter taxonomy.** Plugin agents support `name`, `description`, `model`, `effort`, `maxTurns`, `tools`, `disallowedTools`, `skills`, `memory`, `background`, and `isolation`. They do **not** support `hooks`, `mcpServers`, or `permissionMode` (those are not plugin-agent fields). The bench runner reads only `alias`/`name`/`type` for dispatch evidence, so the `tools` allowlists and `effort` levels pinned in each agent file shape runtime behavior without affecting benchmark role credit. `model` pinning is intentionally omitted across all agents so the profile stays model-agnostic and the benchmark can drive any model via `OLLAMA_MODEL` / `BEHAVIOR_BENCHMARK_MODEL`. Slash skills support `argument-hint` (and named `arguments`) for command-palette previews; the runner does not consume either.
+
 ## Slot-Gate Mechanism
 
 Concurrent benchmark runs are limited by a two-slot gate enforced through `scripts/wait-for-benchmark-slot.mjs`. This prevents multiple workflow dispatches from overloading shared CI runners.

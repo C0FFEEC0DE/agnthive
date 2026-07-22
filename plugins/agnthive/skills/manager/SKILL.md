@@ -1,6 +1,7 @@
 ---
 name: manager
 description: Run a manager-led orchestration session — dispatches @manager to coordinate multi-step work through verification and review.
+argument-hint: "<goal or multi-step work to coordinate>"
 ---
 
 # /manager

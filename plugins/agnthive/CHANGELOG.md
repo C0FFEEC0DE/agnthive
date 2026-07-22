@@ -10,7 +10,72 @@ profile history; entries here begin with the plugin.
 
 ## [Unreleased]
 
+### Added
+
+- **Forced SDLC output style.** `output-styles/agnthive.md` carries
+  `force-for-plugin: agnthive`, so enabling the plugin automatically applies the
+  hook-gated SDLC style (phase order, specialist roles, stop-safe footers) to the
+  main conversation without the user selecting an output style. The style
+  teaches the contract upstream; the hooks still verify it. It modifies the main
+  session prompt only — subagents keep their own agent prompts.
+- **Subagent status line, on by default.** `scripts/subagent-statusline.mjs`
+  (Node stdlib only) is wired via `settings.json` `subagentStatusLine` and
+  renders one alias/role · status · effort · tokens · context-% row per running
+  subagent. Degrades gracefully on empty or partial input; no configuration
+  needed.
+- **Two new `userConfig` knobs + a three-tier env bridge.** `log_max_bytes` and
+  `ledger_max_bytes` join `enforcement_mode` as `userConfig` keys. Each runtime
+  resolver now reads `AGNTHIVE_*` (explicit) > `CLAUDE_CREW_*` (legacy alias) >
+  `CLAUDE_PLUGIN_OPTION_*` (the `userConfig` bridge, lowest priority), so a
+  `userConfig` value always applies unless an explicit env var overrides it.
+- **Per-agent tool allowlists and reasoning effort.** Every agent frontmatter
+  now pins a `tools` allowlist (Explorer and Code Reviewer read-only; Manager
+  keeps all tools except `Edit`/`Write`/`NotebookEdit`) and a `model` reasoning
+  `effort` (low/medium/high). Model pinning is intentionally omitted to keep the
+  plugin model-agnostic.
+- **Slash-skill argument hints.** All nine slash skills carry an
+  `argument-hint` so the command palette previews the expected argument.
+- **Tier-1 strict packaged-plugin validation, always-on.**
+  `scripts/plugin-install-smoke.mjs` now strictly checks the `userConfig` schema
+  (allowed `type` values; `default` matches type), parse-checks
+  `scripts/subagent-statusline.mjs`, and validates the plugin `settings.json`
+  shape (only `agent`/`subagentStatusLine` allowed). Wired into
+  `node scripts/validate.mjs` as a new `checkPluginInstallSmoke` step so it runs
+  in CI on every push/PR.
+- **Tier-2 official `claude plugin validate --strict` in CI.** The validate
+  workflow adds a Linux-only, best-effort step that runs the official CLI's
+  strict manifest validator against `plugins/agnthive`. The CLI install is
+  `continue-on-error`; a genuine `--strict` failure fails the shard, but an
+  install flake skips cleanly so required checks stay green.
+
 ### Changed
+
+- **TaskCompleted / TeammateIdle can optionally emit a structured block
+  decision.** These exit-2 blocks may additionally write a
+  `{"decision":"block","reason":...}` JSON object to stdout (same reason as the
+  stderr message) when `AGNTHIVE_BLOCK_STDOUT_JSON=1` is set, so hosts that
+  prefer stdout JSON over the exit code can receive the block intent + reason.
+  The flag is **off by default**: with it unset, stdout stays empty and behavior
+  is byte-identical to the legacy exit-2 + stderr block, because
+  `decision:"block"` is the "continue with feedback" contract and it is
+  unverified whether a host honors stdout JSON over the exit code for these
+  events (emitting it unconditionally could weaken a hard stop). The write now
+  uses `process.exitCode` + return instead of `process.exit` so the stdout
+  payload flushes naturally. Full exit-2 removal remains gated on verifying that
+  host-runtime contract.
+- **Install flow is now marketplace-first across every surface.** The repository
+  is a self-hosted plugin marketplace, so the canonical install is
+  `claude plugin marketplace add C0FFEEC0DE/agnthive` then
+  `claude plugin install agnthive@agnthive`, with
+  `claude plugin update agnthive@agnthive` pulling updates straight from the
+  repo. The root `README.md`, `index.html` landing page, `CLAUDE.md` Quick Start,
+  and this README now lead with the marketplace-add flow instead of the
+  clone-and-`claude plugin install ./plugins/agnthive` source-install path
+  (which remains as a local/dev alternative).
+- **The plugin ships disabled by default.** `defaultEnabled: false` in
+  `plugin.json` means `claude plugin install` no longer auto-activates the
+  hook-gated profile; the install flow adds `claude plugin enable agnthive@agnthive`
+  as the explicit opt-in step.
 
 - **Install flow is now marketplace-first across every surface.** The repository
   is a self-hosted plugin marketplace, so the canonical install is

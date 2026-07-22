@@ -27,6 +27,21 @@ test('resolveLedgerMaxBytes: legacy CLAUDE_CREW_LEDGER_MAX_BYTES alias still hon
   );
 });
 
+test('resolveLedgerMaxBytes: CLAUDE_PLUGIN_OPTION_LEDGER_MAX_BYTES userConfig bridge is the lowest-priority fallback', () => {
+  // The plugin userConfig bridge is honored only when no env override is set.
+  assert.equal(resolveLedgerMaxBytes({ CLAUDE_PLUGIN_OPTION_LEDGER_MAX_BYTES: '16384' }), 16384);
+  assert.equal(resolveLedgerMaxBytes({ CLAUDE_PLUGIN_OPTION_LEDGER_MAX_BYTES: 'nope' }), DEFAULT_LEDGER_MAX_BYTES);
+  // AGNTHIVE_LEDGER_MAX_BYTES (and the legacy alias) override the userConfig value.
+  assert.equal(
+    resolveLedgerMaxBytes({ AGNTHIVE_LEDGER_MAX_BYTES: '1024', CLAUDE_PLUGIN_OPTION_LEDGER_MAX_BYTES: '16384' }),
+    1024,
+  );
+  assert.equal(
+    resolveLedgerMaxBytes({ CLAUDE_CREW_LEDGER_MAX_BYTES: '1024', CLAUDE_PLUGIN_OPTION_LEDGER_MAX_BYTES: '16384' }),
+    1024,
+  );
+});
+
 // --- progressLedgerPath ---------------------------------------------------
 
 test('progressLedgerPath: AGNTHIVE_PROGRESS_FILE override wins', () => {

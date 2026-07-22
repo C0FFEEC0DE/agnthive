@@ -1,6 +1,7 @@
 ---
 name: explore
 description: Run a codebase exploration session with the Explorer agent — dispatches @explorer to map files, control flow, and likely change locations.
+argument-hint: "<area, symbol, or question to map>"
 ---
 
 # /explore

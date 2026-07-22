@@ -1,6 +1,7 @@
 ---
 name: bug
 description: Use when a failure exists but the root cause is not obvious — dispatches the Bugbuster in an isolated forked subagent for root-cause investigation and the smallest credible fix path.
+argument-hint: "<failure or symptom to investigate>"
 agent: Bugbuster
 context: fork
 disable-model-invocation: true

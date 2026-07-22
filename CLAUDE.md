@@ -23,11 +23,12 @@ This profile is hook-gated:
 
 ## Quick Start
 
-Install — this repo is a self-hosted marketplace, so connect Claude Code and install directly (no clone needed):
+Install — this repo is a self-hosted marketplace, so connect Claude Code and install directly (no clone needed). The plugin ships disabled by default, so enable it after install:
 
 ```bash
 claude plugin marketplace add C0FFEEC0DE/agnthive
 claude plugin install agnthive@agnthive
+claude plugin enable agnthive@agnthive
 ```
 
 Update straight from the repo with `claude plugin update agnthive@agnthive`. For local development from a checkout, see `plugins/agnthive/README.md` for the `--plugin-dir` path.

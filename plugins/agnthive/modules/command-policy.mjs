@@ -26,9 +26,11 @@
 // --- mode resolution ------------------------------------------------------
 
 /** Resolve the policy mode from env. 'enforce' is opt-in; anything else is advisory.
- *  Reads AGNTHIVE_POLICY, falling back to the legacy CLAUDE_CREW_POLICY alias. */
+ *  Precedence (highest first): AGNTHIVE_POLICY, legacy CLAUDE_CREW_POLICY, then
+ *  CLAUDE_PLUGIN_OPTION_ENFORCEMENT_MODE (the plugin userConfig bridge, exported
+ *  by Claude Code from the enforcement_mode userConfig key). */
 export function resolveMode(env = process.env) {
-  const src = env.AGNTHIVE_POLICY ?? env.CLAUDE_CREW_POLICY;
+  const src = env.AGNTHIVE_POLICY ?? env.CLAUDE_CREW_POLICY ?? env.CLAUDE_PLUGIN_OPTION_ENFORCEMENT_MODE;
   const raw = typeof src === 'string' ? src.trim().toLowerCase() : '';
   return raw === 'enforce' ? 'enforce' : 'advisory';
 }

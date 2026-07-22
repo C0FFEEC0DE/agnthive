@@ -1,6 +1,7 @@
 ---
 name: test
 description: Use when writing or running tests, checking coverage, or closing a verification gap before stopping — dispatches the Tester in an isolated forked subagent.
+argument-hint: "<behavior or coverage gap to test>"
 agent: Tester
 context: fork
 disable-model-invocation: true

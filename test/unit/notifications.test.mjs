@@ -34,6 +34,21 @@ test('resolveLogMaxBytes: default when unset/invalid, numeric override honored',
   assert.equal(resolveLogMaxBytes({ AGNTHIVE_LOG_MAX_BYTES: '2048' }), 2048);
 });
 
+test('resolveLogMaxBytes: CLAUDE_PLUGIN_OPTION_LOG_MAX_BYTES userConfig bridge is the lowest-priority fallback', () => {
+  // The plugin userConfig bridge is honored only when no env override is set.
+  assert.equal(resolveLogMaxBytes({ CLAUDE_PLUGIN_OPTION_LOG_MAX_BYTES: '4096' }), 4096);
+  assert.equal(resolveLogMaxBytes({ CLAUDE_PLUGIN_OPTION_LOG_MAX_BYTES: 'abc' }), DEFAULT_LOG_MAX_BYTES);
+  // AGNTHIVE_LOG_MAX_BYTES (and the legacy alias) override the userConfig value.
+  assert.equal(
+    resolveLogMaxBytes({ AGNTHIVE_LOG_MAX_BYTES: '1024', CLAUDE_PLUGIN_OPTION_LOG_MAX_BYTES: '4096' }),
+    1024,
+  );
+  assert.equal(
+    resolveLogMaxBytes({ CLAUDE_CREW_LOG_MAX_BYTES: '1024', CLAUDE_PLUGIN_OPTION_LOG_MAX_BYTES: '4096' }),
+    1024,
+  );
+});
+
 // --- payload builders (field whitelist + redaction) -----------------------
 
 test('notificationPayload: only whitelisted fields; non-strings coerced to ""', () => {

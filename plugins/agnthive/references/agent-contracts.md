@@ -74,16 +74,22 @@ This is enforced by:
 
 ## Matrix
 
-| Agent | Alias | Smoke task | Required signal | Forbidden transcript focus | Benchmark task contract |
-| --- | --- | --- | --- | --- | --- |
-| Manager | `m` | manager doc-map smoke task | `Plan:`, role handoff markers, plus stop-safe footer markers `Outcome:`, `Changed files:`/`No files changed:`, `Verification status:`, and `Remaining risks:`/`Next step:` | no agent-choice prompts, no hook/footer repair chatter | coordination without asking the user which required agent to use |
-| Explorer | `e` | explorer code-map smoke task | `Task:\s*Explore`, `Locations:`, plus stop-safe footer markers | no meta chatter about prefix matching or shell guards | map the target area before change work |
-| Architect | `a` | rollout and refactor smoke tasks | actual use of `@a` via `required_used_agents`, plus docs-only or refactor-safe scope checks | no footer-repair chatter | design-note coverage plus bounded refactor planning that preserves behavior and verification |
-| Bugbuster | `bug` | zero-division smoke task | `Task:\s*Bug Scan`, `Findings:`, plus stop-safe footer markers | no footer-repair chatter | bugfix with findings, tests, docs update, and review |
-| Debugger | `dbg` | zero-division smoke task | `Task:\s*Debug`, `Reproduction:`, `Root cause:`, plus stop-safe footer markers | no footer-repair chatter | reproduce, isolate, fix, test, and document |
-| Tester | `t` | regression smoke task | `Task:\s*Testing`, `Gaps:`, plus stop-safe footer markers | no footer-repair chatter | verification-first task with real `node --test` evidence |
-| Code Reviewer | `cr` | review-note smoke task | `Task:\s*Code Review`, `Findings:`, `Review outcome:`, plus stop-safe footer markers | no invented findings, no hook/footer repair chatter | review-only task that must not modify source code |
-| Docwriter | `doc` | quickstart smoke task | `Task:\s*Docs`, `Coverage:`, plus stop-safe footer markers | no invented install/clone steps, no footer-repair chatter | docs-only task with forbidden doc hallucination patterns |
+The **Tools** and **Effort** columns mirror each agent's frontmatter allowlist
+and reasoning effort (`plugins/agnthive/agents/*.md`). Tools are pinned to a
+read-only set for Explorer and Code Reviewer; Manager keeps all tools except
+`Edit`/`Write`/`NotebookEdit` (it coordinates, never edits). Model pinning is
+intentionally omitted to keep the plugin model-agnostic.
+
+| Agent | Alias | Tools | Effort | Smoke task | Required signal | Forbidden transcript focus | Benchmark task contract |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Manager | `m` | all except `Edit`/`Write`/`NotebookEdit` | medium | manager doc-map smoke task | `Plan:`, role handoff markers, plus stop-safe footer markers `Outcome:`, `Changed files:`/`No files changed:`, `Verification status:`, and `Remaining risks:`/`Next step:` | no agent-choice prompts, no hook/footer repair chatter | coordination without asking the user which required agent to use |
+| Explorer | `e` | `Read`, `Glob`, `Grep` | low | explorer code-map smoke task | `Task:\s*Explore`, `Locations:`, plus stop-safe footer markers | no meta chatter about prefix matching or shell guards | map the target area before change work |
+| Architect | `a` | `Read`, `Glob`, `Grep`, `Edit`, `Write`, `Bash` | medium | rollout and refactor smoke tasks | actual use of `@a` via `required_used_agents`, plus docs-only or refactor-safe scope checks | no footer-repair chatter | design-note coverage plus bounded refactor planning that preserves behavior and verification |
+| Bugbuster | `bug` | `Read`, `Glob`, `Grep`, `Edit`, `Write`, `Bash` | high | zero-division smoke task | `Task:\s*Bug Scan`, `Findings:`, plus stop-safe footer markers | no footer-repair chatter | bugfix with findings, tests, docs update, and review |
+| Debugger | `dbg` | `Read`, `Glob`, `Grep`, `Edit`, `Write`, `Bash` | high | zero-division smoke task | `Task:\s*Debug`, `Reproduction:`, `Root cause:`, plus stop-safe footer markers | no footer-repair chatter | reproduce, isolate, fix, test, and document |
+| Tester | `t` | `Read`, `Glob`, `Grep`, `Edit`, `Write`, `Bash` | medium | regression smoke task | `Task:\s*Testing`, `Gaps:`, plus stop-safe footer markers | no footer-repair chatter | verification-first task with real `node --test` evidence |
+| Code Reviewer | `cr` | `Read`, `Glob`, `Grep` | high | review-note smoke task | `Task:\s*Code Review`, `Findings:`, `Review outcome:`, plus stop-safe footer markers | no invented findings, no hook/footer repair chatter | review-only task that must not modify source code |
+| Docwriter | `doc` | `Read`, `Glob`, `Grep`, `Edit`, `Write` | medium | quickstart smoke task | `Task:\s*Docs`, `Coverage:`, plus stop-safe footer markers | no invented install/clone steps, no footer-repair chatter | docs-only task with forbidden doc hallucination patterns |
 ## How To Extend
 
 When adding a new agent or tightening an existing one:
