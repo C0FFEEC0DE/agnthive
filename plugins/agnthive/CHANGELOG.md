@@ -12,6 +12,12 @@ profile history; entries here begin with the plugin.
 
 ### Added
 
+- _Nothing yet._
+
+## [0.2.0] - 2026-07-22
+
+### Added
+
 - **Forced SDLC output style.** `output-styles/agnthive.md` carries
   `force-for-plugin: agnthive`, so enabling the plugin automatically applies the
   hook-gated SDLC style (phase order, specialist roles, stop-safe footers) to the
