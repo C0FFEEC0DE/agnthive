@@ -1,6 +1,7 @@
 ---
 name: review
 description: Use before committing or merging, or for PR/security/architecture review of changes — dispatches the Code Reviewer in an isolated read-only forked subagent.
+argument-hint: "<path, PR, or change scope to review>"
 agent: Code Reviewer
 context: fork
 disable-model-invocation: true

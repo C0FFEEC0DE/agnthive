@@ -9,6 +9,7 @@ live now — users install with:
 ```bash
 claude plugin marketplace add C0FFEEC0DE/agnthive
 claude plugin install agnthive@agnthive
+claude plugin enable agnthive@agnthive   # ships disabled by default
 ```
 
 The marketplace name is `agnthive` (`.claude-plugin/marketplace.json`), so the

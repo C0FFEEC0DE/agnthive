@@ -11,6 +11,7 @@
   "homepage": "https://agnthive.run",
   "repository": "https://github.com/C0FFEEC0DE/agnthive",
   "license": "MIT",
+  "defaultEnabled": false,
   "keywords": [
     "sdlc",
     "multi-agent",
@@ -26,6 +27,18 @@
       "title": "Command policy enforcement mode",
       "description": "advisory (default) logs dangerous-intent without blocking; enforce denies dangerous commands and fails closed on unparseable input. Any other value is treated as advisory by the runtime.",
       "default": "advisory"
+    },
+    "log_max_bytes": {
+      "type": "number",
+      "title": "Telemetry log rotation threshold (bytes)",
+      "description": "Each JSONL telemetry stream rotates to <name>.old when it reaches this many bytes, so no stream grows unbounded. Default 1048576 (1 MiB). The AGNTHIVE_LOG_MAX_BYTES env var overrides this if set.",
+      "default": 1048576
+    },
+    "ledger_max_bytes": {
+      "type": "number",
+      "title": "Progress ledger byte cap",
+      "description": "Byte cap on the durable progress ledger re-injected after context compaction (UTF-8-safe truncation). Default 65536 (64 KiB). The AGNTHIVE_LEDGER_MAX_BYTES env var overrides this if set.",
+      "default": 65536
     }
   }
 }

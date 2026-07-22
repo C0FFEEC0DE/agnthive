@@ -1,6 +1,7 @@
 ---
 name: docs
 description: Use when README/docs are out of sync, a feature needs user-facing documentation, or code lacks explanation — dispatches the Docwriter in an isolated forked subagent.
+argument-hint: "<doc target or out-of-sync area>"
 agent: Docwriter
 context: fork
 disable-model-invocation: true

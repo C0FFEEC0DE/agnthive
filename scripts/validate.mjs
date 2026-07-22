@@ -8,14 +8,20 @@
 //
 // External linters (actionlint) are invoked via spawnSync with an
 // explicit argv — no shell, no exec, no eval. The plugin runtime is Node-only and
-// platform-independent, so shell-syntax/shellcheck/installer-smoke checks (which
-// targeted the removed legacy bash profile) are no longer relevant.
-import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
+// platform-independent, so shell-syntax/shellcheck checks (which targeted the
+// removed legacy bash profile) are no longer relevant. The packaged-plugin
+// install smoke (scripts/plugin-install-smoke.mjs) IS run here as a tier-1
+// strict gate: it packages plugins/agnthive/ into a clean temp layout and
+// validates the manifest schema, declared paths, exec-form hooks, statusline
+// helpers, and plugin settings.json shape against what a user installs.
+import { readFileSync, readdirSync, existsSync, statSync, mkdtempSync, rmSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join, relative, dirname, basename, extname, sep } from 'node:path';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { checkNoLegacyRuntime } from './check-no-legacy-runtime.mjs';
 import { SCRIPT_TO_EVENT } from './test-hooks.mjs';
+import { packagePlugin, validatePackagedPlugin } from './plugin-install-smoke.mjs';
 
 const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url));
 process.chdir(REPO_ROOT);
@@ -645,6 +651,30 @@ function checkLegacyRuntime() {
   console.log('');
 }
 
+function checkPluginInstallSmoke() {
+  console.log('--- Checking packaged-plugin install smoke (tier-1 strict) ---');
+  const srcDir = join(REPO_ROOT, 'plugins', 'agnthive');
+  if (!existsSync(srcDir) || !statSync(srcDir).isDirectory()) {
+    reportError(`plugin source dir not found: ${srcDir}`);
+    console.log('');
+    return;
+  }
+  const tmpRoot = mkdtempSync(join(tmpdir(), 'validate-plugin-smoke-'));
+  try {
+    const pluginDir = packagePlugin(srcDir, tmpRoot);
+    const { ok, errors, checks } = validatePackagedPlugin(pluginDir);
+    for (const c of checks) console.log(`OK: ${c}`);
+    if (!ok) {
+      for (const e of errors) reportError(e);
+    } else {
+      console.log(`OK: plugin-install-smoke passed (${checks.length} checks)`);
+    }
+  } finally {
+    rmSync(tmpRoot, { recursive: true, force: true });
+  }
+  console.log('');
+}
+
 // ---------- main ----------
 function main() {
   console.log('=== Validation Script ===');
@@ -662,6 +692,7 @@ function main() {
   checkBenchmarkTasks();
   checkInternalLinks();
   checkLegacyRuntime();
+  checkPluginInstallSmoke();
 
   console.log('=== Summary ===');
   if (ERRORS === 0) { console.log('All checks passed!'); process.exit(0); }

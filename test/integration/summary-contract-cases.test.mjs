@@ -46,9 +46,11 @@ function runCase(c, dataRoot) {
   const { event, matcher } = SCRIPT_TO_EVENT[c.script];
   const args = [dispatcher, '--event', event];
   if (matcher) args.push('--matcher', matcher);
+  // Honor a case-declared `env` (e.g. AGNTHIVE_BLOCK_STDOUT_JSON) the same way
+  // the make-hooks runner does, so the two harnesses stay consistent.
   return spawnSync(process.execPath, args, {
     input: stdin, encoding: 'utf8',
-    env: { ...process.env, CLAUDE_PLUGIN_DATA: dataRoot },
+    env: { ...process.env, ...c.env, CLAUDE_PLUGIN_DATA: dataRoot },
     cwd: root,
   });
 }

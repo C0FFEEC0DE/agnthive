@@ -20,9 +20,11 @@ import { timestampUtc } from './util.mjs';
 export const DEFAULT_LOG_MAX_BYTES = 1024 * 1024; // 1 MiB
 
 /** Read a numeric env override, falling back to the default on invalid/empty.
- *  Reads AGNTHIVE_LOG_MAX_BYTES, then the legacy CLAUDE_CREW_LOG_MAX_BYTES alias. */
+ *  Precedence (highest first): AGNTHIVE_LOG_MAX_BYTES, legacy
+ *  CLAUDE_CREW_LOG_MAX_BYTES, then CLAUDE_PLUGIN_OPTION_LOG_MAX_BYTES (the plugin
+ *  userConfig bridge, exported by Claude Code from the log_max_bytes userConfig key). */
 export function resolveLogMaxBytes(env = process.env, fallback = DEFAULT_LOG_MAX_BYTES) {
-  const raw = env.AGNTHIVE_LOG_MAX_BYTES ?? env.CLAUDE_CREW_LOG_MAX_BYTES;
+  const raw = env.AGNTHIVE_LOG_MAX_BYTES ?? env.CLAUDE_CREW_LOG_MAX_BYTES ?? env.CLAUDE_PLUGIN_OPTION_LOG_MAX_BYTES;
   if (typeof raw !== 'string' || raw.length === 0) return fallback;
   const n = Number(raw);
   if (!Number.isFinite(n) || n <= 0 || !/^\d+$/.test(raw.trim())) return fallback;

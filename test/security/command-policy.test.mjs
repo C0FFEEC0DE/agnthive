@@ -65,6 +65,15 @@ test('resolveMode: legacy CLAUDE_CREW_POLICY alias still honored, new name wins'
   assert.equal(resolveMode({ AGNTHIVE_POLICY: 'advisory', CLAUDE_CREW_POLICY: 'enforce' }), 'advisory');
 });
 
+test('resolveMode: CLAUDE_PLUGIN_OPTION_ENFORCEMENT_MODE userConfig bridge is the lowest-priority fallback', () => {
+  // The plugin userConfig bridge is honored only when no env override is set.
+  assert.equal(resolveMode({ CLAUDE_PLUGIN_OPTION_ENFORCEMENT_MODE: 'enforce' }), 'enforce');
+  assert.equal(resolveMode({ CLAUDE_PLUGIN_OPTION_ENFORCEMENT_MODE: 'advisory' }), 'advisory');
+  // AGNTHIVE_POLICY (and the legacy alias) override the userConfig value.
+  assert.equal(resolveMode({ AGNTHIVE_POLICY: 'advisory', CLAUDE_PLUGIN_OPTION_ENFORCEMENT_MODE: 'enforce' }), 'advisory');
+  assert.equal(resolveMode({ CLAUDE_CREW_POLICY: 'advisory', CLAUDE_PLUGIN_OPTION_ENFORCEMENT_MODE: 'enforce' }), 'advisory');
+});
+
 // --- normalization ---------------------------------------------------------
 
 test('normalizeCommand: lowercases, collapses whitespace, strips quotes/backslash', () => {

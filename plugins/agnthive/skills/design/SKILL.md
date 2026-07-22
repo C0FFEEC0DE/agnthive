@@ -1,6 +1,7 @@
 ---
 name: design
 description: Use when planning a new feature, making an architectural decision, or unsure how to start a change — dispatches the Architect in an isolated forked subagent.
+argument-hint: "<feature or architectural decision to plan>"
 agent: Architect
 context: fork
 disable-model-invocation: true

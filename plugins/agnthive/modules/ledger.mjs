@@ -19,9 +19,12 @@ import { isNonEmpty } from './util.mjs';
 export const DEFAULT_LEDGER_MAX_BYTES = 64 * 1024; // 64 KiB
 
 /** Resolve a numeric byte cap from env, falling back to the default on invalid.
- *  Reads AGNTHIVE_LEDGER_MAX_BYTES, then the legacy CLAUDE_CREW_LEDGER_MAX_BYTES alias. */
+ *  Precedence (highest first): AGNTHIVE_LEDGER_MAX_BYTES, legacy
+ *  CLAUDE_CREW_LEDGER_MAX_BYTES, then CLAUDE_PLUGIN_OPTION_LEDGER_MAX_BYTES (the
+ *  plugin userConfig bridge, exported by Claude Code from the ledger_max_bytes
+ *  userConfig key). */
 export function resolveLedgerMaxBytes(env = process.env, fallback = DEFAULT_LEDGER_MAX_BYTES) {
-  const raw = env.AGNTHIVE_LEDGER_MAX_BYTES ?? env.CLAUDE_CREW_LEDGER_MAX_BYTES;
+  const raw = env.AGNTHIVE_LEDGER_MAX_BYTES ?? env.CLAUDE_CREW_LEDGER_MAX_BYTES ?? env.CLAUDE_PLUGIN_OPTION_LEDGER_MAX_BYTES;
   if (typeof raw !== 'string' || raw.length === 0) return fallback;
   const trimmed = raw.trim();
   if (!/^\d+$/.test(trimmed)) return fallback;

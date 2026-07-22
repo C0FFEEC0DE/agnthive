@@ -1,6 +1,7 @@
 ---
 name: refactor
 description: Use when code has duplication, long functions, fragile tests, or accumulated technical debt needing bounded structural cleanup — dispatches the Architect in an isolated forked subagent.
+argument-hint: "<code area with duplication or debt>"
 agent: Architect
 context: fork
 disable-model-invocation: true

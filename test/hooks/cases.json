@@ -617,8 +617,12 @@
     "script": "task-completed.sh",
     "stdin": "test/hooks/fixtures/task_completed_incomplete.json",
     "seed_state": "test/hooks/fixtures/state_task_incomplete.json",
+    "env": {
+      "AGNTHIVE_BLOCK_STDOUT_JSON": "1"
+    },
     "expect_exit": 2,
-    "stderr_regex": "no successful test command"
+    "stderr_regex": "no successful test command",
+    "stdout_jq": ".decision == \"block\" and (.reason | contains(\"no successful test command\"))"
   },
   {
     "name": "task_completed_blocks_after_failed_build",
@@ -963,8 +967,12 @@
     "script": "teammate-idle.sh",
     "stdin": "test/hooks/fixtures/teammate_idle_failed_lint_after_tests.json",
     "seed_state": "test/hooks/fixtures/state_failed_lint_after_tests.json",
+    "env": {
+      "AGNTHIVE_BLOCK_STDOUT_JSON": "1"
+    },
     "expect_exit": 2,
-    "stderr_regex": "latest lint/static-check command failed"
+    "stderr_regex": "latest lint/static-check command failed",
+    "stdout_jq": ".decision == \"block\" and (.reason | contains(\"latest lint/static-check command failed\"))"
   },
   {
     "name": "teammate_idle_blocks_manager_led_workflow_without_specialist_handoff",

@@ -1,6 +1,7 @@
 ---
 name: debug
 description: Run a debugging session with the Debugger agent — dispatches @debugger to reproduce, isolate, and propose a verified fix.
+argument-hint: "<failing behavior or repro steps>"
 ---
 
 # /debug

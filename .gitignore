@@ -9,6 +9,7 @@ htmlcov/
 .DS_Store
 .agent-kit/runs/
 .claude/settings.local.json
+.claude/workflows/
 .codex
 .codex/
 .claude-crew/

@@ -13,7 +13,7 @@ import { pathToFileURL, fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { readFileSync } from 'node:fs';
 import { parseHookInput, readStdin } from './hook-input.mjs';
-import { additionalContext, passthrough, serialize, terminalCancel, pretoolPermission, permissionRequestDeny, permissionDeniedResult } from './hook-output.mjs';
+import { additionalContext, passthrough, serialize, terminalCancel, pretoolPermission, permissionRequestDeny, permissionDeniedResult, blockReason } from './hook-output.mjs';
 import { resolveDataRoot, resolveSessionId, resolveLogRoot, resolveProjectDir } from './util.mjs';
 import { statePaths, appendEvent, loadState } from './state.mjs';
 import {
@@ -551,11 +551,28 @@ async function main() {
   }
 
   const out = dispatch(event, parsed, argMatcher);
-  // TaskCompleted / TeammateIdle block with a stderr message + exit 2 (no
-  // stdout JSON), matching the bash task-completed.sh / teammate-idle.sh.
+  // TaskCompleted / TeammateIdle block with a stderr message + exit 2, matching
+  // the bash task-completed.sh / teammate-idle.sh. Structured block JSON
+  // (item 1 safe subset): OPTIONALLY also write a { decision: "block", reason }
+  // JSON object to stdout using the same message, so hosts that prefer stdout
+  // JSON over the exit code can receive the block intent + reason. This is
+  // gated behind AGNTHIVE_BLOCK_STDOUT_JSON (opt-in) because decision:"block"
+  // is the "continue with feedback" contract and it is unverified whether a
+  // host honors stdout JSON over the exit code for these events — emitting it
+  // unconditionally could weaken a hard stop. With the flag unset (default),
+  // stdout stays empty and behavior is byte-identical to the legacy exit-2 +
+  // stderr block. Full exit-2 removal stays gated on verifying that contract.
   if (out && out.__exit) {
-    process.stderr.write(`${out.stderr ?? ''}\n`);
-    process.exit(out.__exit);
+    const errMsg = out.stderr ?? '';
+    process.stderr.write(`${errMsg}\n`);
+    if (/^(1|true|yes|on)$/i.test(process.env.AGNTHIVE_BLOCK_STDOUT_JSON ?? '')) {
+      process.stdout.write(serialize(blockReason(errMsg)));
+    }
+    // Use exitCode + return (not process.exit) so the stdout write flushes
+    // naturally before the process ends — process.exit can truncate an
+    // unflushed pipe write for large payloads.
+    process.exitCode = out.__exit;
+    return;
   }
   process.stdout.write(serialize(out));
 }

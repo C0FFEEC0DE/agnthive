@@ -79,6 +79,29 @@ jobs:
         shell: bash
         run: make test
 
+      # Tier-2 strict plugin validation against the OFFICIAL Claude Code CLI
+      # (`claude plugin validate --strict`), which fails on unrecognized manifest
+      # fields, missing metadata, and other issues the runtime merely tolerates.
+      # Linux-only: the CLI is installed best-effort via npm; if the install
+      # flakes (network/release), the next step's `command -v claude` guard skips
+      # cleanly so required checks stay green. A genuine --strict failure (real
+      # manifest regression) DOES fail this shard.
+      - name: Install Claude Code CLI (Linux, best-effort)
+        if: runner.os == 'Linux'
+        continue-on-error: true
+        shell: bash
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: claude plugin validate --strict (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          if command -v claude >/dev/null 2>&1; then
+            claude plugin validate --strict plugins/agnthive
+          else
+            echo "claude CLI not installed (best-effort install skipped); skipping official --strict validation"
+          fi
+
       # POSIX-only steps run under git-bash on Windows (present on Windows
       # runners via Git for Windows) so the jq/find/git invocations are
       # identical across all three operating systems. The hook runtime is now a

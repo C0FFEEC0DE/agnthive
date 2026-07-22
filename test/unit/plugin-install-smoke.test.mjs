@@ -203,6 +203,96 @@ test('an empty conventional directory is flagged', () => {
   }
 });
 
+test('a userConfig number key with a non-numeric default is flagged (strict schema)', () => {
+  const tmp = freshTemp();
+  try {
+    const pluginDir = packagePlugin(PLUGIN_SRC, tmp);
+    const manifestPath = join(pluginDir, '.claude-plugin', 'plugin.json');
+    const manifest = JSON.parse(readFileSyncText(manifestPath));
+    manifest.userConfig = { bad_num: { type: 'number', title: 'x', description: 'x', default: 'not-a-number' } };
+    writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+    const r = validatePackagedPlugin(pluginDir);
+    assert.equal(r.ok, false);
+    assert.ok(
+      r.errors.some((e) => e.includes('userConfig.bad_num') && e.includes('default does not match its type number')),
+      `expected a default/type mismatch error, got:\n${r.errors.join('\n')}`,
+    );
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('a userConfig key with an unsupported type is flagged (strict schema)', () => {
+  const tmp = freshTemp();
+  try {
+    const pluginDir = packagePlugin(PLUGIN_SRC, tmp);
+    const manifestPath = join(pluginDir, '.claude-plugin', 'plugin.json');
+    const manifest = JSON.parse(readFileSyncText(manifestPath));
+    manifest.userConfig = { weird: { type: 'map', title: 'x', description: 'x', default: '' } };
+    writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+    const r = validatePackagedPlugin(pluginDir);
+    assert.equal(r.ok, false);
+    assert.ok(
+      r.errors.some((e) => e.includes('userConfig.weird') && e.includes('unsupported type: map')),
+      `expected an unsupported-type error, got:\n${r.errors.join('\n')}`,
+    );
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('a subagent-statusline.mjs with a syntax error is flagged', () => {
+  const tmp = freshTemp();
+  try {
+    const pluginDir = packagePlugin(PLUGIN_SRC, tmp);
+    writeFileSync(join(pluginDir, 'scripts', 'subagent-statusline.mjs'), 'const x = { ;\n');
+    const r = validatePackagedPlugin(pluginDir);
+    assert.equal(r.ok, false);
+    assert.ok(
+      r.errors.some((e) => e.includes('subagent-statusline.mjs failed to parse')),
+      `expected a subagent-statusline parse error, got:\n${r.errors.join('\n')}`,
+    );
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('a plugin settings.json with an unsupported (main-session) key is flagged', () => {
+  const tmp = freshTemp();
+  try {
+    const pluginDir = packagePlugin(PLUGIN_SRC, tmp);
+    writeFileSync(
+      join(pluginDir, 'settings.json'),
+      JSON.stringify({ statusLine: { type: 'command', command: 'echo nope' } }, null, 2),
+    );
+    const r = validatePackagedPlugin(pluginDir);
+    assert.equal(r.ok, false);
+    assert.ok(
+      r.errors.some((e) => e.includes('settings.json') && e.includes('unsupported key') && e.includes('statusLine')),
+      `expected a settings.json unsupported-key error, got:\n${r.errors.join('\n')}`,
+    );
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('a plugin settings.json with a supported key still passes', () => {
+  const tmp = freshTemp();
+  try {
+    const pluginDir = packagePlugin(PLUGIN_SRC, tmp);
+    // The real plugin already ships a subagentStatusLine-only settings.json;
+    // re-assert the check passes and reports the key.
+    const r = validatePackagedPlugin(pluginDir);
+    assert.equal(r.ok, true, `expected ok, got errors:\n${r.errors.join('\n')}`);
+    assert.ok(
+      r.checks.some((c) => c.includes('settings.json uses only supported keys') && c.includes('subagentStatusLine')),
+      `expected a settings.json ok check, got:\n${r.checks.join('\n')}`,
+    );
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 // Helper — read a file as utf-8 text (kept at the bottom for readability of
 // the test bodies above; ESM imports are hoisted regardless).
 function readFileSyncText(p) {

@@ -27,20 +27,25 @@ Code to it directly and install from it — no clone required.
 ```bash
 claude plugin marketplace add C0FFEEC0DE/agnthive
 claude plugin install agnthive@agnthive
+claude plugin enable agnthive@agnthive   # ships disabled by default
 ```
 
 **(b) Local / dev install** from a checkout of this repository:
 
 ```bash
-# add this repo as a local marketplace, then install the plugin
+# add this repo as a local marketplace, then install and enable the plugin
 claude plugin marketplace add /path/to/agnthive
 claude plugin install agnthive@agnthive
+claude plugin enable agnthive@agnthive
 
-# or load the plugin directory directly for development
+# or load the plugin directory directly for development (no enable needed)
 claude --plugin-dir /path/to/agnthive/plugins/agnthive
 ```
 
-Restart Claude Code after installing. The marketplace name is `agnthive` (the
+The plugin ships **disabled by default** (`defaultEnabled: false` in
+`.claude-plugin/plugin.json`), so installing it never silently starts gating
+your sessions — run `claude plugin enable agnthive@agnthive` to turn the hooks
+on. Restart Claude Code after enabling. The marketplace name is `agnthive` (the
 `name` field in `.claude-plugin/marketplace.json`), so the plugin is installed
 as `agnthive@agnthive` — `<plugin>@<marketplace>`. Marketplace names must be
 kebab-case, which is why the identifier is `agnthive` rather than the GitHub
@@ -74,6 +79,23 @@ always the published tree.
 All configuration is **environment variables and the plugin-scoped
 `userConfig`**. The plugin never reads or writes `~/.claude/settings.json`, so
 installation is non-destructive and nothing leaks into your global config.
+
+The three tunable knobs (`enforcement_mode`, `log_max_bytes`, `ledger_max_bytes`)
+are each declared as a `userConfig` key in `.claude-plugin/plugin.json` and read
+by the runtime with a fixed three-tier precedence, highest first:
+
+1. **`AGNTHIVE_*`** — the explicit env var (e.g. `AGNTHIVE_POLICY`).
+2. **`CLAUDE_CREW_*`** — the legacy alias, still honored for existing setups.
+3. **`CLAUDE_PLUGIN_OPTION_*`** — the userConfig bridge. The runtime exports each
+   `userConfig` key as `CLAUDE_PLUGIN_OPTION_<KEY_UPPERCASED>`, so a value set in
+   the plugin's `userConfig` flows in here as the lowest-priority fallback.
+
+This means a `userConfig` value always applies unless an explicit `AGNTHIVE_*` or
+legacy `CLAUDE_CREW_*` env var overrides it.
+
+| Knob | Default | Effect |
+|---|---|---|
+| `AGNTHIVE_BLOCK_STDOUT_JSON` | unset (off) | When set to `1`/`true`/`yes`/`on`, `TaskCompleted`/`TeammateIdle` blocks additionally write a `{"decision":"block","reason":...}` JSON object to stdout (same reason as the stderr message) before the exit-2 block, so hosts that prefer stdout JSON receive the block intent. Off by default — with it unset, stdout stays empty and the block is byte-identical to the legacy exit-2 + stderr behavior, because it is unverified whether a host honors stdout JSON over the exit code for these events. |
 
 ### Command policy mode (`userConfig.enforcement_mode` / `AGNTHIVE_POLICY`)
 
@@ -120,6 +142,25 @@ To opt in, set the plugin's `statusLine` setting in your plugin-scoped config
 library only — no subprocess spawning, no shell, no reads of arbitrary user
 files.
 
+## Subagent status line
+
+The plugin ships a subagent status-line helper at
+`scripts/subagent-statusline.mjs`, wired in `settings.json` via
+`subagentStatusLine`. It is **on by default** — no configuration needed. The
+runtime feeds it one JSON object on stdin containing a `tasks` array (one row
+per running subagent), and the helper prints one JSON line per task:
+
+```json
+{"id":"<subagent id>","content":"@cr Code Reviewer · running · high · 12.3k · 6%"}
+```
+
+The body is `<alias> <role name> · <status> · <effort> · <humanized tokens> ·
+<context usage %>`. The helper maps each subagent's type to its canonical alias
+(`@cr`, `@e`, `@a`, …), humanizes token counts, and computes context-window
+usage when `contextWindowSize` is present. It degrades gracefully: an empty task
+list produces no output, and a row missing fields falls back to a neutral label
+rather than crashing. Node standard library only.
+
 ## Settings limitations
 
 The plugin scopes itself and never touches your global config:
@@ -128,15 +169,27 @@ The plugin scopes itself and never touches your global config:
   non-destructive — nothing is added to or restored from your global settings.
   This is the explicit difference from the legacy copied-`~/.claude` profile,
   which mutated `~/.claude` in place (see [Legacy migration](#legacy-migration)).
-- **All configuration is environment variables and the plugin-scoped
-  `userConfig`.** The only `userConfig` key is `enforcement_mode`
-  (see [Command policy mode](#command-policy-mode-userconfigenforcement_mode--agnthive_policy)).
-  The plugin's own `settings.json`, if present, supports only the `agent` and
-  `subagentStatusLine` keys — it cannot install the profile's global
-  permissions, sandbox, auto-execution, output style, or main status line.
-- **The statusline is opt-in via plugin-scoped config only.** The plugin does
-  not set your global status line; you must enable the bundled
-  `scripts/statusline.mjs` through the plugin's `statusLine` setting.
+- **All runtime configuration is environment variables and the plugin-scoped
+  `userConfig`.** The `userConfig` keys are `enforcement_mode`,
+  `log_max_bytes`, and `ledger_max_bytes`
+  (see [Configuration](#configuration)). The plugin's own `settings.json`
+  supports only the `agent` and `subagentStatusLine` keys — it cannot install
+  the profile's global permissions, sandbox, auto-execution, or main status
+  line.
+- **The SDLC output style is forced by the plugin, not by your settings.**
+  The bundled `output-styles/agnthive.md` carries `force-for-plugin: agnthive`,
+  so enabling the plugin automatically applies the hook-gated SDLC style to the
+  main conversation (phase order, specialist roles, stop-safe footers) without
+  you selecting an output style. This modifies the main session prompt only;
+  subagents keep their own agent prompts.
+- **The subagent status line is shipped on.** The plugin's `settings.json`
+  wires `subagentStatusLine` to `scripts/subagent-statusline.mjs`, so enabled
+  subagents render an alias/status row automatically. You do not need to
+  configure anything; the row degrades gracefully if a field is missing.
+- **The main status line is opt-in via plugin-scoped config only.** The plugin
+  does not set your global status line; to show `<cwd> | <model> | <output
+  style>` you must enable the bundled `scripts/statusline.mjs` through the
+  plugin's `statusLine` setting.
 
 ## Privacy & telemetry
 
