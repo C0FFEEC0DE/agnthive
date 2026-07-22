@@ -10,7 +10,29 @@ profile history; entries here begin with the plugin.
 
 ## [Unreleased]
 
-_Nothing yet._
+### Changed
+
+- **Install flow is now marketplace-first across every surface.** The repository
+  is a self-hosted plugin marketplace, so the canonical install is
+  `claude plugin marketplace add C0FFEEC0DE/agnthive` then
+  `claude plugin install agnthive@agnthive`, with
+  `claude plugin update agnthive@agnthive` pulling updates straight from the
+  repo. The root `README.md`, `index.html` landing page, `CLAUDE.md` Quick Start,
+  and this README now lead with the marketplace-add flow instead of the
+  clone-and-`claude plugin install ./plugins/agnthive` source-install path
+  (which remains as a local/dev alternative).
+
+### Fixed
+
+- **Corrected the marketplace identifier in every install/update command.** The
+  plugin README previously used `agnthive@C0FFEEC0DE`, but `C0FFEEC0DE` is the
+  GitHub owner handle, not the marketplace name, and Claude Code requires
+  marketplace names to be kebab-case (uppercase is invalid). The marketplace
+  `name` in `.claude-plugin/marketplace.json` is `agnthive`, so the correct
+  address is `agnthive@agnthive` (`<plugin>@<marketplace>`). Updated install,
+  update, disable, enable, uninstall, and `marketplace remove` commands
+  accordingly, and corrected the explanatory text that misidentified the
+  marketplace name as a "publisher identifier declared in plugin.json".
 
 ## [0.1.0-beta.1] - 2026-06-22
 

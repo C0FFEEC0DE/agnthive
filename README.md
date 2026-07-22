@@ -1,9 +1,9 @@
 # agnthive
 
-Install — not in the plugin directory yet, so install from source in one command:
+Install — this repo is a self-hosted marketplace, so connect Claude Code and install in one line:
 
 ```bash
-git clone https://github.com/C0FFEEC0DE/agnthive.git && cd agnthive && claude plugin install ./plugins/agnthive
+claude plugin marketplace add C0FFEEC0DE/agnthive && claude plugin install agnthive@agnthive
 ```
 
 [![Repository Checks](https://github.com/C0FFEEC0DE/agnthive/actions/workflows/validate.yml/badge.svg?branch=main)](https://github.com/C0FFEEC0DE/agnthive/actions/workflows/validate.yml)
@@ -81,15 +81,32 @@ These are the documented entry points; the hooks enforce the actual handoff and 
 
 ## Install
 
-agnthive isn't in the Claude Code plugin directory yet, so install from source:
-clone this repo, then from the checkout run:
+This repository is a self-hosted plugin marketplace, so you connect Claude Code
+to it directly and install from it — no clone required:
 
 ```bash
-claude plugin install ./plugins/agnthive
+claude plugin marketplace add C0FFEEC0DE/agnthive
+claude plugin install agnthive@agnthive
 ```
 
-Restart Claude Code. See `plugins/agnthive/README.md` for requirements,
-configuration, the optional status line, and legacy-migration notes.
+The marketplace name is `agnthive` (the `name` field in
+`.claude-plugin/marketplace.json`), so the plugin is installed as
+`agnthive@agnthive` (`<plugin>@<marketplace>`). Restart Claude Code after
+installing. See `plugins/agnthive/README.md` for requirements, configuration,
+the optional status line, and legacy-migration notes.
+
+### Update
+
+Updates come straight from the repository — re-run a single command after new
+commits land on `main`:
+
+```bash
+claude plugin update agnthive@agnthive
+```
+
+For development from a local checkout, see the
+[local/dev install](plugins/agnthive/README.md#installation) path in the plugin
+README.
 
 ## Configuration
 

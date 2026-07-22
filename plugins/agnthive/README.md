@@ -19,13 +19,14 @@ Linux, macOS, and Windows.
 
 ## Installation
 
-Two paths.
+This repository **is** a self-hosted plugin marketplace, so you connect Claude
+Code to it directly and install from it — no clone required.
 
-**(a) From the community marketplace** (once published):
+**(a) From the self-hosted marketplace** (live now):
 
 ```bash
 claude plugin marketplace add C0FFEEC0DE/agnthive
-claude plugin install agnthive@C0FFEEC0DE
+claude plugin install agnthive@agnthive
 ```
 
 **(b) Local / dev install** from a checkout of this repository:
@@ -33,19 +34,33 @@ claude plugin install agnthive@C0FFEEC0DE
 ```bash
 # add this repo as a local marketplace, then install the plugin
 claude plugin marketplace add /path/to/agnthive
-claude plugin install agnthive@C0FFEEC0DE
+claude plugin install agnthive@agnthive
 
 # or load the plugin directory directly for development
 claude --plugin-dir /path/to/agnthive/plugins/agnthive
 ```
 
-Restart Claude Code after installing. The marketplace name (`C0FFEEC0DE`) is the
-publisher identifier declared in `.claude-plugin/plugin.json`.
+Restart Claude Code after installing. The marketplace name is `agnthive` (the
+`name` field in `.claude-plugin/marketplace.json`), so the plugin is installed
+as `agnthive@agnthive` — `<plugin>@<marketplace>`. Marketplace names must be
+kebab-case, which is why the identifier is `agnthive` rather than the GitHub
+owner handle.
 
 ## Update
 
+Because the plugin is installed from a marketplace, updates come straight from
+the repository:
+
 ```bash
-claude plugin update agnthive@C0FFEEC0DE
+claude plugin update agnthive@agnthive
+```
+
+To refresh the marketplace catalog first (for example after a new commit lands
+on `main`), then update the plugin:
+
+```bash
+claude plugin marketplace update agnthive
+claude plugin update agnthive@agnthive
 ```
 
 If you installed from a local marketplace, re-run the install command you used
@@ -115,7 +130,7 @@ The plugin scopes itself and never touches your global config:
   which mutated `~/.claude` in place (see [Legacy migration](#legacy-migration)).
 - **All configuration is environment variables and the plugin-scoped
   `userConfig`.** The only `userConfig` key is `enforcement_mode`
-  (see [Command policy mode](#command-policy-mode-userconfigenforcement_mode--claude_crew_policy)).
+  (see [Command policy mode](#command-policy-mode-userconfigenforcement_mode--agnthive_policy)).
   The plugin's own `settings.json`, if present, supports only the `agent` and
   `subagentStatusLine` keys — it cannot install the profile's global
   permissions, sandbox, auto-execution, output style, or main status line.
@@ -153,14 +168,14 @@ scanning the shipped modules.
 To stop the hooks from running without removing the plugin:
 
 ```bash
-claude plugin disable agnthive@C0FFEEC0DE
+claude plugin disable agnthive@agnthive
 ```
 
 Disabled plugins stay installed but their hooks no longer fire, so the
 workflow gates and footer contracts go quiet until you re-enable:
 
 ```bash
-claude plugin enable agnthive@C0FFEEC0DE
+claude plugin enable agnthive@agnthive
 ```
 
 Use this when you want a vanilla Claude Code session in a project that has the
@@ -169,8 +184,8 @@ plugin loaded. For a full removal, see [Uninstallation](#uninstallation).
 ## Uninstallation
 
 ```bash
-claude plugin uninstall agnthive@C0FFEEC0DE
-claude plugin marketplace remove C0FFEEC0DE   # if you no longer want the marketplace
+claude plugin uninstall agnthive@agnthive
+claude plugin marketplace remove agnthive   # if you no longer want the marketplace
 ```
 
 Because the plugin never touched `~/.claude/settings.json`, there is nothing to

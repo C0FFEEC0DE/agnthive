@@ -147,14 +147,14 @@
       </p>
       <div class="install">
         <div class="install-block">
-          <pre><code>git clone https://github.com/C0FFEEC0DE/agnthive.git && cd agnthive && claude plugin install ./plugins/agnthive</code></pre>
+          <pre><code>claude plugin marketplace add C0FFEEC0DE/agnthive && claude plugin install agnthive@agnthive</code></pre>
           <button class="copy-btn" aria-label="Copy install command" title="Copy">
             <svg class="clip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
             <svg class="check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
           </button>
         </div>
       </div>
-      <p class="note">Not in the Claude Code plugin directory yet — install from source in one command.</p>
+      <p class="note">Self-hosted marketplace — add the repo and install in one line. Update anytime with <code class="inline">claude plugin update agnthive@agnthive</code>.</p>
       <div class="cta">
         <a class="btn primary" href="https://github.com/C0FFEEC0DE/agnthive">View on GitHub</a>
         <a class="btn" href="https://github.com/C0FFEEC0DE/agnthive/tree/main/docs">Docs</a>
@@ -185,7 +185,7 @@
     </section>
 
     <footer>
-      From a local checkout — restart Claude Code, then see the
+      Add the marketplace and install directly — restart Claude Code, then see the
       <a href="https://github.com/C0FFEEC0DE/agnthive/blob/main/plugins/agnthive/README.md">plugin README</a>
       for configuration and the optional status line.
       <br />

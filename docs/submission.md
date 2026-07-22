@@ -3,10 +3,20 @@
 This index assembles the artifacts for submitting `agnthive` to
 the Claude Code community plugin marketplace. The plugin is distributed as a
 **source repository marketplace**: users add this repository as a marketplace
-and install the plugin from `plugins/agnthive/`. The actual
-submission is filed through the Anthropic community-plugin form by a human
-maintainer — this document is the packet they attach, not an automated
-publish step.
+and install the plugin from `plugins/agnthive/`. The self-hosted marketplace is
+live now — users install with:
+
+```bash
+claude plugin marketplace add C0FFEEC0DE/agnthive
+claude plugin install agnthive@agnthive
+```
+
+The marketplace name is `agnthive` (`.claude-plugin/marketplace.json`), so the
+plugin is addressed as `agnthive@agnthive`. The community submission below is a
+separate, review-gated listing on `anthropics/claude-plugins-community`; the
+self-hosted marketplace works independently of it. The actual submission is
+filed through the Anthropic community-plugin form by a human maintainer — this
+document is the packet they attach, not an automated publish step.
 
 ## Version
 
