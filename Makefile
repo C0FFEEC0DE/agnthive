@@ -22,10 +22,17 @@ ifneq ($(strip $(BENCH_TASK_LABEL)),)
 BENCH_LABEL_ARGS = --task-label '$(BENCH_TASK_LABEL)'
 endif
 
-.PHONY: all lint hooks test node-test cov validate clean bench-mock bench-smoke bench-command bench-assert bench-report bench-rerun-failed bench-precheck
+.PHONY: all precommit lint hooks test node-test cov validate clean bench-mock bench-smoke bench-command bench-assert bench-report bench-rerun-failed bench-precheck
 
 # Default: lint + test + hook contract tests.
 all: lint test hooks
+
+# One-command local pre-push gate: full repository self-check (validate) plus
+# the no-spend suite CI runs — lint + tests + hook contract harness. No model,
+# no network, no API keys required. Add `make bench-precheck` (also no-spend)
+# afterward for the benchmark smoke task selection, or `make bench-mock` to
+# exercise the benchmark runner plumbing without a model.
+precommit: validate all
 
 # Node test suites (test/bench, test/unit, test/security, ...). The glob form
 # is required: `node --test test/unit/` (directory form) fails on Node 22 with

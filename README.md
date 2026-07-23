@@ -134,7 +134,7 @@ All configuration is **environment variables and the plugin-scoped `userConfig`*
 
 ## Contributing
 
-See [`CONTRIBUTING.md`](CONTRIBUTING.md). Run `make lint`, `make test`, `node scripts/validate.mjs` before a PR. Report security issues via [`SECURITY.md`](SECURITY.md).
+See [`CONTRIBUTING.md`](CONTRIBUTING.md). Run `make precommit` before a PR — it chains the full self-check (`node scripts/validate.mjs`) plus `make lint`, `make test`, and `make hooks`, with no model or network needed. Report security issues via [`SECURITY.md`](SECURITY.md).
 
 ## License
 

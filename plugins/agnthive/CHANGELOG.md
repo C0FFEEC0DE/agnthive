@@ -12,7 +12,12 @@ profile history; entries here begin with the plugin.
 
 ### Added
 
-- _Nothing yet._
+- **`make precommit`** — one-command local pre-push gate that chains the full
+  repository self-check (`make validate`, which includes the tier-1
+  `plugin-install-smoke` strict gate) plus `make lint`, `make test`, and
+  `make hooks`. No model, network, or API keys required — the same no-spend
+  gates CI runs. `make bench-precheck` (also no-spend) and `make bench-mock`
+  remain separate optional add-ons.
 
 ## [0.2.0] - 2026-07-22
 

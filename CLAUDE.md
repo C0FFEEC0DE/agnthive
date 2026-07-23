@@ -84,6 +84,12 @@ OpenRouter-backed Claude Code is configured via repository secrets/variables. Se
 ## Test Commands
 
 ```bash
+# One-command local pre-push gate: full self-check (validate) + lint + tests +
+# hook contract harness. No model, no network, no API keys — the same no-spend
+# gates CI runs. Add `make bench-precheck` (also no-spend) for benchmark smoke
+# task selection, or `make bench-mock` to exercise the benchmark runner plumbing.
+make precommit
+
 # Lint: Node ESM syntax check (node scripts/lint.mjs) — Node-only, no Python
 make lint
 
