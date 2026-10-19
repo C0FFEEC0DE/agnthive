@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { existsSync, readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve as resolvePath } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
   pluginStateCandidateRoots,
@@ -184,8 +184,9 @@ test('pluginStateCandidateRoots: ordering, dedupe, isolation first', () => {
   });
   assert.deepEqual(roots.map((r) => r.kind), ['bench_isolated', 'env_list', 'env_list', 'data_dir_env', 'home_fallback']);
   // /tmp/bench-out/plugin-data listed twice (isolated + env_list) is deduped,
-  // keeping the earlier kind.
-  assert.equal(roots.filter((r) => r.root === '/tmp/bench-out/plugin-data').length, 1);
+  // keeping the earlier kind. The roots are resolve()d by production code, so
+  // win32 adds a drive prefix (build the expectation with the same primitive).
+  assert.equal(roots.filter((r) => r.root === join(resolvePath('/tmp/bench-out'), 'plugin-data')).length, 1);
   assert.equal(roots[0].kind, 'bench_isolated');
 });
 
@@ -827,8 +828,8 @@ test('commands_pass: real child sees no scrubbed secret and bounds are real', ()
     process.env.AGT_E2E_TOKEN = 'super-secret-123';
     const workdir = join(tmp, 'workdir');
     mkdirSync(workdir, { recursive: true });
-    const hold = join(tmp, 'hold.js');
-    const spew = join(tmp, 'spew.js');
+    const hold = join(workdir, 'hold.js'); // workdir-relative: backslash-free, charset-safe on win32
+    const spew = join(workdir, 'spew.js');
     writeFileSync(hold, 'const t = Date.now(); while (Date.now() - t < 30000) { /* spin */ } process.exit(0);\n');
     writeFileSync(spew, 'process.stdout.write("x".repeat(4096));\n');
     prevProbe = process.env.AGT_E2E_PROBE;
@@ -836,9 +837,9 @@ test('commands_pass: real child sees no scrubbed secret and bounds are real', ()
     const ev = evaluateOutcomeLivePredicates({
       id: 'outcome-cmd', fixture: 'node-app',
       expected_outcome: { predicates: [
-        { id: 'cmd-tmo', kind: 'commands_pass', evaluate_in: 'live', commands: ['node ' + hold] },
+        { id: 'cmd-tmo', kind: 'commands_pass', evaluate_in: 'live', commands: ['node hold.js'] },
         { id: 'cmd-scrub', kind: 'commands_pass', evaluate_in: 'live', commands: ['node -p process.env.AGT_E2E_TOKEN===undefined'] },
-        { id: 'cmd-buf', kind: 'commands_pass', evaluate_in: 'live', commands: ['node ' + spew] },
+        { id: 'cmd-buf', kind: 'commands_pass', evaluate_in: 'live', commands: ['node spew.js'] },
       ] },
     }, {
       repoRoot: tmp, workdir, spawnTimeoutMs: 400, spawnMaxBufferBytes: 2048,

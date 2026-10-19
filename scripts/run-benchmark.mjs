@@ -4,7 +4,7 @@
 // (split into an explicit argv — never a shell string).
 // Node port of scripts/run-benchmark.sh — no Bash, no jq.
 import { mkdirSync, rmSync, cpSync, copyFileSync, existsSync, readFileSync, writeFileSync, readdirSync, statSync } from 'node:fs';
-import { join, dirname, resolve, relative as relPath, isAbsolute, sep } from 'node:path';
+import { join, dirname, resolve, relative as relPath, isAbsolute, sep, basename } from 'node:path';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
@@ -150,7 +150,9 @@ function syntheticFailureResult(taskId, code, detail) {
 
 function fallbackTaskId(p) {
   // Deterministic, filesystem-safe id for tasks whose JSON cannot be read.
-  const base = (relPath(REPO_ROOT, p).split('/').pop() || 'task').replace(/\.json$/i, '').replace(/[^A-Za-z0-9-]+/g, '-').toLowerCase();
+  // basename() (not a relPath + split('/')) so the id is stable on win32,
+  // where a cross-drive relative() keeps backslashes and abs shape.
+  const base = (basename(p) || 'task').replace(/\.json$/i, '').replace(/[^A-Za-z0-9-]+/g, '-').toLowerCase();
   return 'task-' + base;
 }
 
