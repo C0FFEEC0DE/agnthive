@@ -1,0 +1,8 @@
+{
+  "hook_event_name": "PostCompact",
+  "session_id": "compat-session-post-compact",
+  "transcript_path": "/tmp/compat-capture/post-compact-transcript.jsonl",
+  "cwd": "/tmp/compat-capture/project",
+  "trigger": "manual",
+  "compact_summary": ""
+}

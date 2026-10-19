@@ -1,0 +1,5 @@
+{
+  "session_id": "case-ledger-post-compact-summary",
+  "trigger": "manual",
+  "compact_summary": "Compacted 150000 -> 50000 tokens; task T-7 (feature) in progress"
+}

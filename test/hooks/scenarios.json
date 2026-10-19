@@ -59,10 +59,10 @@
       {
         "name": "post_bash_marks_tests_ok",
         "script": "post-bash.sh",
-        "stdin": "test/hooks/fixtures/post_bash_test_success.json",
+        "stdin": "test/hooks/fixtures/post_bash_test_foreground_scn.json",
         "expect_exit": 0,
         "stdout_jq": ".hookSpecificOutput.hookEventName == \"PostToolUse\" and (.hookSpecificOutput.additionalContext | contains(\"Successful verification command\"))",
-        "state_jq": ".tests_ok == true and .tests_failed == false and .last_test_command == \"pytest -q\""
+        "state_jq": ".tests_ok == true and .tests_failed == false and .last_test_command == \"pytest -q\" and .verification[0].status == \"passed\""
       },
       {
         "name": "subagent_start_code_reviewer",
@@ -187,7 +187,7 @@
           },
           {
             "path": "__CASE_HOME__/.claude/logs/post-compact.jsonl",
-            "regex": "\"compact_summary\"[[:space:]]*:[[:space:]]*\"\""
+            "regex": "\"compact_summary_present\"[[:space:]]*:[[:space:]]*false"
           }
         ]
       },

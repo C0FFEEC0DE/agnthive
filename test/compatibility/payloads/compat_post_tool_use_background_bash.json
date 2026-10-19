@@ -1,0 +1,15 @@
+{
+  "hook_event_name": "PostToolUse",
+  "session_id": "compat-session-bg-command",
+  "transcript_path": "/tmp/compat-capture/background-command-transcript.jsonl",
+  "cwd": "/tmp/compat-capture/project",
+  "tool_use_id": "compat-tooluse-bg-001",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "npm test",
+    "run_in_background": true
+  },
+  "tool_response": {
+    "backgroundTaskId": "compat-bg-task-001"
+  }
+}

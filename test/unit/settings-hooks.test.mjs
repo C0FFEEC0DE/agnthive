@@ -17,6 +17,7 @@ const HOOK_EVENTS = new Set([
   'PermissionRequest', 'PermissionDenied', 'PostToolUse', 'PostToolUseFailure',
   'SubagentStart', 'SubagentStop', 'Stop', 'TeammateIdle', 'TaskCompleted',
   'Notification', 'ConfigChange', 'PreCompact', 'PostCompact', 'SessionEnd',
+  'StopFailure',
 ]);
 
 // Events that carry a real (non-"*") matcher in the plugin manifest. Every
@@ -27,7 +28,7 @@ const MATCHER_EVENTS = new Set([
 ]);
 
 const VALID_HOOK_RECORD_KEYS = new Set(['matcher', 'hooks']);
-const VALID_COMMAND_HOOK_KEYS = new Set(['type', 'command', 'args', 'async']);
+const VALID_COMMAND_HOOK_KEYS = new Set(['type', 'command', 'args', 'async', 'timeout', 'onFailure']);
 
 function loadManifest() {
   return JSON.parse(readFileSync(MANIFEST_PATH, 'utf-8'));

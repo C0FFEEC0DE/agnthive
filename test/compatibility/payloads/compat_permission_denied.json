@@ -1,0 +1,9 @@
+{
+  "hook_event_name": "PermissionDenied",
+  "session_id": "compat-session-permission-denied",
+  "transcript_path": "/tmp/compat-capture/permission-denied-transcript.jsonl",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "git push origin main"
+  }
+}

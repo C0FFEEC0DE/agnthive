@@ -1,0 +1,7 @@
+{
+  "session_id": "case-ledger-restore-startup",
+  "cwd": "/tmp/ledger-project",
+  "transcript_path": "/tmp/ledger-session-transcript.jsonl",
+  "source": "startup",
+  "hook_event_name": "SessionStart"
+}

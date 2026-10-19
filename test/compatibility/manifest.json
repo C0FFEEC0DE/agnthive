@@ -1,0 +1,209 @@
+{
+  "schema": 1,
+  "description": "Runtime contract fixtures for the agnthive hook dispatcher (plan task 02; design F01-F10, ADR 0010-0013). One manifest entry per scenario; entries may share a payload when only the expected output class differs (the two PermissionDenied entries share one stdin).",
+  "cli_version_basis": "Locally tested baseline was CLI 2.1.292 (design 'Oblique and validation limits'); 2.1.303 is the plan/design candidate from the observed upstream changelog, NOT a version certified on this machine. Task 01 pins the verified version and task 14 re-runs the canaries; when that happens, update cli_version_target per entry and flip source to captured.",
+  "status_model": {
+    "active": "The contract test spawns the dispatcher with this payload today and asserts the event-specific output class in the expected_class vocabulary.",
+    "pending_capture": "The payload is a placeholder of the documented input shape only; the runtime contract for this scenario is NOT pinned. The contract test validates the manifest entry and payload shape but skips dispatcher execution. A manual canary on the target CLI (a live, instrumented Claude Code session capturing hook stdin to a file) must replace the placeholder and set source=captured + status=active.",
+    "captured": "Reserved value: payload was observed on the target CLI. No entry currently uses it; flipping a synthetic payload to captured without replacing it with a real capture is forbidden (plan 02.1)."
+  },
+  "entries": [
+    {
+      "id": "compat_user_prompt_submit_normal",
+      "event": "UserPromptSubmit",
+      "cli_version_target": "2.1.303",
+      "source": "synthetic",
+      "status": "active",
+      "description": "Normal user prompt (not a slash command, not a background return). Documented session/prompt envelope; classified as a feature workflow.",
+      "payload_path": "payloads/compat_user_prompt_submit_normal.json",
+      "expected_class": "user_prompt_context",
+      "active_reason": "Input and output shapes are fully documented (session/prompt envelope; additionalContext envelope); no host capture is needed to pin the envelope class."
+    },
+    {
+      "id": "compat_user_prompt_submit_background_return",
+      "event": "UserPromptSubmit",
+      "cli_version_target": "2.1.303",
+      "source": "synthetic",
+      "status": "pending_capture",
+      "description": "Return of a background subagent, which the host surfaces as UserPromptSubmit. Must not reclassify as a new user task or erase sibling state (F02, ADR 0010). The prompt body for a background return is the unknown to capture.",
+      "payload_path": "payloads/compat_user_prompt_submit_background_return.json",
+      "expected_class": "user_prompt_context_pending",
+      "capture_instructions": "Manual canary on target CLI: start a session, launch a background subagent, let it return, and dump the UserPromptSubmit stdin JSON; redact prompt body."
+    },
+    {
+      "id": "compat_user_prompt_submit_namespace_slash",
+      "event": "UserPromptSubmit",
+      "cli_version_target": "2.1.303",
+      "source": "synthetic",
+      "status": "pending_capture",
+      "description": "Namespaced slash command input (/agnthive:manager ...) as the user typed it, which arrives before expansion (F06). Namespace/command/args normalization is plan task 05.",
+      "payload_path": "payloads/compat_user_prompt_submit_namespace_slash.json",
+      "expected_class": "user_prompt_context_pending",
+      "capture_instructions": "Manual canary on target CLI: type a namespaced plugin command in a live session and dump the UserPromptSubmit stdin JSON (pre-expansion, prompt_id included); redact nothing but keep the session id synthetic."
+    },
+    {
+      "id": "compat_stdin_empty",
+      "event": "Notification",
+      "cli_version_target": "2.1.303",
+      "source": "synthetic",
+      "status": "active",
+      "description": "Degenerate harness input: empty stdin for a telemetry event. Notification is used as the hermetic carrier event; the parse warning is event-independent.",
+      "payload_path": "payloads/compat_stdin_empty.txt",
+      "payload_format": "raw-text",
+      "expected_class": "input_warning_passthrough",
+      "entry_assertions": [
+        "stderr warning text contains 'empty stdin'"
+      ],
+      "active_reason": "Degenerate harness input (zero-byte stdin); the parse-invariant is event-independent and fully testable without a capture."
+    },
+    {
+      "id": "compat_stdin_malformed_json",
+      "event": "Notification",
+      "cli_version_target": "2.1.303",
+      "source": "synthetic",
+      "status": "active",
+      "description": "Degenerate harness input: truncated JSON on stdin for a telemetry event. Parse failure is reported to stderr, the hook still exits 0 with {} (never blocks).",
+      "payload_path": "payloads/compat_stdin_malformed_json.txt",
+      "payload_format": "raw-text",
+      "expected_class": "input_warning_passthrough",
+      "entry_assertions": [
+        "stderr warning text contains 'invalid JSON:'"
+      ],
+      "active_reason": "Degenerate harness input (truncated JSON); the parse-invariant is event-independent and fully testable without a capture."
+    },
+    {
+      "id": "compat_post_tool_use_foreground_bash",
+      "event": "PostToolUse",
+      "cli_version_target": "2.1.303",
+      "source": "synthetic",
+      "status": "pending_capture",
+      "plan_item": "02.2 foreground command",
+      "description": "Foreground Bash command PostToolUse. Output envelope is stable, but COMPLETION SEMANTICS are not pinned: the runtime must distinguish pending/completed/failed/unknown from tool_response (F01, task 04) and the real tool_response shape is unobserved.",
+      "payload_path": "payloads/compat_post_tool_use_foreground_bash.json",
+      "expected_class": "post_tool_use_context_pending",
+      "capture_instructions": "Manual canary on target CLI: run a real foreground test command in a live session and dump the PostToolUse(Bash) stdin JSON including tool_response; redact command output."
+    },
+    {
+      "id": "compat_post_tool_use_background_bash",
+      "event": "PostToolUse",
+      "cli_version_target": "2.1.303",
+      "source": "synthetic",
+      "status": "pending_capture",
+      "plan_item": "02.2 background command",
+      "description": "Backgrounded Bash command PostToolUse. Must not be counted as completed verification (F01: a background launch is pending, not passed); the real tool_response/background task shape is unobserved.",
+      "payload_path": "payloads/compat_post_tool_use_background_bash.json",
+      "expected_class": "post_tool_use_context_pending",
+      "capture_instructions": "Manual canary on target CLI: run a real backgrounded test command (run_in_background: true) and dump the PostToolUse(Bash) stdin JSON including the background task response; redact command output."
+    },
+    {
+      "id": "compat_subagent_stop_return",
+      "event": "SubagentStop",
+      "cli_version_target": "2.1.303",
+      "source": "synthetic",
+      "status": "pending_capture",
+      "plan_item": "02.2 return subagent",
+      "description": "Return of a background subagent via SubagentStop: parent vs agent transcript paths and closing text vs SubagentHandback delivered report are distinct data (ADR 0010). Currently a read-only placeholder.",
+      "payload_path": "payloads/compat_subagent_stop_return.json",
+      "expected_class": "subagent_stop_passthrough_pending",
+      "capture_instructions": "Manual canary on target CLI: let a real specialist subagent finish and dump the SubagentStop stdin JSON (both transcript paths, agent id, closing text); redact all message content."
+    },
+    {
+      "id": "compat_stop_active_work",
+      "event": "Stop",
+      "cli_version_target": "2.1.303",
+      "source": "synthetic",
+      "status": "pending_capture",
+      "plan_item": "02.2 Stop with active work",
+      "description": "Stop while verification/review is still outstanding (active work). The real payload carries background-task/session info the runtime should consume instead of transcript heuristics (F08).",
+      "payload_path": "payloads/compat_stop_active_work.json",
+      "expected_class": "stop_block_decision_pending",
+      "capture_instructions": "Manual canary on target CLI: let a real session re-enter Stop with outstanding verification and dump the Stop stdin JSON (including any background task fields); redact message text."
+    },
+    {
+      "id": "compat_stop_already_finished",
+      "event": "Stop",
+      "cli_version_target": "2.1.303",
+      "source": "synthetic",
+      "status": "pending_capture",
+      "plan_item": "02.2 Stop already-finished work",
+      "description": "Stop re-invoked after our own block (stop_hook_active=true) with completed work: must yield without re-blocking (ADR 0003), and a second Stop on finished work must stay clean.",
+           "payload_path": "payloads/compat_stop_already_finished.json",
+      "expected_class": "stop_passthrough_pending",
+      "capture_instructions": "Manual canary on target CLI: trigger our own Stop block once, then capture the runtime's re-invocation (stop_hook_active=true) and the next clean Stop stdin JSON; redact message content."
+    },
+    {
+      "id": "compat_session_start_compact",
+      "event": "SessionStart",
+      "cli_version_target": "2.1.303",
+      "source": "synthetic",
+      "status": "pending_capture",
+      "plan_item": "02.2 compact/resume",
+      "description": "SessionStart with source=compact after a real compaction. Ledger restoration channel per ADR 0013; event order and delivery are the capture targets (F07).",
+      "payload_path": "payloads/compat_session_start_compact.json",
+      "expected_class": "session_start_context_pending",
+      "capture_instructions": "Manual canary on target CLI: compact a live session (manual and automatic) and dump the SessionStart(stdin) JSON; verify the source field value and record event order around PostCompact."
+    },
+    {
+      "id": "compat_session_start_resume",
+      "event": "SessionStart",
+      "cli_version_target": "2.1.303",
+      "source": "synthetic",
+      "status": "pending_capture",
+      "plan_item": "02.2 compact/resume",
+      "description": "SessionStart with source=resume after a real session resume. Duplicate ledger restoration must not happen across the paired lifecycle events (ADR 0013).",
+      "payload_path": "payloads/compat_session_start_resume.json",
+      "expected_class": "session_start_context_pending",
+      "capture_instructions": "Manual canary on target CLI: resume a previous live session (claude --resume) and dump the SessionStart stdin JSON; verify the source field value."
+    },
+    {
+      "id": "compat_post_compact",
+      "event": "PostCompact",
+      "cli_version_target": "2.1.303",
+      "source": "synthetic",
+      "status": "pending_capture",
+      "plan_item": "02.2 compact/resume",
+      "description": "PostCompact after a real compaction: bounded bookkeeping only (ADR 0013); async stdout JSON is not proven delivery to the model (F07), and compact_summary content must be redacted at capture.",
+      "payload_path": "payloads/compat_post_compact.json",
+      "expected_class": "post_compact_context_pending",
+      "capture_instructions": "Manual canary on target CLI: capture PostCompact stdin right after a real compaction; redact or truncate compact_summary before storing."
+    },
+    {
+      "id": "compat_subagent_start_resume",
+      "event": "SubagentStart",
+      "cli_version_target": "2.1.303",
+      "source": "synthetic",
+      "status": "pending_capture",
+      "plan_item": "02.2 repeated SubagentStart",
+      "description": "Repeated SubagentStart for an already-known agent id (resume): lifecycle must update in place, not count a second specialist instance (F08, ADR 0010). The resume marker field is the unknown to capture.",
+      "payload_path": "payloads/compat_subagent_start_resume.json",
+      "expected_class": "subagent_start_context_pending",
+      "capture_instructions": "Manual canary on target CLI: resume the same subagent twice in a live session and dump both SubagentStart stdin JSON payloads; compare the identity fields."
+    },
+    {
+      "id": "compat_permission_denied_current_envelope",
+      "event": "PermissionDenied",
+      "cli_version_target": "2.1.303",
+      "source": "synthetic",
+      "status": "active",
+      "plan_item": "02.3 legacy top-level retry detection",
+      "description": "Pins the CURRENT documented PermissionDenied class: {hookSpecificOutput:{hookEventName:'PermissionDenied', retry}} for a non-hard-denied command (retry stays the command-retry invitation, not permission approval). Updated during task 02: the review-baseline legacy top-level {retry} shorthand (F05) was detected and task 03 has since landed the documented envelope; a silent regression back to bare {retry} now fails this manifest's exact-allowed-fields check.",
+      "payload_path": "payloads/compat_permission_denied.json",
+      "expected_class": "permission_denied_hook_specific_retry_envelope",
+      "known_gap": "Input-side shape is still synthetic: the exact PermissionDenied stdin field set is a capture target (see compat_permission_denied_capture). The F05 baseline emitted bare {retry:true}; detection of that legacy form is now the exact-allowed-fields check on this entry.",
+      "capture_instructions": "Manual canary on target CLI: confirm the exact PermissionDenied stdin field set on 2.1.303 and keep the payload in sync.",
+      "active_reason": "The output envelope is documented (and task 03 has landed it); the exact-field assertion does not depend on the unobserved input field set. Input-side capture is a separate entry."
+    },
+    {
+      "id": "compat_permission_denied_capture",
+      "event": "PermissionDenied",
+      "cli_version_target": "2.1.303",
+      "source": "synthetic",
+      "status": "pending_capture",
+      "plan_item": "03 (task 03) input-shape confirmation",
+      "description": "Input-shape capture target for PermissionDenied on the pinned CLI; shares the payload with compat_permission_denied_current_envelope. The OUTPUT class is asserted by the envelope entry above; only the input side stays unconfirmed.",
+      "payload_path": "payloads/compat_permission_denied.json",
+      "expected_class": "permission_denied_hook_specific_retry_envelope",
+      "capture_instructions": "Manual canary on target CLI: capture one real PermissionDenied event on 2.1.303 (hard-denied command and retriable command), replace the shared payload, then flip source=captured and status=active."
+    }
+  ]
+}

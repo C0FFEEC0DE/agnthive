@@ -13,14 +13,18 @@ import { pathToFileURL, fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { readFileSync } from 'node:fs';
 import { parseHookInput, readStdin } from './hook-input.mjs';
-import { additionalContext, passthrough, serialize, terminalCancel, pretoolPermission, permissionRequestDeny, permissionDeniedResult, blockReason } from './hook-output.mjs';
+import { additionalContext, passthrough, serialize, terminalCancel, pretoolPermission, permissionRequestDeny, permissionDeniedResult, blockReason, eventClass } from './hook-output.mjs';
 import { resolveDataRoot, resolveSessionId, resolveLogRoot, resolveProjectDir } from './util.mjs';
 import { statePaths, appendEvent, loadState } from './state.mjs';
 import {
   classifyPrompt, userPromptResetPatch, sessionBackgroundManagerPending,
   clearLoopBlockPatch, agentLoopKey, hasPriorStopBlock, taskTypeRequiresImplementationSummary,
 } from './workflow.mjs';
-import { commandClass, verificationOutcome, detectTestCmd, detectLintCmd, detectBuildCmd } from './verification.mjs';
+import {
+  commandClass, resultFromBashPayload, verificationAppendEvent,
+  currentRevision, nextRevisionValue, isMutatingShellCommand,
+  detectTestCmd, detectLintCmd, detectBuildCmd,
+} from './verification.mjs';
 import {
   extractSubagentLabel, extractSubagentScope, loadAliases, effectiveStartedRoles,
   shouldEnforceSubagentFooter, isGenericType, isAliasesLoaded,
@@ -39,11 +43,9 @@ import {
 import {
   appendJsonl, resolveLogMaxBytes, notificationPayload, instructionsLoadedPayload,
   preCompactPayload, postCompactPayload, configChangePayload, sessionEndPayload,
+  stopFailurePayload,
 } from './notifications.mjs';
-import {
-  progressLedgerPath, readLedgerForInjection, buildPostCompactContext,
-  resolveLedgerMaxBytes,
-} from './ledger.mjs';
+import { buildSessionStartRestore } from './ledger.mjs';
 import {
   classifyCommand, resolveMode as resolvePolicyMode, permissionDeniedOutcome,
   pretoolErrorDetails, permRequestErrorDetails, permRequestMessage,
@@ -56,6 +58,13 @@ const ALIASES = loadAliases(pluginRoot);
 // loaded-ness once so shouldEnforceSubagentFooter avoids a per-SubagentStop
 // Object.keys allocation on the hot path.
 const ALIASES_LOADED = isAliasesLoaded(ALIASES);
+
+// Failure-policy classes (ADR 0011, task 08) are normative data in
+// hook-output.mjs — HOOK_EVENT_CLASSES / eventClass(): enforce = classifier and
+// permission events, guidance = workflow gates, telemetry = observability
+// writes. dispatch() consults eventClass() below; the classes are identical
+// to the map this file used to carry locally, with SessionEnd + StopFailure
+// both telemetry and SessionStart guidance.
 
 // UserPromptSubmit: classify the prompt, persist the task type / manager mode /
 // required roles / docs flag plus the stop-loop reset to session state, and
@@ -117,7 +126,16 @@ function handlePreToolUse(parsed) {
   if (cls.decision === 'deny') {
     return pretoolPermission('deny', cls.reason, pretoolErrorDetails('deny', cls.reason));
   }
-  return pretoolPermission('allow', cls.reason, pretoolErrorDetails('allow', cls.reason));
+  if (resolvePolicyMode() === 'enforce') {
+    // Enforce mode: the classifier IS the permission decision, so a non-deny
+    // verdict stays an explicit allow with its errorDetails context.
+    return pretoolPermission('allow', cls.reason, pretoolErrorDetails('allow', cls.reason));
+  }
+  // Advisory neutrality (ADR 0011): the advisory guard only adds a deny when
+  // the policy confidently classifies a dangerous command; otherwise it stays
+  // neutral — no permissionDecision, no errorDetails — so the native
+  // permission flow runs untouched.
+  return passthrough();
 }
 
 // Dispatch-contract hard guard for Edit/Write/MultiEdit/NotebookEdit. In
@@ -177,14 +195,49 @@ function handlePostToolUse(parsed) {
   return passthrough();
 }
 
-// PostToolUse (Bash matcher): classify the command and record a successful
-// test/lint/build outcome. Mirrors post-tool-use.sh.
+// PostToolUse (Bash matcher): classify the command and record the outcome as a
+// revision-scoped verification record (ADR 0009, task 04). The payload adapter
+// owns the status precedence: a background launch marker is 'pending' (launch
+// never equals completion), an interrupted/absent exit signal is 'unknown', and
+// only a real exit 0 is 'passed'. A mutating class-'other' command bumps
+// fs_revision_hint BEFORE anything else could be recorded, so earlier records
+// stop counting. Mirrors post-tool-use.sh.
 function handlePostToolUseBash(parsed) {
   const command = parsed.toolInput?.command ?? '';
-  const outcome = verificationOutcome(commandClass(command), command, { failed: false });
-  if (!outcome) return passthrough();
-  persistPatch(parsed, outcome.patch);
-  return additionalContext(outcome.message, 'PostToolUse');
+  const toolUseId = parsed.data?.tool_use_id ?? parsed.toolUseId ?? '';
+  const toolResponse = parsed.data?.tool_response ?? parsed.toolResponse ?? '';
+  let state = null;
+  try { state = loadStateFor(parsed); } catch {}
+  const result = resultFromBashPayload(commandClass(command), command, toolResponse, toolUseId, {
+    revision: state ? currentRevision(state) : null,
+    cwd: parsed.cwd ?? state?.cwd ?? '',
+    startedRevision: startedRevisionForPending(state, toolUseId),
+  });
+  if (!result) {
+    if (isMutatingShellCommand(command) && state) {
+      safeAppend(statePathsFor(parsed), 'set_many', { fields: { fs_revision_hint: nextRevisionValue(state) } });
+    }
+    return passthrough();
+  }
+  const recordEvent = verificationAppendEvent(result);
+  if (recordEvent) safeAppend(statePathsFor(parsed), 'append', recordEvent);
+  if (result.fields) persistPatch(parsed, result.fields);
+  return result.message ? additionalContext(result.message, 'PostToolUse') : passthrough();
+}
+
+// ADR-0009 background completion: a pending record keyed by the same toolUseId
+// supplies the revision the run STARTED at, so the completion record is valid
+// only if nothing moved the hint between launch and completion (append-only
+// supersession; the gate reads only records that are still valid).
+function startedRevisionForPending(state, toolUseId) {
+  if (!state || !toolUseId || !Array.isArray(state.verification)) return undefined;
+  for (let i = state.verification.length - 1; i >= 0; i--) {
+    const rec = state.verification[i];
+    if (rec && rec.toolUseId === toolUseId && rec.status === 'pending' && Number.isFinite(Number(rec.startedRevision))) {
+      return Number(rec.startedRevision);
+    }
+  }
+  return undefined;
 }
 
 // PostToolUse (EditWrite matcher): record the file change. Docs paths set
@@ -210,22 +263,46 @@ function handlePostToolUseEditWrite(parsed) {
     files,
   };
   persistPatch(parsed, patch);
-  if (codeChanged) {
+  if (codeChanged && state) {
+    // ADR-0009 revision invalidation: a code/config write bumps fs_revision_hint
+    // to max(revision, hint) + 1 (nextRevisionValue) so revision-scoped
+    // verification records stop counting toward the current gate. Set (not
+    // increment), so the hint overtakes an already-higher revision counter.
+    safeAppend(statePathsFor(parsed), 'set_many', { fields: { fs_revision_hint: nextRevisionValue(state) } });
     return additionalContext('Recorded a code/config change in session state. This session now requires verification before completion.', 'PostToolUse');
   }
   return passthrough();
 }
 
-// PostToolUseFailure: record a failed test/lint/build outcome.
+// PostToolUseFailure: record a failed test/lint/build outcome as a
+// revision-scoped verification record (ADR 0009, task 04). The failure-path
+// sync call sets assumeFailure so an unusable response is treated as failed,
+// while a real exit 0 still wins (never fabricate a failure when the payload
+// shows the command passed). Mirrors post-tool-use.sh failure path.
 function handlePostToolUseFailure(parsed) {
   const isBash = parsed.matcher === 'Bash' || parsed.toolName === 'Bash';
   if (!isBash) return passthrough();
   const command = parsed.toolInput?.command ?? '';
-  const error = parsed.data?.error ?? '';
-  const outcome = verificationOutcome(commandClass(command), command, { failed: true, error });
-  if (!outcome) return passthrough();
-  persistPatch(parsed, outcome.patch);
-  return additionalContext(outcome.message, 'PostToolUseFailure');
+  const toolUseId = parsed.data?.tool_use_id ?? parsed.toolUseId ?? '';
+  const toolResponse = parsed.data?.tool_response ?? parsed.toolResponse ?? '';
+  let state = null;
+  try { state = loadStateFor(parsed); } catch {}
+  const result = resultFromBashPayload(commandClass(command), command, toolResponse, toolUseId, {
+    revision: state ? currentRevision(state) : null,
+    cwd: parsed.cwd ?? state?.cwd ?? '',
+    assumeFailure: true,
+    error: parsed.data?.error ?? '',
+  });
+  if (!result) {
+    if (isMutatingShellCommand(command) && state) {
+      safeAppend(statePathsFor(parsed), 'set_many', { fields: { fs_revision_hint: nextRevisionValue(state) } });
+    }
+    return passthrough();
+  }
+  const recordEvent = verificationAppendEvent(result);
+  if (recordEvent) safeAppend(statePathsFor(parsed), 'append', recordEvent);
+  if (result.fields) persistPatch(parsed, result.fields);
+  return result.message ? additionalContext(result.message, 'PostToolUseFailure') : passthrough();
 }
 
 // Append an event record, swallowing write failures to stderr so a state-write
@@ -481,13 +558,19 @@ function handleTeammateIdle(parsed) {
   return null;
 }
 
-// SessionStart: detect the project's test/lint/build commands, persist them to
+// SessionStart: restoration sources (compact/resume, per ADR 0013 / task 07)
+// rebuild session context from durable state via handleSessionStartRestore.
+// Fresh starts detect the project's test/lint/build commands, persist them to
 // session state (so stop-guard's verification gate knows what was detected),
 // and emit the profile-active context message. Mirrors session-start.sh. The
 // bash profile also writes a CLAUDE_ENV_FILE of exports; the Node runtime uses
 // session state as the source of truth, so that env-file step is intentionally
 // not ported.
 function handleSessionStart(parsed) {
+  const source = parsed.source ?? parsed.data?.source ?? '';
+  if (source === 'compact' || source === 'resume') {
+    return handleSessionStartRestore(parsed);
+  }
   const projectDir = resolveProjectDir(process.env, parsed.cwd ?? '');
   const opts = { cwd: projectDir };
   const testCmd = detectTestCmd(opts) ?? '';
@@ -509,6 +592,23 @@ function handleSessionStart(parsed) {
     if (buildCmd) message += ` build=${buildCmd};`;
   }
   return additionalContext(message, 'SessionStart');
+}
+
+// SessionStart restoration source (ADR 0013, task 07): compact/resume starts
+// rebuild session context from durable state instead of re-detecting commands.
+// The ledger builder is stat-only (it never re-injects ledger text) and returns
+// a compact active-task summary plus the restored_task_seq patch to persist.
+// Each SessionStart event runs in its own hook process, so the builder's
+// default increment bookkeeping applies exactly once per restoration event —
+// no cycleSeq counter needed for exec-form wiring.
+function handleSessionStartRestore(parsed) {
+  const state = loadStateFor(parsed);
+  if (!state) return passthrough();
+  const projectDir = resolveProjectDir(process.env, parsed.cwd ?? '');
+  const restored = buildSessionStartRestore(state, { projectDir });
+  if (!restored) return passthrough();
+  safeAppend(statePathsFor(parsed), 'set_many', { fields: restored.patch });
+  return additionalContext(restored.message, 'SessionStart');
 }
 
 // --- observability / lifecycle (Task 11) ----------------------------------
@@ -545,14 +645,14 @@ function handlePreCompact(parsed) {
   return passthrough();
 }
 
-// PostCompact: record a compaction marker, then best-effort re-inject the
-// durable progress ledger so the agent keeps its place after compaction.
+// PostCompact: record the compaction marker. The record is metadata-only
+// (notifications.mjs postCompactPayload, F10 hygiene), and ledger restoration
+// moved to SessionStart compact/resume (ADR 0013): async PostCompact output is
+// not consumed by the host, so the guaranteed-restore path rides the
+// SessionStart restoration source instead — handleSessionStartRestore.
 function handlePostCompact(parsed) {
   logEvent(parsed, 'post-compact.jsonl', postCompactPayload(parsed.data ?? {}));
-  const projectDir = resolveProjectDir(process.env, parsed.cwd ?? '');
-  const ledger = readLedgerForInjection(progressLedgerPath(projectDir), resolveLedgerMaxBytes());
-  const ctx = buildPostCompactContext(ledger);
-  return ctx ? additionalContext(ctx, 'PostCompact') : passthrough();
+  return passthrough();
 }
 
 // SessionEnd: record the session index entry with a final state snapshot.
@@ -562,6 +662,14 @@ function handleSessionEnd(parsed) {
 }
 
 // ConfigChange: audit user-settings / config modifications.
+
+// StopFailure: bounded observability of API/turn failures (ADR 0013, task 07).
+// API error text is never treated as a completion summary; write the stream and
+// return passthrough — telemetry failures never block (ADR 0011).
+function handleStopFailure(parsed) {
+  logEvent(parsed, 'stop-failure.jsonl', stopFailurePayload(parsed.data ?? {}));
+  return passthrough();
+}
 function handleConfigChange(parsed) {
   logEvent(parsed, 'config-change.jsonl', configChangePayload(parsed.data ?? {}));
   return passthrough();
@@ -589,6 +697,7 @@ const handlers = {
   PreCompact: handlePreCompact,
   PostCompact: handlePostCompact,
   SessionEnd: handleSessionEnd,
+  StopFailure: handleStopFailure,
 };
 
 /**
@@ -602,10 +711,31 @@ export function dispatch(event, parsed, matcher = null) {
   try {
     parsed.matcher = matcher;
     return fn(parsed) ?? passthrough();
-  } catch {
-    // Never block or stop the runtime on a handler bug; degrade to passthrough.
+  } catch (e) {
+    // ADR 0011 (task 08): handler crashes must not silently passthrough in
+    // enforce mode. Enforce-class handler failure: in enforce mode deny the
+    // protected action with a diagnostic (the classifier is unavailable, so a
+    // dangerous command must not appear pre-approved. In advisory mode keep
+    // the native permission flow with a degradation note; guidance/telemetry
+    // classes keep unknown status preserved. Never fabricate success.
+    const cls = eventClass(event) ?? 'guidance';
+    try { process.stderr.write(`hook-dispatcher: ${event} handler failed: ${e?.message ?? e}\n`); } catch {}
+    if (cls === 'enforce') {
+      if (resolvePolicyMode() === 'enforce') return denyOnHandlerFailure(event, e);
+    }
     return passthrough();
   }
+}
+
+// Event-appropriate deny output for an enforce-class handler failure (ADR 0011,
+// task 08.2). Only the permission events have actionable deny constructors; the
+// permission events ARE the enforce class, so nothing else routes here.
+function denyOnHandlerFailure(event, e) {
+  const reason = `Safety hook could not evaluate this action (handler error: ${e?.message ?? e}). Denied by policy: the classifier could not determine whether this command is dangerous. Treat the hook as unavailable, not as a pre-passed action.`;
+  if (event === 'PreToolUse') return pretoolPermission('deny', reason, pretoolErrorDetails('deny', reason));
+  if (event === 'PermissionRequest') return permissionRequestDeny(reason, reason);
+  if (event === 'PermissionDenied') return permissionDeniedResult(false);
+  return passthrough();
 }
 
 /** Extract the --event argument from argv. */

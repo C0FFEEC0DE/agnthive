@@ -1,0 +1,9 @@
+{
+  "session_id": "verif-failure",
+  "tool_name": "Bash",
+  "tool_use_id": "toolu_verif_failure",
+  "cwd": "/repo",
+  "tool_input": { "command": "pytest -q" },
+  "error": "AssertionError: expected 2 == 3",
+  "tool_response": { "stdout": "1 failed", "stderr": "AssertionError: expected 2 == 3", "exitCode": 1 }
+}

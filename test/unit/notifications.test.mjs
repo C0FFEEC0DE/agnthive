@@ -7,6 +7,7 @@ import {
   appendJsonl, rotateJsonlIfNeeded, resolveLogMaxBytes,
   notificationPayload, instructionsLoadedPayload, preCompactPayload,
   postCompactPayload, configChangePayload, sessionEndPayload,
+  verboseCompactLog, stopFailurePayload,
   DEFAULT_LOG_MAX_BYTES,
 } from '../../plugins/agnthive/modules/notifications.mjs';
 import { timestampUtc } from '../../plugins/agnthive/modules/util.mjs';
@@ -52,10 +53,36 @@ test('resolveLogMaxBytes: CLAUDE_PLUGIN_OPTION_LOG_MAX_BYTES userConfig bridge i
 // --- payload builders (field whitelist + redaction) -----------------------
 
 test('notificationPayload: only whitelisted fields; non-strings coerced to ""', () => {
-  const p = notificationPayload({ session_id: 's1', title: 'Hi', message: 'msg', subtype: 'x', context: 'ctx', extra: 'dropped', title: 'Hi' });
-  assert.deepEqual(p, { ts: p.ts, session_id: 's1', title: 'Hi', message: 'msg', subtype: 'x', context: 'ctx' });
+  const p = notificationPayload({ session_id: 's1', title: 'Hi', message: 'msg', notification_type: 'progress', context: 'ctx', agent_id: 'a1', prompt_id: 'p1', extra: 'dropped' });
+  assert.deepEqual(p, {
+    ts: p.ts, session_id: 's1', notification_type: 'progress',
+    title: 'Hi', message: 'msg', context: 'ctx', agent_id: 'a1', prompt_id: 'p1',
+  });
   assert.ok('extra' in p === false);
+  assert.ok('subtype' in p === false, 'subtype replaced by notification_type (F10/ADR-0013)');
   assert.match(p.ts, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
+});
+
+test('notificationPayload: notification_type bridges the legacy subtype input alias', () => {
+  // Older runtimes still carry only `subtype` in the Notification hook input;
+  // the telemetry record keeps ONE canonical field (H14, docs/compatibility.md).
+  assert.equal(notificationPayload({ subtype: 'status_update' }).notification_type, 'status_update');
+  // The current field wins when both are present.
+  assert.equal(
+    notificationPayload({ notification_type: 'current', subtype: 'legacy' }).notification_type,
+    'current',
+  );
+  // Absent on both → empty string, record shape unchanged.
+  assert.equal(notificationPayload({}).notification_type, '');
+});
+
+test('notificationPayload: agent_id/prompt_id correlation ids recorded when provided', () => {
+  const p = notificationPayload({ session_id: 's', agent_id: 'agent-9', prompt_id: 'prompt-3' });
+  assert.equal(p.agent_id, 'agent-9');
+  assert.equal(p.prompt_id, 'prompt-3');
+  // Correlation is ids only: the message content stays in its own field and an
+  // unknown payload key is never promoted.
+  assert.ok(!('extra' in p));
 });
 
 test('notificationPayload: non-string fields become "" (no crash, no leakage)', () => {
@@ -78,10 +105,100 @@ test('preCompactPayload / sessionEndPayload embed a state snapshot', () => {
   assert.equal(sessionEndPayload({ session_id: 's', cwd: '/r', transcript_path: '/t', reason: 'end' }, state).state, state);
 });
 
-test('postCompactPayload field whitelist', () => {
-  const pc = postCompactPayload({ session_id: 's', trigger: 'manual', compact_summary: 'sum', extra: 'drop' });
-  assert.deepEqual({ ...pc, ts: '<ts>' }, { ts: '<ts>', session_id: 's', trigger: 'manual', compact_summary: 'sum' });
+// --- postCompactPayload: bounded bookkeeping (ADR-0013, plan 07.5) ---------
+
+test('postCompactPayload: default record is metadata/size/status only (no summary text)', () => {
+  const pc = postCompactPayload({ session_id: 's', trigger: 'manual', compact_summary: 'SECRET SUMMARY CONTENT', extra: 'drop' });
+  assert.deepEqual({ ...pc, ts: '<ts>' }, {
+    ts: '<ts>', session_id: 's', trigger: 'manual',
+    compact_summary_present: true, compact_summary_bytes: 22,
+  });
+  // The content itself is never written by default (ADR-0013): the old shape
+  // stored the full compact_summary text while the module comment promised not
+  // to (F10). Nothing else is added.
+  assert.ok(!('compact_summary' in pc), 'default record must not store summary text');
   assert.ok('extra' in pc === false);
+});
+
+test('postCompactPayload: absent summary -> present=false, bytes=0', () => {
+  const pc = postCompactPayload({ session_id: 's', trigger: 'auto' });
+  assert.deepEqual({ ...pc, ts: '<ts>' }, {
+    ts: '<ts>', session_id: 's', trigger: 'auto',
+    compact_summary_present: false, compact_summary_bytes: 0,
+  });
+});
+
+test('postCompactPayload: AGNTHIVE_VERBOSE_COMPACT_LOG=1 opts into the summary text', () => {
+  const env = { AGNTHIVE_VERBOSE_COMPACT_LOG: '1' };
+  const pc = postCompactPayload({ session_id: 's', trigger: 'manual', compact_summary: 'part one / part two' }, undefined, env);
+  assert.equal(pc.compact_summary, 'part one / part two');
+  assert.equal(pc.compact_summary_truncated, false);
+  assert.equal(pc.compact_summary_present, true);
+  assert.equal(pc.compact_summary_bytes, 19);
+});
+
+test('postCompactPayload: verbose mode is bounded to AGNTHIVE_LOG_MAX_BYTES (UTF-8 safe)', () => {
+  const env = { AGNTHIVE_VERBOSE_COMPACT_LOG: '1', AGNTHIVE_LOG_MAX_BYTES: '8' };
+  // Multibyte text so a naive byte cap would split a sequence.
+  const pc = postCompactPayload({ session_id: 's', compact_summary: '✔✔✔✔' }, undefined, env);
+  assert.equal(pc.compact_summary, '✔✔', 'capped to 8 bytes, partial sequence dropped');
+  assert.equal(pc.compact_summary_truncated, true);
+  assert.equal(pc.compact_summary_present, true);
+  assert.ok(!pc.compact_summary.includes('�'), 'no replacement char from a split sequence');
+});
+
+test('verboseCompactLog: only explicit truthy values opt in', () => {
+  assert.equal(verboseCompactLog({}), false);
+  assert.equal(verboseCompactLog({ AGNTHIVE_VERBOSE_COMPACT_LOG: '' }), false);
+  assert.equal(verboseCompactLog({ AGNTHIVE_VERBOSE_COMPACT_LOG: '0' }), false);
+  assert.equal(verboseCompactLog({ AGNTHIVE_VERBOSE_COMPACT_LOG: 'nope' }), false);
+  assert.equal(verboseCompactLog({ AGNTHIVE_VERBOSE_COMPACT_LOG: '1' }), true);
+  assert.equal(verboseCompactLog({ AGNTHIVE_VERBOSE_COMPACT_LOG: 'true' }), true);
+  assert.equal(verboseCompactLog({ AGNTHIVE_VERBOSE_COMPACT_LOG: 'YES' }), true);
+  assert.equal(verboseCompactLog({ AGNTHIVE_VERBOSE_COMPACT_LOG: 'On' }), true);
+});
+
+// --- stopFailurePayload (ADR-0013, plan 07.6) ------------------------------
+
+test('stopFailurePayload: bounded metadata only; error text is not stored', () => {
+  const longError = 'API error: '.padEnd(300, 'x');
+  const p = stopFailurePayload({
+    session_id: 's', agent_id: 'a1',
+    error: { name: 'APIError', exit_code: 1, signal: 'SIGTERM', message: longError },
+  });
+  assert.deepEqual({ ...p, ts: '<ts>' }, {
+    ts: '<ts>', session_id: 's', error_name: 'APIError', exit_code: 1,
+    signal: 'SIGTERM', agent_id: 'a1',
+  });
+  // The API error text is a diagnostic, not a completion summary: never stored.
+  assert.ok(!('message' in p), 'error message text must not be stored');
+  assert.ok(Object.values(p).every((v) => typeof v !== 'string' || v.length <= 200), 'all string fields are bounded');
+});
+
+test('stopFailurePayload: flat error fields and legacy error_kind alias', () => {
+  const p1 = stopFailurePayload({ session_id: 's', error_name: 'Timeout', exit_code: 124 });
+  assert.equal(p1.error_name, 'Timeout');
+  assert.equal(p1.exit_code, 124);
+  assert.equal(p1.signal, '');
+  const p2 = stopFailurePayload({ session_id: 's', error_kind: 'api_error', signal: 'SIGHUP' });
+  assert.equal(p2.error_name, 'api_error');
+  assert.equal(p2.signal, 'SIGHUP');
+  assert.equal(p2.exit_code, null);
+});
+
+test('stopFailurePayload: empty input degrades to empty metadata (no crash)', () => {
+  const p = stopFailurePayload({});
+  assert.deepEqual({ ...p, ts: '<ts>' }, {
+    ts: '<ts>', session_id: '', error_name: '', exit_code: null,
+    signal: '', agent_id: '',
+  });
+});
+
+test('stopFailurePayload: non-integer exit codes are null, not coerced garbage', () => {
+  assert.equal(stopFailurePayload({ exit_code: 'oops' }).exit_code, null);
+  assert.equal(stopFailurePayload({ exit_code: 1.5 }).exit_code, null);
+  assert.equal(stopFailurePayload({ exit_code: '0' }).exit_code, 0);
+  assert.equal(stopFailurePayload({ error: { exitCode: '7' } }).exit_code, 7);
 });
 
 // --- appendJsonl + rotation -----------------------------------------------

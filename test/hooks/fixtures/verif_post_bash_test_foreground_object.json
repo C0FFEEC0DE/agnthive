@@ -1,0 +1,8 @@
+{
+  "session_id": "verif-fg-object",
+  "tool_name": "Bash",
+  "tool_use_id": "toolu_verif_fg_object",
+  "cwd": "/repo",
+  "tool_input": { "command": "pytest -q" },
+  "tool_response": { "stdout": "3 passed in 0.2s", "stderr": "", "exitCode": 0, "interrupted": false }
+}

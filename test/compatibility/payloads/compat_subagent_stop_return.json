@@ -1,0 +1,9 @@
+{
+  "hook_event_name": "SubagentStop",
+  "session_id": "compat-session-subagent-return",
+  "transcript_path": "/tmp/compat-capture/parent-transcript.jsonl",
+  "agent_transcript_path": "/tmp/compat-capture/child-transcript.jsonl",
+  "agent_id": "compat-agent-reviewer-1",
+  "agent_alias": "cr",
+  "last_assistant_message": "Outcome: review completed on the current diff.\nChanged files: No files changed.\nVerification status: not run (read-only review).\nRemaining risks: none."
+}

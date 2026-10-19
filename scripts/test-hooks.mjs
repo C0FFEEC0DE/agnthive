@@ -2,8 +2,8 @@
 // test-hooks.mjs — Node ESM hook fixture runner.
 //
 // Replaces the legacy Bash/jq/Python harness (scripts/test-hooks.sh +
-// test/hooks/test-lib.sh). Loads test/hooks/cases.json (142 cases) and
-// test/hooks/scenarios.json (2 scenarios) verbatim, feeds each fixture
+// test/hooks/test-lib.sh). Loads test/hooks/cases.json and
+// test/hooks/scenarios.json verbatim, feeds each fixture
 // through the Node hook dispatcher (spawned with an explicit argv — no shell),
 // and asserts the same expectations (exit code, stdout_jq, state_jq,
 // stderr_regex, file_assertions) using a built-in jq-subset evaluator.
@@ -583,10 +583,10 @@ function readStateFor(dataRoot, sessionId) {
 // ===========================================================================
 // dispatcher invocation
 // ===========================================================================
-function runDispatcher({ event, matcher, stdinJson, env, cwd }) {
+function runDispatcher({ event, matcher, stdinJson, env, cwd }, spawn = spawnSync) {
   const args = [dispatcher, '--event', event];
   if (matcher) args.push('--matcher', matcher);
-  const res = spawnSync(process.execPath, args, {
+  const res = spawn(process.execPath, args, {
     input: stdinJson,
     encoding: 'utf8',
     env,
@@ -594,6 +594,30 @@ function runDispatcher({ event, matcher, stdinJson, env, cwd }) {
     maxBuffer: 16 * 1024 * 1024,
   });
   return res;
+}
+
+// A spawnSync result can fail before the dispatcher runs at all: res.error
+// (EPERM in a sandbox, ENOENT, maxBuffer blow-up) or a kill signal. That is an
+// independent failure with its own diagnostic — never "empty stdout", never a
+// pass, and never the opaque "expected exit 0, got null". Returns the reason
+// string, or null when the dispatcher ran to a normal exit.
+//
+// Sandbox-observed failure at the review baseline (plan 02.5):
+// `spawnSync /usr/bin/node-22 EPERM`; the runner previously surfaced it only as
+// "expected exit 0, got null" or, when stdout_jq was also asserted, as
+// "stdout was empty for stdout_jq assertion".
+export function spawnFailureReason(res) {
+  if (!res || typeof res !== 'object') return 'spawn returned no result object';
+  const parts = [];
+  if (res.error) {
+    const code = res.error.code ? ` [${res.error.code}]` : '';
+    parts.push(`spawn failed${code}: ${res.error.message ?? res.error}`);
+  }
+  if (res.signal) parts.push(`terminated by signal ${res.signal}`);
+  if (!res.error && !res.signal && res.status == null) {
+    parts.push('no exit status was reported');
+  }
+  return parts.length ? parts.join('; ') : null;
 }
 
 // ===========================================================================
@@ -639,7 +663,10 @@ function buildEnv(caseEnv, caseHome, caseTmp, workdir) {
 // Execute one fixture through the dispatcher and check all assertions.
 // `runName` is the reporting name; `entry` is the case/step object; `ctx`
 // carries the per-run tmp/home and (for scenarios) the shared session id.
-function executeEntry(runName, entry, ctx, delta) {
+// `spawn` is an inspection seam for unit tests (defaults to spawnSync inside
+// runDispatcher): when a test injects a fake spawn, the module-local pass/fail
+// counters still advance, so tests read the executeEntry return value.
+function executeEntry(runName, entry, ctx, delta, spawn) {
   totalCases++;
   const skip = new Set(delta?.skip ?? []);
 
@@ -650,16 +677,16 @@ function executeEntry(runName, entry, ctx, delta) {
     : fixtureRaw;
 
   const mapped = mapScriptToEvent(entry.script, fixture);
-  if (!mapped) { recordFail(runName, `unmapped script ${entry.script}`); return; }
+  if (!mapped) { recordFail(runName, `unmapped script ${entry.script}`); return false; }
   if (!DISPATCHER_EVENTS.has(mapped.event)) {
     recordFail(runName, `dispatcher does not handle event ${mapped.event}`);
-    return;
+    return false;
   }
 
   const stdinJson = JSON.stringify(fixture);
   const workdirRaw = entry.cwd ?? null;
   const workdir = workdirRaw ? resolveFsPath(workdirRaw, ctx.caseTmp, ctx.caseHome) : repoRoot;
-  if (!existsSync(workdir)) { recordFail(runName, `working directory not found: ${workdir}`); return; }
+  if (!existsSync(workdir)) { recordFail(runName, `working directory not found: ${workdir}`); return false; }
 
   const env = buildEnv(entry.env ?? null, ctx.caseHome, ctx.caseTmp, workdir);
   const dataRoot = env.CLAUDE_PLUGIN_DATA;
@@ -677,12 +704,32 @@ function executeEntry(runName, entry, ctx, delta) {
     stdinJson,
     env,
     cwd: workdir,
-  });
+  }, spawn);
+
+  // A spawn failure (.error like the sandbox EPERM, or a kill signal) is an
+  // independent failure with its own diagnostic. It is checked BEFORE any
+  // stdout/exit comparison so it never reads as "empty stdout", as a pass, or
+  // as the opaque "expected exit 0, got null".
+  const spawnFailure = spawnFailureReason(res);
+  if (spawnFailure) {
+    recordFail(runName, `dispatcher spawn failed, hook never ran: ${spawnFailure}`);
+    return false;
+  }
 
   const expectedExit = entry.expect_exit ?? 0;
   if (res.status !== expectedExit) {
-    recordFail(runName, `expected exit ${expectedExit}, got ${res.status}${res.stderr ? `; stderr: ${res.stderr.trim().slice(0, 300)}` : ''}`);
-    return;
+    // A nonzero exit on an event whose contract asserts stdout output is a
+    // different failure from "the hook exited 0 and printed nothing": name the
+    // expected-output contract in the diagnostic so the cause is visible.
+    const expectedOutputNote = entry.stdout_jq
+      ? '; this case also asserts stdout output, so the hook stopped before emitting the output its contract expects'
+      : '';
+    recordFail(
+      runName,
+      `expected exit ${expectedExit}, got ${res.status === null ? 'no exit status' : res.status}` +
+      `${res.stderr ? `; stderr: ${res.stderr.trim().slice(0, 300)}` : ''}${expectedOutputNote}`,
+    );
+    return false;
   }
 
   // stderr_regex (used by exit-2 TaskCompleted/TeammateIdle blocks).
@@ -690,7 +737,7 @@ function executeEntry(runName, entry, ctx, delta) {
     if (!skip.has('stderr_regex')) {
       if (!regexTest(entry.stderr_regex, res.stderr ?? '')) {
         recordFail(runName, `stderr did not match regex: ${entry.stderr_regex}`);
-        return;
+        return false;
       }
     }
   }
@@ -698,26 +745,26 @@ function executeEntry(runName, entry, ctx, delta) {
   // stdout_jq (dispatcher prints one JSON object on stdout for exit 0).
   if (entry.stdout_jq) {
     if (!skip.has('stdout_jq')) {
-      if (!res.stdout || !res.stdout.trim()) { recordFail(runName, 'stdout was empty for stdout_jq assertion'); return; }
+      if (!res.stdout || !res.stdout.trim()) { recordFail(runName, 'stdout was empty for stdout_jq assertion'); return false; }
       let parsed;
-      try { parsed = JSON.parse(res.stdout); } catch (e) { recordFail(runName, `stdout not valid JSON: ${e.message}`); return; }
+      try { parsed = JSON.parse(res.stdout); } catch (e) { recordFail(runName, `stdout not valid JSON: ${e.message}`); return false; }
       let ok;
       try { ok = jqAssert(entry.stdout_jq, parsed); }
-      catch (e) { recordFail(runName, `stdout_jq evaluation error: ${e.message}`); return; }
-      if (!ok) { recordFail(runName, `stdout JSON assertion failed: ${entry.stdout_jq}`); return; }
+      catch (e) { recordFail(runName, `stdout_jq evaluation error: ${e.message}`); return false; }
+      if (!ok) { recordFail(runName, `stdout JSON assertion failed: ${entry.stdout_jq}`); return false; }
     }
   }
 
   // state_jq (read session state back through the dispatcher's state module).
   if (entry.state_jq) {
     if (!skip.has('state_jq')) {
-      if (!sessionIdForState) { recordFail(runName, 'state assertion requires session_id'); return; }
+      if (!sessionIdForState) { recordFail(runName, 'state assertion requires session_id'); return false; }
       const state = readStateFor(dataRoot, sessionIdForState);
-      if (!state) { recordFail(runName, 'expected session state not found'); return; }
+      if (!state) { recordFail(runName, 'expected session state not found'); return false; }
       let ok;
       try { ok = jqAssert(entry.state_jq, state); }
-      catch (e) { recordFail(runName, `state_jq evaluation error: ${e.message}`); return; }
-      if (!ok) { recordFail(runName, `state assertion failed: ${entry.state_jq}`); return; }
+      catch (e) { recordFail(runName, `state_jq evaluation error: ${e.message}`); return false; }
+      if (!ok) { recordFail(runName, `state assertion failed: ${entry.state_jq}`); return false; }
     }
   }
 
@@ -727,13 +774,14 @@ function executeEntry(runName, entry, ctx, delta) {
       if (skip.has('file_assertions')) continue;
       if (skip.has(`file_assertion:${idx}`)) continue;
       const filePath = resolveFsPath(fa.path, ctx.caseTmp, ctx.caseHome);
-      if (!existsSync(filePath)) { recordFail(runName, `expected file not found: ${filePath}`); return; }
+      if (!existsSync(filePath)) { recordFail(runName, `expected file not found: ${filePath}`); return false; }
       const content = readFileSync(filePath, 'utf8');
-      if (!regexTest(fa.regex, content)) { recordFail(runName, `file assertion failed for ${filePath}: ${fa.regex}`); return; }
+      if (!regexTest(fa.regex, content)) { recordFail(runName, `file assertion failed for ${filePath}: ${fa.regex}`); return false; }
     }
   }
 
   recordPass(runName, delta && skip.size > 0);
+  return true;
 }
 
 // ===========================================================================
@@ -872,3 +920,13 @@ if (isMain) {
     process.exit(1);
   });
 }
+
+// ---------------------------------------------------------------------------
+// inspection seams (for the compatibility contract test, not used by main())
+// ---------------------------------------------------------------------------
+// Importing this module is side-effect-free (the isMain guard above keeps
+// main() out of the import path), so the compat contract test can drive a case
+// with an injected fake spawn and read the runner's own bookkeeping without
+// executing the suite. `failures` is exported by reference: recordFail mutates
+// the same array, so a test reads the last entry after an executeEntry call.
+export const __runnerInternals = { runDispatcher, executeEntry, failures };

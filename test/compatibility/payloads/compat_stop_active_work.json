@@ -1,0 +1,7 @@
+{
+  "hook_event_name": "Stop",
+  "session_id": "compat-session-stop-active",
+  "transcript_path": "/tmp/compat-capture/stop-active-transcript.jsonl",
+  "stop_hook_active": false,
+  "last_assistant_message": "Implementation summary placeholder for a session whose verification is still outstanding."
+}

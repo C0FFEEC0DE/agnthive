@@ -1,5 +1,5 @@
 {
-  "description": "agnthive hook runtime (Node.js ESM). Every registration uses exec form (command: node + args array) routing to a single dispatcher.",
+  "description": "agnthive hook runtime (Node.js ESM). Every registration uses exec form (command: node + args array) routing to a single dispatcher. Sync safety/guidance registrations bound to 10s; async telemetry to 30s. The shared PreToolUse shell-policy registrations carry onFailure:\"block\" (hooks reference, >= 2.1.295: a hook that cannot start, times out, or exits non-zero/2 blocks the tool call), because a handler that never runs cannot determine advisory vs enforce (ADR 0011).",
   "hooks": {
     "SessionStart": [
       {
@@ -8,7 +8,8 @@
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/modules/hook-dispatcher.mjs", "--event", "SessionStart"]
+            "args": ["${CLAUDE_PLUGIN_ROOT}/modules/hook-dispatcher.mjs", "--event", "SessionStart"],
+            "timeout": 10
           }
         ]
       }
@@ -21,7 +22,8 @@
             "type": "command",
             "command": "node",
             "args": ["${CLAUDE_PLUGIN_ROOT}/modules/hook-dispatcher.mjs", "--event", "InstructionsLoaded"],
-            "async": true
+            "async": true,
+            "timeout": 30
           }
         ]
       }
@@ -33,7 +35,8 @@
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/modules/hook-dispatcher.mjs", "--event", "UserPromptSubmit"]
+            "args": ["${CLAUDE_PLUGIN_ROOT}/modules/hook-dispatcher.mjs", "--event", "UserPromptSubmit"],
+            "timeout": 10
           }
         ]
       }
@@ -45,7 +48,21 @@
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/modules/hook-dispatcher.mjs", "--event", "PreToolUse"]
+            "args": ["${CLAUDE_PLUGIN_ROOT}/modules/hook-dispatcher.mjs", "--event", "PreToolUse"],
+            "timeout": 10,
+            "onFailure": "block"
+          }
+        ]
+      },
+      {
+        "matcher": "PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/modules/hook-dispatcher.mjs", "--event", "PreToolUse", "--matcher", "Bash"],
+            "timeout": 10,
+            "onFailure": "block"
           }
         ]
       },
@@ -55,7 +72,8 @@
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/modules/hook-dispatcher.mjs", "--event", "PreToolUse", "--matcher", "EditWrite"]
+            "args": ["${CLAUDE_PLUGIN_ROOT}/modules/hook-dispatcher.mjs", "--event", "PreToolUse", "--matcher", "EditWrite"],
+            "timeout": 10
           }
         ]
       }
@@ -67,7 +85,8 @@
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/modules/hook-dispatcher.mjs", "--event", "PermissionRequest"]
+            "args": ["${CLAUDE_PLUGIN_ROOT}/modules/hook-dispatcher.mjs", "--event", "PermissionRequest"],
+            "timeout": 10
           }
         ]
       }
@@ -79,7 +98,8 @@
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/modules/hook-dispatcher.mjs", "--event", "PermissionDenied"]
+            "args": ["${CLAUDE_PLUGIN_ROOT}/modules/hook-dispatcher.mjs", "--event", "PermissionDenied"],
+            "timeout": 10
           }
         ]
       }
@@ -91,7 +111,8 @@
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/modules/hook-dispatcher.mjs", "--event", "PostToolUse", "--matcher", "EditWrite"]
+            "args": ["${CLAUDE_PLUGIN_ROOT}/modules/hook-dispatcher.mjs", "--event", "PostToolUse", "--matcher", "EditWrite"],
+            "timeout": 10
           }
         ]
       },
@@ -101,7 +122,19 @@
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/modules/hook-dispatcher.mjs", "--event", "PostToolUse", "--matcher", "Bash"]
+            "args": ["${CLAUDE_PLUGIN_ROOT}/modules/hook-dispatcher.mjs", "--event", "PostToolUse", "--matcher", "Bash"],
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/modules/hook-dispatcher.mjs", "--event", "PostToolUse", "--matcher", "Bash"],
+            "timeout": 10
           }
         ]
       }
@@ -113,7 +146,8 @@
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/modules/hook-dispatcher.mjs", "--event", "PostToolUseFailure"]
+            "args": ["${CLAUDE_PLUGIN_ROOT}/modules/hook-dispatcher.mjs", "--event", "PostToolUseFailure"],
+            "timeout": 10
           }
         ]
       }
@@ -125,7 +159,8 @@
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/modules/hook-dispatcher.mjs", "--event", "SubagentStart"]
+            "args": ["${CLAUDE_PLUGIN_ROOT}/modules/hook-dispatcher.mjs", "--event", "SubagentStart"],
+            "timeout": 10
           }
         ]
       }
@@ -137,7 +172,8 @@
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/modules/hook-dispatcher.mjs", "--event", "SubagentStop"]
+            "args": ["${CLAUDE_PLUGIN_ROOT}/modules/hook-dispatcher.mjs", "--event", "SubagentStop"],
+            "timeout": 10
           }
         ]
       }
@@ -149,7 +185,22 @@
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/modules/hook-dispatcher.mjs", "--event", "Stop"]
+            "args": ["${CLAUDE_PLUGIN_ROOT}/modules/hook-dispatcher.mjs", "--event", "Stop"],
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/modules/hook-dispatcher.mjs", "--event", "StopFailure"],
+            "async": true,
+            "timeout": 30
           }
         ]
       }
@@ -161,7 +212,8 @@
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/modules/hook-dispatcher.mjs", "--event", "TeammateIdle"]
+            "args": ["${CLAUDE_PLUGIN_ROOT}/modules/hook-dispatcher.mjs", "--event", "TeammateIdle"],
+            "timeout": 10
           }
         ]
       }
@@ -173,7 +225,8 @@
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/modules/hook-dispatcher.mjs", "--event", "TaskCompleted"]
+            "args": ["${CLAUDE_PLUGIN_ROOT}/modules/hook-dispatcher.mjs", "--event", "TaskCompleted"],
+            "timeout": 10
           }
         ]
       }
@@ -186,7 +239,8 @@
             "type": "command",
             "command": "node",
             "args": ["${CLAUDE_PLUGIN_ROOT}/modules/hook-dispatcher.mjs", "--event", "Notification"],
-            "async": true
+            "async": true,
+            "timeout": 30
           }
         ]
       }
@@ -198,7 +252,8 @@
           {
             "type": "command",
             "command": "node",
-            "args": ["${CLAUDE_PLUGIN_ROOT}/modules/hook-dispatcher.mjs", "--event", "ConfigChange"]
+            "args": ["${CLAUDE_PLUGIN_ROOT}/modules/hook-dispatcher.mjs", "--event", "ConfigChange"],
+            "timeout": 10
           }
         ]
       }
@@ -211,7 +266,8 @@
             "type": "command",
             "command": "node",
             "args": ["${CLAUDE_PLUGIN_ROOT}/modules/hook-dispatcher.mjs", "--event", "PreCompact"],
-            "async": true
+            "async": true,
+            "timeout": 30
           }
         ]
       }
@@ -224,7 +280,8 @@
             "type": "command",
             "command": "node",
             "args": ["${CLAUDE_PLUGIN_ROOT}/modules/hook-dispatcher.mjs", "--event", "PostCompact"],
-            "async": true
+            "async": true,
+            "timeout": 30
           }
         ]
       }
@@ -237,7 +294,8 @@
             "type": "command",
             "command": "node",
             "args": ["${CLAUDE_PLUGIN_ROOT}/modules/hook-dispatcher.mjs", "--event", "SessionEnd"],
-            "async": true
+            "async": true,
+            "timeout": 30
           }
         ]
       }

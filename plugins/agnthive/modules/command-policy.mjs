@@ -10,7 +10,12 @@
 //     lib.sh policy (sudo, mkfs/dd, narrow rm -rf of catastrophic tokens, git
 //     push --force, git reset --hard, release/deploy verbs, curl|sh bootstrap).
 //   - PowerShell: Remove-Item -Recurse -Force, Format-Volume, irm|iex /
-//     iwr|iex / curl|iex bootstrap, Start-Process -Verb Runas escalation.
+//     iwr|iex / curl|iex bootstrap, Start-Process -Verb Runas escalation, and
+//     the parenthesized download-into-iex bootstrap (`iex (irm <url>)` — the
+//     PowerShell spelling of `curl | sh`, which has no pipe and escapes the
+//     pipe detectors; F09 parity). See shellFamily below: the family routes
+//     shell-specific spellings through the shared detector core, which runs
+//     for every family, so a family can only add coverage.
 //   - CMD: rd/rmdir /s /q, del/erase /f /s, format <drive>, runas escalation.
 //
 // Modes (AGNTHIVE_POLICY; the legacy CLAUDE_CREW_POLICY alias is still honored):
@@ -51,6 +56,102 @@ export function isBenchmarkCi(env = process.env) {
 export function normalizeCommand(command) {
   if (typeof command !== 'string') return '';
   return command.toLowerCase().replace(/\s+/g, ' ').replace(/["'\\]/g, '').trim();
+}
+
+// --- shell-family detection (plan task 03.3; ADR 0011 shell parity) --------
+//
+// Pure string heuristic; no process, no shell. The runtime distinguishes the
+// shell inside the handlers via shellFamily() instead of trusting a tool-name
+// matcher to cover only one shell by accident (F09: the policy has PowerShell
+// patterns, but a Bash-only matcher never let a PowerShell tool call reach
+// them). Priority order:
+//   1. explicit PowerShell host — the optional `toolName` override
+//      ('PowerShell' tool calls), or a `pwsh` / `powershell(.exe)?` program
+//      token in the command string;
+//   2. a PowerShell cmdlet stem from an explicit allowlist (Remove-Item,
+//      Get-ChildItem, Invoke-*, Format-Volume, Start-Process, Out-File, ...);
+//      an allowlist, not a generic Verb-Noun regex, so POSIX tokens like
+//      `git format-patch` do not misroute;
+//   3. bare PowerShell-only aliases `irm` / `iwr` / `iex`;
+//   4. the call operator on a variable (`& $exe`) or a `-Verb <x>` switch;
+//   5. single-dash `-force` / `-recurse` (no two-dash GNU counterpart, no
+//      short-name collision in POSIX tools);
+//   6. CMD: a cmd delete/format verb with slash flags (`rd /s /q`, `del /f`),
+//      `format <drive>`, `dir /`, `runas`, `%var%`, or `@echo`;
+//   7. everything else — 'sh', the profile's native shell and the default for
+//      empty/non-string input.
+// Known limitation (documented): mixed strings classify by their strongest
+// signal (`sudo powershell -c Format-Volume ...` -> powershell). This can only
+// ADD shell-specific coverage, never remove a class the shared detector core
+// (which runs for every family in classifyCommand) would have hit.
+
+// PowerShell host token (pwsh / powershell[.exe]). Not `powershell_ise` —
+// that is an editor host, not a policy-relevant execution host.
+const RE_PS_HOST = /(?:^|[\s;|&()])(pwsh|powershell(?:\.exe)?)(?=$|[\s;|()])/;
+
+// Explicit PowerShell cmdlet allowlist (policy-relevant + common read-side
+// cmdlets, so safe read cases classify without a process). Lowercase, matched
+// as a complete token (lookahead excludes a glued body like `format-patch`).
+const PS_CMDLETS = [
+  'get-childitem', 'get-content', 'get-item', 'get-alias', 'get-command',
+  'get-variable', 'get-help', 'get-date', 'get-process', 'get-service',
+  'copy-item', 'move-item', 'rename-item', 'new-item', 'new-object',
+  'remove-item', 'ri', 'set-content', 'clear-content', 'add-content',
+  'out-file', 'write-host', 'write-output', 'write-error', 'select-string',
+  'test-path', 'join-path', 'split-path', 'measure-object', 'sort-object',
+  'push-location', 'pop-location', 'invoke-expression', 'invoke-webrequest',
+  'invoke-restmethod', 'invoke-command', 'format-volume', 'format-disk',
+  'start-process', 'stop-process', 'start-service', 'stop-service',
+  'remove-itemproperty', 'where-object', 'foreach-object',
+];
+const RE_PS_CMDLET = new RegExp(`(?:^|[\\s;|&()])(?:${PS_CMDLETS.join('|')})(?=$|[\\s;|()])`);
+// Bare PowerShell-only aliases (Invoke-RestMethod / Invoke-WebRequest /
+// Invoke-Expression). Not `gc`/`gp`: too short to be unambiguous.
+const RE_PS_ALIAS = new RegExp(`(?:^|[\\s;|&()])(?:irm|iwr|iex)(?=$|[\\s;|()])`);
+// Call operator on a variable (`& $exe`) or a `-Verb <x>` switch.
+const RE_PS_CALL = /(?:^|[\s;|&()])&\s+\$|(^|\s)-verb\s/;
+// Single-dash long flags unique to PowerShell spellings (`rm -Force`
+// without a two-dash GNU counterpart). Full-token check.
+const RE_PS_LONG_FLAG = /(?:^|[\s;|&()])-(?:force|recurse)(?=$|[\s;|()])/;
+
+// CMD signals. Slash-flag shapes (`rd /s /q`, `del /f`, `dir /b`) are the
+// distinctive CMD spelling; `format <drive>` / `runas` / `%var%` / `@echo` are
+// CMD-only tokens, and bare `del`/`erase` have no POSIX counterpart (POSIX
+// deletes are rm). Shared POSIX verbs (rm, mkdir, copy, move) are NOT signals —
+// they default to 'sh' and are caught by the shared detector core.
+const RE_CMD_DELETE_SFLAG = /(?:^|[\s;|&()])(?:rd|rmdir|del|erase)\s+\/(?:s|f|q|p)(?=\s|$)/;
+const RE_CMD_FORMAT_DRIVE = new RegExp(`(?:^|[\\s;|&()])format\\s+[a-z]:`);
+const RE_CMD_DIR_FLAG = /(?:^|[\s;|&()])dir\s+\//;
+const RE_CMD_MISC = /(?:%\w+%|@echo\b|\brunas\b)/;
+const RE_CMD_BARE_DEL = /(?:^|[\s;|&()])(?:del|erase)(?=\s|$)/;
+
+/**
+ * Classify the shell family of a command string. Pure string analysis.
+ * @param {string} command raw `tool_input.command`
+ * @param {string|null} [toolName] optional explicit tool-name override for a
+ *   call site that already knows the tool (e.g. 'PowerShell')
+ * @returns {'sh'|'powershell'|'cmd'}
+ */
+export function shellFamily(command, toolName = null) {
+  if (typeof toolName === 'string' && toolName.length > 0) {
+    const t = toolName.toLowerCase();
+    if (t === 'powershell' || t === 'pwsh') return 'powershell';
+    if (t === 'cmd') return 'cmd';
+  }
+  // Family-local normalization: lowercase + strip quotes + collapse spacing,
+  // but KEEP backslashes (a Windows path is irrelevant to the signals, and
+  // normalizeCommand's quote/backslash strip is for the policy regexes).
+  const s = typeof command === 'string'
+    ? command.toLowerCase().replace(/["']/g, '').replace(/\s+/g, ' ').trim()
+    : '';
+  if (s.length === 0) return 'sh';
+  if (RE_PS_HOST.test(s) || RE_PS_CMDLET.test(s) || RE_PS_ALIAS.test(s) || RE_PS_CALL.test(s) || RE_PS_LONG_FLAG.test(s)) {
+    return 'powershell';
+  }
+  if (RE_CMD_DELETE_SFLAG.test(s) || RE_CMD_FORMAT_DRIVE.test(s) || RE_CMD_DIR_FLAG.test(s) || RE_CMD_MISC.test(s) || RE_CMD_BARE_DEL.test(s)) {
+    return 'cmd';
+  }
+  return 'sh';
 }
 
 // --- canonical reason codes -------------------------------------------------
@@ -255,6 +356,25 @@ function isRemoteBootstrap(norm) {
   return false;
 }
 
+// PowerShell parenthesized download-into-iex bootstrap: `iex (irm <url>)` /
+// `Invoke-Expression (Invoke-RestMethod <url>)` — the PowerShell spelling of
+// `curl | sh`. It has NO pipe, so the pipe-to-iex detector cannot see it and
+// the F09 baseline allows it; classifyCommand routes it through the same
+// REMOTE_BOOTSTRAP class as the piped spellings (plan task 03.4, both modes).
+// Heuristic on the FIRST paren group after iex; literal index scans + a single
+// lookahead regex, so no nested-quantifier backtracking (CodeQL ReDoS rule).
+const RE_PS_IEX_OPEN = new RegExp(`(?:^|${LB})(iex|invoke-expression)\\s*\\(`);
+const RE_PS_PAREN_DOWNLOAD = new RegExp(`(?:^|${LB})(irm|iwr|curl|wget|invoke-restmethod|invoke-webrequest)(?=${RB}|$|\\()`);
+/** Detect `iex ( ... |irm|iwr|curl|wget ... )` in a normalized command. */
+function isPsParenBootstrap(norm) {
+  const m = norm.match(RE_PS_IEX_OPEN);
+  if (!m) return false;
+  const open = m.index + m[0].length - 1; // the '(' the regex consumed
+  const close = norm.indexOf(')', open + 1);
+  const seg = norm.slice(open + 1, close < 0 ? norm.length : close);
+  return RE_PS_PAREN_DOWNLOAD.test(seg);
+}
+
 /**
  * Detect a recursive force-delete (POSIX rm, PowerShell Remove-Item, or CMD
  * rd/del) of a catastrophic standalone target. Returns { homeOrCurrent } when
@@ -299,12 +419,33 @@ function isUnparseableIndirection(norm) {
 // --- classifier ------------------------------------------------------------
 
 /**
- * Classify a command string under a policy mode. Pure.
+ * Classify a command string under a policy mode. Pure. Shell parity is
+ * explicit: the detected family (shellFamily) routes shell-specific spellings
+ * through ONE shared detector core below, which runs for every family, so a
+ * family can only add coverage (plan task 03.3-03.4; ADR 0011).
+ *
+ * Advisory neutrality (F09; ADR 0011; plan task 08.6): an advisory
+ * `{ decision: 'allow' }` is a CLASSIFIER verdict, not a hook-approved allow.
+ * The dispatcher must emit NO permissionDecision object for an advisory
+ * non-deny result, so the native permission flow stays the arbiter; an
+ * explicit `allow` emission requires a documented basis (today: enforce mode,
+ * where the classifier IS the enforcement decision). Enforce-mode deny
+ * semantics are unchanged.
+ *
+ * @param {string} command raw command string (any shell family)
+ * @param {'advisory'|'enforce'} [mode]
  * @returns {{decision:'deny'|'allow', code:string, reason:string}}
  */
 export function classifyCommand(command, mode = 'advisory') {
   const norm = normalizeCommand(command);
   if (norm.length === 0) return { decision: 'allow', code: CODE.ALLOW, reason: PRETOOL_REASON[CODE.ALLOW] };
+
+  // PowerShell-only overlay (plan task 03.4): the parenthesized
+  // download-into-iex bootstrap has no pipe, so the shared bootstrap detector
+  // cannot see it. Same dangerous class as `curl | sh`, denied in both modes.
+  if (shellFamily(command) === 'powershell' && isPsParenBootstrap(norm)) {
+    return deny(CODE.REMOTE_BOOTSTRAP, PRETOOL_REASON[CODE.REMOTE_BOOTSTRAP]);
+  }
 
   // 1. Privilege escalation.
   if (RE_SUDO.test(norm)) return deny(CODE.SUDO, PRETOOL_REASON[CODE.SUDO]);
@@ -360,7 +501,11 @@ export function isHardDenied(command, mode = 'advisory') {
  * Decide whether a PermissionDenied event should retry. A hard-denied command
  * (in the active mode) never retries; benchmark CI context never retries
  * (mirrors lib.sh permission_denied_should_retry); otherwise retry so the agent
- * can try a different command.
+ * can try a different command. Semantics are unchanged by task 03 — only the
+ * emission moves into the F05 event envelope
+ * (`hookSpecificOutput: {hookEventName:'PermissionDenied', retry}` via
+ * `permissionDeniedResult`); retry is a retry invitation, never approval, and
+ * the host ignores `retry` for no-verdict denials.
  * @returns {{retry:boolean}}
  */
 export function permissionDeniedOutcome(command, env = process.env) {

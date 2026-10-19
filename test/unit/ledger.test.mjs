@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import {
   progressLedgerPath, truncateUtf8, readLedgerForInjection,
   buildPostCompactContext, resolveLedgerMaxBytes, DEFAULT_LEDGER_MAX_BYTES,
+  ledgerStatus, buildSessionStartRestore,
 } from '../../plugins/agnthive/modules/ledger.mjs';
 
 // --- resolveLedgerMaxBytes ------------------------------------------------
@@ -172,4 +173,173 @@ test('buildPostCompactContext: ledger with no truncation note', () => {
 test('buildPostCompactContext: truncated ledger appends the note', () => {
   const ctx = buildPostCompactContext({ content: '- [x] task one', truncationNote: '[Ledger truncated: 999 bytes exceeds 64 byte limit. Verify recent tasks manually.]', size: 999 });
   assert.match(ctx, /task one\n\n\[Ledger truncated: 999 bytes/);
+});
+
+// --- ledgerStatus + buildSessionStartRestore (ADR-0013, plan 07.1-07.3) ----
+// The restore contract is pure given state + projectDir; the SessionStart
+// source gate (compact/resume only) and the restored_task_seq event append are
+// the orchestrator's dispatch wiring.
+
+const OPEN_TASK = {
+  id: 'T-1', kind: 'feature', status: 'open', revision: 4,
+  required_subagents: ['t'], dispatch_contract_mode: '', docs_required: false,
+};
+
+function restoreState(over = {}) {
+  return {
+    session_id: 's1', task_type: 'feature', revision: 7, restored_task_seq: 0,
+    active_task: { ...OPEN_TASK },
+    ...over,
+  };
+}
+
+function assertNoFalseProgress(msg) {
+  // ADR-0013: a missing/oversized ledger must produce a bounded diagnostic with
+  // an explicit reconstruction instruction, never an implied completed list.
+  assert.ok(!/ledger follows/.test(msg), 'no full-ledger injection wording');
+}
+
+test('buildSessionStartRestore: no open task -> null (no injection, no patch)', () => {
+  const opts = { projectDir: '/tmp' };
+  assert.equal(buildSessionStartRestore(null, opts), null);
+  assert.equal(buildSessionStartRestore(undefined, opts), null);
+  assert.equal(buildSessionStartRestore({}, opts), null);
+  assert.equal(buildSessionStartRestore({ active_task: null }, opts), null);
+  // The brief: a mis-wired source or a task object without a usable id is
+  // treated as "no open task" — no injection and no restored_task_seq write.
+  assert.equal(buildSessionStartRestore({ active_task: {} }, { projectDir: '/tmp' }), null);
+  assert.equal(buildSessionStartRestore({ active_task: 7 }, { projectDir: '/tmp' }), null);
+});
+
+test('buildSessionStartRestore: terminal active_task status -> null', () => {
+  for (const status of ['completed', 'closed', 'cancelled']) {
+    assert.equal(
+      buildSessionStartRestore(restoreState({ active_task: { ...OPEN_TASK, status } }), { projectDir: '/tmp' }),
+      null,
+      `status=${status} must not restore`,
+    );
+  }
+});
+
+test('buildSessionStartRestore: present ledger -> compact summary, not the ledger text', () => {
+  const d = mkdtempSync(join(tmpdir(), 'led-restore-'));
+  try {
+    const ledgerFile = join(d, 'progress.md');
+    writeFileSync(ledgerFile, 'SECRET-LEDGER-LINE task one complete\nSECRET-LEDGER-LINE task two complete\n');
+    const r = buildSessionStartRestore(restoreState(), { projectDir: d, ledgerPath: ledgerFile });
+    assert.ok(r, 'open task restore must build');
+    assert.equal(r.ledger.status, 'present');
+    assert.notEqual(r.ledger.size, 0);
+    assert.equal(r.patch.restored_task_seq, 1);
+    // COMPACT summary: file reference + task/revision; NOT the ledger text.
+    assert.ok(r.message.includes('Open task: T-1'), r.message);
+    assert.ok(r.message.includes('kind: feature'), r.message);
+    assert.ok(r.message.includes('revision 7'), r.message);
+    assert.ok(r.message.includes(ledgerFile), 'explicit ledger location reference');
+    assert.ok(/ledger is not re-injected in full|read that file/i.test(r.message), r.message);
+    assert.ok(!r.message.includes('SECRET-LEDGER-LINE'), 'the full ledger text stays on disk');
+    assertNoFalseProgress(r.message);
+  } finally { rmSync(d, { recursive: true, force: true }); }
+});
+
+test('buildSessionStartRestore: missing ledger -> bounded diagnostic + reconstruction step', () => {
+  const r = buildSessionStartRestore(restoreState(), { projectDir: '/tmp', ledgerPath: '/no/such/progress.md' });
+  assert.ok(r, 'an open task still restores (diagnostic, not silence)');
+  assert.equal(r.ledger.status, 'missing');
+  assert.ok(r.message.includes('/no/such/progress.md'), r.message);
+  assert.match(r.message, /Reconstruct the current place from git status, git log and the session transcript/);
+  assert.match(r.message, /do not treat any task as complete without direct evidence/);
+  assertNoFalseProgress(r.message);
+  assert.equal(r.patch.restored_task_seq, 1);
+});
+
+test('buildSessionStartRestore: empty ledger is reported as found empty', () => {
+  const d = mkdtempSync(join(tmpdir(), 'led-empty-'));
+  try {
+    const ledgerFile = join(d, 'progress.md');
+    writeFileSync(ledgerFile, '');
+    const r = buildSessionStartRestore(restoreState(), { projectDir: d, ledgerPath: ledgerFile });
+    assert.equal(r.ledger.status, 'empty');
+    assert.match(r.message, /found empty/);
+    assertNoFalseProgress(r.message);
+    assert.equal(r.patch.restored_task_seq, 1);
+  } finally { rmSync(d, { recursive: true, force: true }); }
+});
+
+test('buildSessionStartRestore: oversized ledger -> diagnostic, content never read or injected', () => {
+  const d = mkdtempSync(join(tmpdir(), 'led-big-restore-'));
+  try {
+    const ledgerFile = join(d, 'progress.md');
+    const line = 'SECRET-LEDGER-LINE ✔ completed item with detail\n';
+    writeFileSync(ledgerFile, line.repeat(40));
+    const r = buildSessionStartRestore(restoreState(), { projectDir: d, ledgerPath: ledgerFile, maxBytes: 64 });
+    assert.equal(r.ledger.status, 'oversized');
+    assert.ok(r.ledger.size > 64, 'reports the real on-disk size');
+    assert.match(r.message, /over the 64 byte storage cap/);
+    assert.match(r.message, /Read the most recent portion of that file directly/);
+    assert.ok(!r.message.includes('SECRET-LEDGER-LINE'), 'oversized content is not injected');
+    assert.ok(!r.message.includes('�'), 'no content read means no split-sequence artifacts');
+    assertNoFalseProgress(r.message);
+  } finally { rmSync(d, { recursive: true, force: true }); }
+});
+
+test('buildSessionStartRestore: restored_task_seq bookkeeping and cycleSeq dedupe', () => {
+  const opts = { projectDir: '/tmp', ledgerPath: '/no/such/progress.md' };
+  // No token: each gate invocation is its own restoration cycle (increment).
+  assert.equal(buildSessionStartRestore(restoreState({ restored_task_seq: 3 }), opts).patch.restored_task_seq, 4);
+  assert.equal(buildSessionStartRestore(restoreState({ restored_task_seq: 0 }), opts).patch.restored_task_seq, 1);
+  // With a token: an idempotent set to that token (the orchestrator supplies a
+  // stable monotonic per-cycle token; restored_task_seq acts as the memory).
+  assert.equal(buildSessionStartRestore(restoreState({ restored_task_seq: 3 }), { ...opts, cycleSeq: 4 }).patch.restored_task_seq, 4);
+  // Already-restored tokens do not inject again (no double injection in one cycle).
+  assert.equal(buildSessionStartRestore(restoreState({ restored_task_seq: 4 }), { ...opts, cycleSeq: 4 }), null);
+  assert.equal(buildSessionStartRestore(restoreState({ restored_task_seq: 5 }), { ...opts, cycleSeq: 4 }), null);
+  // A non-positive / non-numeric token is treated as "no token".
+  assert.equal(buildSessionStartRestore(restoreState(), { ...opts, cycleSeq: 0 }).patch.restored_task_seq, 1);
+  assert.equal(buildSessionStartRestore(restoreState(), { ...opts, cycleSeq: 'x' }).patch.restored_task_seq, 1);
+});
+
+test('buildSessionStartRestore: pure given state — the input state object is not mutated', () => {
+  const state = Object.freeze(restoreState({ active_task: Object.freeze({ ...OPEN_TASK }) }));
+  const r = buildSessionStartRestore(state, { projectDir: '/tmp', ledgerPath: '/no/such/progress.md' });
+  assert.ok(r);
+  assert.equal(state.restored_task_seq, 0, 'builder never writes state');
+  assert.equal(state.active_task.id, 'T-1');
+});
+
+test('buildSessionStartRestore: kind/revision fallbacks', () => {
+  // kind falls back to task_type, then 'other'; revision falls back to the
+  // task-open revision when the global counter is unusable.
+  const r1 = buildSessionStartRestore(
+    { active_task: { id: 'T-2', status: '' } , task_type: 'bugfix', revision: 2 },
+    { projectDir: '/tmp', ledgerPath: '/no/such/progress.md' },
+  );
+  assert.ok(r1.message.includes('kind: bugfix'), r1.message);
+  assert.ok(r1.message.includes('revision 2'), r1.message);
+  const r2 = buildSessionStartRestore(
+    { active_task: { id: 'T-3', status: 'open', revision: 5 } },
+    { projectDir: '/tmp', ledgerPath: '/no/such/progress.md' },
+  );
+  assert.ok(r2.message.includes('kind: other'), r2.message);
+  assert.ok(r2.message.includes('revision 5'), 'task-open revision fallback', r2.message);
+});
+
+test('buildSessionStartRestore: AGNTHIVE_PROGRESS_FILE / legacy alias override the ledger path', () => {
+  const r = buildSessionStartRestore(restoreState(), { projectDir: '/tmp', env: { AGNTHIVE_PROGRESS_FILE: '/custom/ledger.md' } });
+  assert.equal(r.ledger.path, '/custom/ledger.md');
+  const r2 = buildSessionStartRestore(restoreState(), { projectDir: '/tmp', env: { CLAUDE_CREW_PROGRESS_FILE: '/legacy/ledger.md' } });
+  assert.equal(r2.ledger.path, '/legacy/ledger.md');
+});
+
+test('ledgerStatus: bounded file-status reader (stat only, no content read)', () => {
+  const d = mkdtempSync(join(tmpdir(), 'led-status-'));
+  try {
+    const f = join(d, 'progress.md');
+    writeFileSync(f, 'content');
+    assert.deepEqual(ledgerStatus(f), { path: f, size: 7, status: 'present' });
+    writeFileSync(f, '');
+    assert.deepEqual(ledgerStatus(f), { path: f, size: 0, status: 'empty' });
+    assert.deepEqual(ledgerStatus(join(d, 'absent.md')), { path: join(d, 'absent.md'), size: 0, status: 'missing' });
+    assert.deepEqual(ledgerStatus(''), { path: '', size: 0, status: 'missing' });
+  } finally { rmSync(d, { recursive: true, force: true }); }
 });

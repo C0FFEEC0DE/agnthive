@@ -1,0 +1,7 @@
+{
+  "hook_event_name": "Stop",
+  "session_id": "compat-session-stop-finished",
+  "transcript_path": "/tmp/compat-capture/stop-finished-transcript.jsonl",
+  "stop_hook_active": true,
+  "last_assistant_message": "Verification status: passed.\nReview outcome: no unresolved findings.\nChanged files: src/app.py.\nRemaining risks: none."
+}

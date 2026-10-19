@@ -9,6 +9,7 @@
 import { taskTypeRequiresImplementationSummary } from './workflow.mjs';
 import { recordLoopBlock, loopBlockFields } from './workflow.mjs';
 import { formatSubagentList, formatSubagentGroup } from './agents.mjs';
+import { currentRevision } from './verification.mjs';
 
 // --- footer hint ----------------------------------------------------------
 
@@ -180,9 +181,51 @@ export function buildBlockChecklist(prefix, finalReason, message, state) {
 
 // --- session reasons ------------------------------------------------------
 
-function successfulVerification(state) {
+// ADR-0009 (plan task 04): revision-aware verification evidence. A recorded
+// 'passed' result certifies the current tree only when it completed at the
+// then-current revision, no tracked edit lands between its start and its
+// completion (startedRevision === completedRevision), the record is still
+// current at gate time, and, when both sides carry a cwd, it ran in the
+// tracked cwd/worktree (results from another worktree do not certify the
+// integrated diff). Records are the authoritative evidence whenever
+// state.verification is non-empty: honoring the legacy *_ok flags of a
+// record-bearing session would let a flag set by a pre-bump run outlive the
+// revision it verified (ADR-0009 — new code never passes on old tests_ok;
+// edit-during-test does not close the gate).
+export function successfulVerification(state) {
+  const records = Array.isArray(state?.verification) ? state.verification : [];
+  if (records.length > 0) return recordBasedVerification(state, records);
+  // Legacy fallback (state without records — old sessions and the record-less
+  // legacy fixtures): exact pre-ADR-0009 flag contract, unchanged.
+  return legacySuccessfulVerification(state);
+}
+
+function legacySuccessfulVerification(state) {
   if (state?.tests_ok === true) return true;
   if (!state?.detected_test_command && (state?.lint_ok === true || state?.build_ok === true)) return true;
+  return false;
+}
+
+function recordBasedVerification(state, records) {
+  const current = currentRevision(state);
+  // cwd binding only when the state carries a cwd: a synthetic gate state
+  // without one keeps deciding on revisions alone. A record with a different
+  // cwd never certifies this session's tree (plan 04: worktrees are not mixed).
+  const cwdBound = typeof state?.cwd === 'string' && state.cwd !== ''
+    ? (r) => r.cwd === state.cwd
+    : () => true;
+  const currentPass = (kind) => records.some((r) => {
+    if (!r || typeof r !== 'object') return false;
+    return r.kind === kind
+      && r.status === 'passed'
+      && Number.isFinite(r.startedRevision)
+      && Number.isFinite(r.completedRevision)
+      && r.startedRevision === r.completedRevision
+      && r.completedRevision === current
+      && cwdBound(r);
+  });
+  if (currentPass('test')) return true;
+  if (!state?.detected_test_command && (currentPass('lint') || currentPass('build'))) return true;
   return false;
 }
 
@@ -199,9 +242,16 @@ export function sessionBlockReason(state) {
   const lastBuild = state?.last_build_command ?? '';
 
   const hasDetectedVerification = Boolean(detectedTest || detectedLint || detectedBuild);
-  let hasBehaviorVerification = false;
-  if (state?.tests_ok === true) hasBehaviorVerification = true;
-  else if (!detectedTest && (state?.lint_ok === true || state?.build_ok === true)) hasBehaviorVerification = true;
+  // ADR-0009 (plan task 04): the gate reads the revision-aware evidence model
+  // whenever state.verification carries records — a background launch (F01),
+  // a failed/unknown run, or a pass from an earlier revision or a different
+  // worktree never satisfies it. Pending records NEVER satisfy the gate: only
+  // completion, not launch, is evidence. Without records the gate falls back
+  // to the unchanged legacy `*_ok` flags (old sessions, record-less fixtures).
+  // "No detected command and no records" keeps today's shape: the chain returns
+  // null (no manufactured pass, no manufactured block); the lean explicit-gap
+  // note is deferred to plan task 11, not added here.
+  const hasBehaviorVerification = successfulVerification(state);
 
   if (codeChanged && testsFailed) {
     return `Code or config changed, but the latest test command failed in this session (${lastTest || 'test command'}). Fix the failure and rerun verification before stopping.`;

@@ -1,0 +1,9 @@
+{
+  "session_id": "scenario-feature-shared-state",
+  "tool_name": "Bash",
+  "tool_use_id": "toolu_scn_post_bash",
+  "cwd": "/tmp/example-project",
+  "tool_input": { "command": "pytest -q" },
+  "tool_use_response": null,
+  "tool_response": { "stdout": "3 passed in 0.2s", "stderr": "", "exitCode": 0, "interrupted": false }
+}

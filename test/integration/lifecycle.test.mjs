@@ -1,11 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { readFileSync, writeFileSync, existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdtempSync, rmSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { resolveLogRoot } from '../../plugins/agnthive/modules/util.mjs';
+import {
+  statePaths, ensureStateDir, appendEvent, loadState,
+} from '../../plugins/agnthive/modules/state.mjs';
+import { buildSessionStartRestore } from '../../plugins/agnthive/modules/ledger.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..', '..');
@@ -73,6 +77,10 @@ test('Notification: logs payload to notification.jsonl and passes through', () =
   assert.equal(lines[0].title, 'Build done');
   assert.equal(lines[0].message, 'All green');
   assert.equal(lines[0].session_id, 'n1');
+  // F10/ADR-0013: the record carries the current notification_type field
+  // (bridged from the legacy subtype input alias); subtype itself is gone.
+  assert.equal(lines[0].notification_type, 'success');
+  assert.ok(!('subtype' in lines[0]), 'subtype replaced by notification_type');
   assert.match(lines[0].ts, /^\d{4}-\d{2}-\d{2}T/);
 });
 
@@ -123,9 +131,9 @@ test('SessionEnd: records the session index with cwd/transcript/reason + state',
   assert.ok(lines[0].state && typeof lines[0].state === 'object');
 });
 
-// --- PostCompact: ledger re-injection -------------------------------------
+// --- PostCompact: bounded bookkeeping (ADR-0013, plan 07.2/07.5) ----------
 
-test('PostCompact: logs a marker and re-injects the durable progress ledger', () => {
+test('PostCompact: logs a bounded bookkeeping marker (metadata/size/status only)', () => {
   const proj = mkdtempSync(join(tmpdir(), 'proj-ledger-'));
   try {
     // Provide a ledger via the explicit override env so the test is hermetic.
@@ -133,45 +141,96 @@ test('PostCompact: logs a marker and re-injects the durable progress ledger', ()
     writeFileSync(ledgerFile, '- [x] task one\n- [x] task two\n');
     const res = run('PostCompact', { session_id: 'poc1', trigger: 'manual' }, dataRoot, { AGNTHIVE_PROGRESS_FILE: ledgerFile, CLAUDE_PROJECT_DIR: proj });
     assert.equal(res.status, 0, res.stderr);
-    // Marker logged.
+    // Marker logged; the default record is metadata/size/status only.
     const lines = readJsonl(dataRoot, 'post-compact.jsonl');
-    assert.equal(lines[0].trigger, 'manual');
-    // Ledger re-injected as additionalContext.
-    const msg = ctx(res);
-    assert.ok(msg, 'expected ledger context injection');
-    assert.match(msg, /durable progress ledger follows/);
-    assert.match(msg, /- \[x\] task one/);
-    assert.match(msg, /- \[x\] task two/);
-    assert.ok(!msg.includes('Ledger truncated'));
+    const last = lines[lines.length - 1];
+    assert.equal(last.trigger, 'manual');
+    assert.equal(last.compact_summary_present, false);
+    assert.equal(last.compact_summary_bytes, 0);
+    assert.ok(!('compact_summary' in last), 'default PostCompact record stores no summary text');
   } finally { rmSync(proj, { recursive: true, force: true }); }
 });
 
-test('PostCompact: no ledger -> marker logged, no context injection (passthrough)', () => {
-  const proj = mkdtempSync(join(tmpdir(), 'proj-noledger-'));
+test('PostCompact: provided summary content is not stored by default', () => {
+  const proj = mkdtempSync(join(tmpdir(), 'proj-sumlog-'));
   try {
-    const res = run('PostCompact', { session_id: 'poc2', trigger: 'manual' }, dataRoot, { CLAUDE_PROJECT_DIR: proj });
+    const res = run('PostCompact', { session_id: 'poc2', trigger: 'manual', compact_summary: 'SECRET HOST SUMMARY' }, dataRoot, { CLAUDE_PROJECT_DIR: proj });
     assert.equal(res.status, 0);
     const lines = readJsonl(dataRoot, 'post-compact.jsonl');
-    assert.equal(lines[lines.length - 1].session_id, 'poc2'); // this run's marker
-    assert.deepEqual(JSON.parse(res.stdout), {}); // no context when no ledger
+    const last = lines[lines.length - 1];
+    assert.equal(last.session_id, 'poc2'); // this run's marker
+    assert.equal(last.compact_summary_present, true);
+    assert.equal(last.compact_summary_bytes, 19);
+    assert.ok(!('compact_summary' in last), 'no summary text without the verbose opt-in');
+    assert.ok(
+      !readFileSync(join(resolveLogRoot({ CLAUDE_PLUGIN_DATA: dataRoot }), 'post-compact.jsonl'), 'utf8').includes('SECRET HOST SUMMARY'),
+    );
+    // stdout contract (deprecated injection vs plain passthrough) is the
+    // orchestrator's task-07 wiring; here stdout only stays one JSON object.
+    assert.ok(typeof JSON.parse(res.stdout) === 'object');
   } finally { rmSync(proj, { recursive: true, force: true }); }
 });
 
-test('PostCompact: oversized multibyte ledger is UTF-8-safe truncated with a note', () => {
-  const proj = mkdtempSync(join(tmpdir(), 'proj-bigledger-'));
+// --- SessionStart compact/resume restore (ADR-0013, plan 07.1/07.3) --------
+// The dispatcher-side source gate (inject only for source=compact/resume) and
+// the restored_task_seq event append are the orchestrator's task-07 wiring and
+// are asserted in test/unit/dispatcher.test.mjs. This section covers the
+// ledger/state contract end-to-end through the real modules, so the behavior
+// is pinned before the wiring lands.
+
+test('SessionStart restore: real state store bookkeeping dedupes a repeated cycle', () => {
+  const dataRoot2 = mkdtempSync(join(tmpdir(), 'life-restore-'));
   try {
-    const ledgerFile = join(proj, 'progress.md');
-    const line = '✔ completed task item with a longer description\n';
-    writeFileSync(ledgerFile, line.repeat(40));
-    const res = run('PostCompact', { session_id: 'poc3', trigger: 'manual' }, dataRoot, {
-      AGNTHIVE_PROGRESS_FILE: ledgerFile, AGNTHIVE_LEDGER_MAX_BYTES: '64', CLAUDE_PROJECT_DIR: proj,
+    const sid = 'restore-dedupe-1';
+    const paths = statePaths(dataRoot2, sid);
+    ensureStateDir(paths);
+    // Open a task (what the lifecycle owner's writer will produce), then run
+    // the restore contract twice for the SAME restoration cycle token with the
+    // state between the two calls reflecting the applied patch.
+    appendEvent(paths, 'set_many', {
+      fields: {
+        revision: 3,
+        restored_task_seq: 0,
+        active_task: {
+          id: 'T-9', kind: 'feature', status: 'open', revision: 1,
+          required_subagents: [], required_subagent_any_of: [],
+          dispatch_contract_mode: '', docs_required: false,
+        },
+      },
     });
-    assert.equal(res.status, 0, res.stderr);
-    const msg = ctx(res);
-    assert.ok(msg);
-    assert.match(msg, /Ledger truncated: \d+ bytes exceeds 64 byte limit/);
-    // No replacement char from a split multibyte sequence in the injected text.
-    assert.ok(!msg.includes('�'), 'injection must not contain a split-sequence replacement char');
+    const leadState1 = loadState(paths);
+    assert.ok(leadState1.active_task && leadState1.active_task.id === 'T-9');
+    const r1 = buildSessionStartRestore(leadState1, { projectDir: dataRoot2, ledgerPath: join(dataRoot2, 'absent.md') });
+    assert.ok(r1, 'first cycle restores (missing ledger -> diagnostic)');
+    assert.equal(r1.patch.restored_task_seq, 1);
+    appendEvent(paths, 'set_many', { fields: r1.patch });
+    const leadState2 = loadState(paths);
+    assert.equal(leadState2.restored_task_seq, 1);
+    // Same cycle token again -> dedupe hit, no second injection.
+    const r2 = buildSessionStartRestore(leadState2, { projectDir: dataRoot2, ledgerPath: join(dataRoot2, 'absent.md'), cycleSeq: 1 });
+    assert.equal(r2, null);
+    // A new restoration cycle (token 2) restores again.
+    const r3 = buildSessionStartRestore(leadState2, { projectDir: dataRoot2, ledgerPath: join(dataRoot2, 'absent.md'), cycleSeq: 2 });
+    assert.ok(r3, 'a later restoration cycle restores again');
+    assert.equal(r3.patch.restored_task_seq, 2);
+    assert.ok(r3.message.includes('T-9'));
+  } finally { rmSync(dataRoot2, { recursive: true, force: true }); }
+});
+
+test('SessionStart restore: builder diagnostic carries the explicit ledger location', () => {
+  const proj = mkdtempSync(join(tmpdir(), 'life-restore-loc-'));
+  try {
+    const ledgerFile = join(proj, '.agnthive', 'progress.md');
+    mkdirSync(join(proj, '.agnthive'), { recursive: true });
+    writeFileSync(ledgerFile, '- [x] completed entry one\n');
+    const state = { revision: 2, task_type: 'feature', active_task: { id: 'T-5', kind: 'feature', status: 'open', revision: 2 } };
+    const r = buildSessionStartRestore(state, { projectDir: proj });
+    assert.ok(r, 'default path resolution through projectDir');
+    assert.equal(r.ledger.path, ledgerFile);
+    assert.equal(r.ledger.status, 'present');
+    assert.ok(r.message.includes(ledgerFile), 'explicit ledger location reference');
+    assert.ok(r.message.includes('T-5'), r.message);
+    assert.ok(!r.message.includes('completed entry one'), 'ledger content is not injected');
   } finally { rmSync(proj, { recursive: true, force: true }); }
 });
 

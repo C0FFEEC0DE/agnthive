@@ -1,0 +1,7 @@
+{
+  "hook_event_name": "SubagentStart",
+  "session_id": "compat-session-subagent-resume",
+  "transcript_path": "/tmp/compat-capture/subagent-resume-transcript.jsonl",
+  "agent_id": "compat-agent-reviewer-1",
+  "agent_alias": "cr"
+}

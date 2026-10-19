@@ -4,7 +4,7 @@
     "script": "pre-tool-use.sh",
     "stdin": "test/hooks/fixtures/pre_tool_use_safe_ls.json",
     "expect_exit": 0,
-    "stdout_jq": ".hookSpecificOutput.permissionDecision == \"allow\" and (.hookSpecificOutput.permissionDecisionReason | contains(\"allowed\"))"
+    "stdout_jq": "length == 0"
   },
   {
     "name": "pre_tool_use_blocks_rm_rf_home",
@@ -133,14 +133,14 @@
     "script": "permission-denied.sh",
     "stdin": "test/hooks/fixtures/permission_denied_retry_safe_git_push.json",
     "expect_exit": 0,
-    "stdout_jq": ".retry == true"
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"PermissionDenied\" and .hookSpecificOutput.retry == true"
   },
   {
     "name": "permission_denied_does_not_retry_hard_denied_command",
     "script": "permission-denied.sh",
     "stdin": "test/hooks/fixtures/permission_denied_no_retry_sudo.json",
     "expect_exit": 0,
-    "stdout_jq": ".retry == false"
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"PermissionDenied\" and .hookSpecificOutput.retry == false"
   },
   {
     "name": "permission_denied_does_not_retry_in_benchmark_ci_mode",
@@ -150,7 +150,7 @@
       "BENCH_TASK_ID": "bugfix-zero-division-lite"
     },
     "expect_exit": 0,
-    "stdout_jq": ".retry == false"
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"PermissionDenied\" and .hookSpecificOutput.retry == false"
   },
   {
     "name": "notification_hook_escapes_quotes_in_payload",
@@ -613,8 +613,8 @@
     "script": "post-bash.sh",
     "stdin": "test/hooks/fixtures/post_bash_cmake.json",
     "expect_exit": 0,
-    "stdout_jq": ".hookSpecificOutput.hookEventName == \"PostToolUse\" and (.hookSpecificOutput.additionalContext | contains(\"build\"))",
-    "state_jq": ".build_ok == true and .last_build_command == \"cmake --build .\""
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"PostToolUse\" and (.hookSpecificOutput.additionalContext | contains(\"could not be determined\"))",
+    "state_jq": ".build_ok == false and .last_build_command == \"cmake --build .\" and .verification[0].status == \"unknown\""
   },
   {
     "name": "post_bash_marks_tests_ok",
@@ -622,16 +622,16 @@
     "stdin": "test/hooks/fixtures/post_bash_test_success.json",
     "seed_state": "test/hooks/fixtures/state_post_bash_seed.json",
     "expect_exit": 0,
-    "stdout_jq": ".hookSpecificOutput.hookEventName == \"PostToolUse\" and (.hookSpecificOutput.additionalContext | contains(\"Successful verification command\"))",
-    "state_jq": ".tests_ok == true and .tests_failed == false and .last_test_command == \"pytest -q\""
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"PostToolUse\" and (.hookSpecificOutput.additionalContext | contains(\"could not be determined\"))",
+    "state_jq": ".tests_ok == false and .last_test_command == \"pytest -q\" and .verification[0].status == \"unknown\""
   },
   {
     "name": "post_bash_classifies_make_lint_as_lint",
     "script": "post-bash.sh",
     "stdin": "test/hooks/fixtures/post_bash_make_lint_success.json",
     "expect_exit": 0,
-    "stdout_jq": ".hookSpecificOutput.hookEventName == \"PostToolUse\" and (.hookSpecificOutput.additionalContext | contains(\"lint/static-check\"))",
-    "state_jq": ".lint_ok == true and .lint_failed == false and .last_lint_command == \"make lint\" and .build_ok == false"
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"PostToolUse\" and (.hookSpecificOutput.additionalContext | contains(\"could not be determined\"))",
+    "state_jq": ".lint_ok == false and .last_lint_command == \"make lint\" and .build_ok == false and .verification[0].status == \"unknown\""
   },
   {
     "name": "post_tool_failure_marks_tests_failed",
@@ -1164,7 +1164,7 @@
       },
       {
         "path": "__CASE_HOME__/.claude/logs/post-compact.jsonl",
-        "regex": "\"compact_summary\"[[:space:]]*:[[:space:]]*\"\""
+        "regex": "\"compact_summary_present\"[[:space:]]*:[[:space:]]*false"
       }
     ]
   },
@@ -1319,5 +1319,27 @@
     "stdin": "test/hooks/fixtures/task_completed_incomplete.json",
     "seed_state": "test/hooks/fixtures/state_feature_generic_and_real_roles.json",
     "expect_exit": 0
+  },
+  {
+    "name": "compat_user_prompt_submit_feature_context",
+    "script": "user-prompt-submit.sh",
+    "stdin": "test/compatibility/payloads/compat_user_prompt_submit_normal.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"UserPromptSubmit\" and (.hookSpecificOutput.additionalContext | contains(\"feature workflow\"))",
+    "state_jq": ".task_type == \"feature\""
+  },
+  {
+    "name": "compat_permission_denied_retry_envelope",
+    "script": "permission-denied.sh",
+    "stdin": "test/compatibility/payloads/compat_permission_denied.json",
+    "expect_exit": 0,
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"PermissionDenied\" and (.hookSpecificOutput.retry == true) and (has(\"retry\") | not)"
+  },
+  {
+    "name": "compat_subagent_stop_delivers_valid_footer_passthrough",
+    "script": "subagent-stop-guard.sh",
+    "stdin": "test/compatibility/payloads/compat_subagent_stop_return.json",
+    "expect_exit": 0,
+    "stdout_jq": "length == 0"
   }
 ]
