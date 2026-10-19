@@ -303,3 +303,39 @@ test('parallel writers: no lost updates, unique monotonic seqs', async () => {
   const state = reducer(events);
   assert.equal(state.counter, N * M, 'reducer applied every increment exactly once');
 });
+
+// --- ADR-0009/0010 evidence + lifecycle contract ----------------------------
+
+test('DEFAULT_STATE seeds the ADR-0009/0010 evidence and lifecycle contract', () => {
+  assert.equal(DEFAULT_STATE.revision, 0);
+  assert.equal(DEFAULT_STATE.fs_revision_hint, 0);
+  assert.deepEqual(DEFAULT_STATE.verification, []);
+  assert.deepEqual(DEFAULT_STATE.review_results, []);
+  assert.equal(DEFAULT_STATE.docs_status, '');
+  assert.equal(DEFAULT_STATE.task_id, '');
+  assert.equal(DEFAULT_STATE.active_task, null);
+  assert.equal(DEFAULT_STATE.prompt_seq, 0);
+  assert.equal(DEFAULT_STATE.last_prompt_id, '');
+  assert.deepEqual(DEFAULT_STATE.agents, {});
+  assert.deepEqual(DEFAULT_STATE.background_tasks, {});
+  assert.equal(DEFAULT_STATE.restored_task_seq, 0);
+  // task 11 wires the selector; legacy is the default until the quality gate.
+  assert.equal(DEFAULT_STATE.workflow_profile, 'legacy');
+});
+
+test('reducer honors map_set on the agents registry and append on verification', () => {
+  const events = [
+    { seq: 1, type: 'append', payload: { field: 'verification', value: { id: 'v1', kind: 'test', status: 'passed', startedRevision: 1, completedRevision: 1 } } },
+    { seq: 2, type: 'map_set', payload: { mapField: 'agents', key: 'ag-1', value: { role: 'cr', status: 'completed', taskId: 'task-1' } } },
+    { seq: 3, type: 'increment', payload: { field: 'revision', by: 1 } },
+    { seq: 4, type: 'append', payload: { field: 'verification', value: { id: 'v2', kind: 'test', status: 'pending' } } },
+    { seq: 5, type: 'map_delete', payload: { mapField: 'agents', key: 'ag-1' } },
+  ];
+  const state = reducer(events);
+  assert.equal(state.revision, 1);
+  assert.equal(state.verification.length, 2);
+  assert.equal(state.verification[0].status, 'passed');
+  assert.equal(state.verification[1].status, 'pending');
+  assert.equal(state.agents['ag-1'], undefined);
+  assert.deepEqual(state.review_results, []);
+});

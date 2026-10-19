@@ -76,6 +76,51 @@ export const DEFAULT_STATE = Object.freeze({
   // back into existence on replay with no consumer.)
   subagent_stop_blocks: {},
   files: [],
+  // --- ADR-0009 evidence model (plan task 04) --------------------------------
+  // Additive and inert until the corresponding handlers consume them; legacy
+  // profile semantics are unchanged by the fields themselves.
+  // revision: bumped on every tracked code/config edit; a verification result
+  // is only current when its startedRevision == completedRevision == revision.
+  revision: 0,
+  // fs_revision_hint: conservative bump for file-mutating Bash commands that
+  // the Edit/Write counters cannot see (documented fallback, ADR-0009).
+  fs_revision_hint: 0,
+  // verification: append-only records — {id, kind, command, toolUseId, status
+  // (pending|passed|failed|unknown), startedRevision, completedRevision, cwd,
+  // exitStatus, signal, error, startedAt, finishedAt, source}.
+  verification: [],
+  // review_results: append-only completed-review records — {id, agentId, role,
+  // taskId, status (completed|unknown), revision, source, finishedAt}.
+  review_results: [],
+  // docs_status: 'updated' | 'not_required' | 'pending' | '' (unset).
+  docs_status: '',
+  // --- ADR-0010 task + agent lifecycle (plan tasks 05-06) ---------------------
+  // task_id / active_task: task identity is separate from prompt identity.
+  // active_task carries the open contract {id, kind, required_subagents,
+  // required_subagent_any_of, dispatch_contract_mode, docs_required, status,
+  // revision}; null when no task is open.
+  task_id: '',
+  active_task: null,
+  last_task_id: '',
+  // prompt_seq: monotonic local prompt counter (correlation only — never
+  // provenance); last_prompt_id: for duplicate-submission dedupe of the same
+  // prompt_id, not as origin proof (ADR-0010).
+  prompt_seq: 0,
+  last_prompt_id: '',
+  // agents: registry keyed by stable agent id — {role, scope, taskId, status
+  // (running|completed|unknown), starts, parent?, updatedAt}. Mutated only via
+  // per-key map_set/map_delete events, like subagent_stop_blocks (ADR-0002/0006).
+  agents: {},
+  // background_tasks: registry keyed by runtime background task id; an explicit
+  // empty registry is authoritative over stale transcript text (ADR-0010).
+  background_tasks: {},
+  // restored_task_seq: bookkeeping so ledger restoration fires once per
+  // restoration cycle (ADR-0013).
+  restored_task_seq: 0,
+  // workflow_profile: 'legacy' | 'lean' selector, planned by task 11; inert
+  // until its gate wiring lands (ADR-0008/0012 rollout policy). Default stays
+  // 'legacy' until the quality gate passes.
+  workflow_profile: 'legacy',
 });
 
 /** Validate and sanitize a session id, rejecting path traversal. */
