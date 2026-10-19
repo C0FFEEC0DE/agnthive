@@ -1,33 +1,18 @@
 ---
 name: test
-description: Use when writing or running tests, checking coverage, or closing a verification gap before stopping — dispatches the Tester in an isolated forked subagent.
+description: Use when writing or running tests, checking coverage, or closing a verification gap before stopping — root verification procedure; counts only completed results, never launches; delegate large test-suite work.
 argument-hint: "<behavior or coverage gap to test>"
-agent: Tester
-context: fork
-disable-model-invocation: true
-allowed-tools:
-  - Read
-  - Glob
-  - Grep
-  - Edit
-  - Write
-  - Bash(node --test:*)
-  - Bash(node:*)
-  - Bash(npm test:*)
-  - Bash(make test:*)
-paths:
-  - "tests/**"
-  - "test/**"
-  - "**/*.test.mjs"
-  - "**/*.test.js"
-  - "package.json"
 ---
 
-# /test
+# /test — root verification procedure
 
-**This command is now a skill that invokes @tester agent.**
-
-Run testing session with the Tester agent.
+Run this in the root session. Verification is completed evidence for the
+current change revision: launch the covering test here (or as a tracked
+background job and wait for its real result), and count only what finished
+([ADR 0009](../../../../docs/adr/0009-completion-evidence-over-role-quotas.md)).
+Delegate to a focused subagent when the work is a large new test suite or a
+big verification sweep (in explicit legacy workflows that is the `@t`
+(Tester) agent, deprecated for new use).
 
 ## When to use
 - Need to write tests
@@ -40,18 +25,17 @@ Run testing session with the Tester agent.
 /test [what to test]
 ```
 
-## Agent Actions
-The @tester agent will:
-1. Find what to test
-2. Write or run Unit → Integration → E2E tests
-3. Use AAA pattern (Arrange, Act, Assert)
-4. Cover edge cases
-5. Report pass/fail, coverage, and gaps
+## Procedure
+1. Find what to test: the changed behavior and its likely regression paths
+2. Prefer the **covering test** over broad suites when time is limited; choose unit / integration / end-to-end by the confidence it adds
+3. Write or run the tests; prefer concrete assertions over vague coverage claims; keep tests isolated and mock external dependencies
+4. Report the exact command, the outcome, and what the assertions actually covered
+5. Gaps go in the report as gaps — never restyled as passes
 
 ## Important
-- Tests should be isolated
-- Don't test internals — only API
-- Mock external dependencies
-- 100% coverage is not the goal
-- This is the documented entry point for the fallback `@t` handoff used by `feature`, `bugfix`, and `refactor` workflows when successful verification has not already been recorded
-- The resulting handoff should end with exact footer prefixes recognized by the hooks: `Outcome:`, `Changed files:` or `No files changed:`, `Verification status:`, and either `Remaining risks:` or `Next step:`
+- A launched test run is **pending**, not passed; only a completed successful run of the current diff closes verification
+- Verification attached to an older revision does not cover a later edit — re-run after changes
+- If a fix changes behavior, add or extend a test that **fails without the fix** and passes with it
+- If tests were designed but not run, say `not-run`
+- 100% coverage is not the goal; important uncovered gaps must stay visible
+- The completion report carries the stop-safe footer fields: `Outcome:`, `Changed files:` or `No files changed:`, `Verification status:`, and either `Remaining risks:` or `Next step:`

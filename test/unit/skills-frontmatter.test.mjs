@@ -1,14 +1,29 @@
 // Validates YAML frontmatter contract for plugin slash skills under
 // plugins/agnthive/skills/<name>/SKILL.md.
 //
-// There are two skill shapes:
-//  - Agent-backed skills (bug, design, docs, refactor, review, test): full
-//    frontmatter — name, description, agent, context: fork,
-//    disable-model-invocation: true, non-empty allowed-tools, non-empty
-//    paths. The `agent` value must match a known plugin agent name or alias.
-//  - Command skills (debug, explore, manager): MINIMAL — only name +
-//    description. They must NOT declare agent/context/allowed-tools/paths/
-//    disable-model-invocation.
+// Skill shapes under ADR 0008 (root orchestration and three specialists;
+// modernization plan task 12) — migrated explicitly from the old two-shape
+// contract, never silently:
+//  - Forked specialist skill: exactly one — `review`. Full dispatch frontmatter
+//    (name, description, agent, context: fork, disable-model-invocation: true,
+//    non-empty allowed-tools, non-empty paths). Independent judgment is the
+//    point of the review, so it stays a fork. The `agent` value must match a
+//    known plugin agent name or alias.
+//  - Root-procedure skills (bug, debug, design, docs, explore, manager,
+//    refactor, test): name + description (+ optional argument-hint). They run
+//    in the root session, may mention delegation in their body, and must NOT
+//    declare agent/context/disable-model-invocation/allowed-tools/paths — a
+//    root procedure must not auto-fork an agent.
+//  - The five deprecated agents (manager, architect, tester, docwriter,
+//    bugbuster) stay as agent definitions for explicit legacy use; no root
+//    skill auto-dispatches them.
+//
+// Known delta (absorbed by the task-13 validator wave): scripts/validate.mjs
+// still expects the OLD set of six agent-backed skills
+// (bug/design/docs/refactor/review/test), so its agent-backed-skill inventory
+// check will list exactly this file-set mismatch until task 13 lands. This
+// test files and the validator target the same new contract; do not "fix" the
+// skills back to satisfy the old inventory check.
 //
 // For every skill, the `name` field must equal its directory name.
 import { test } from 'node:test';
@@ -20,6 +35,13 @@ const REPO = join(import.meta.dirname, '..', '..');
 const PLUGIN_ROOT = join(REPO, 'plugins', 'agnthive');
 const SKILLS_DIR = join(PLUGIN_ROOT, 'skills');
 const AGENT_DIR = join(PLUGIN_ROOT, 'agents');
+
+// The one slash skill that still forks a specialist (ADR 0008).
+const FORKED_SKILLS = ['review'];
+// Slash skills that are root procedures (run in the root session, delegation
+// by need). Complete inventory of the nine shipped skills.
+const ROOT_PROCEDURE_SKILLS = ['bug', 'debug', 'design', 'docs', 'explore', 'manager', 'refactor', 'test'];
+const EXPECTED_SKILLS = [...FORKED_SKILLS, ...ROOT_PROCEDURE_SKILLS].sort();
 
 // readdirSync on a directory, returning sorted child directory names
 // (skills are nested as <name>/SKILL.md).
@@ -106,7 +128,8 @@ function listSkillFiles() {
   return files.sort();
 }
 
-const AGENT_BACKED_ONLY_FIELDS = ['context', 'disable-model-invocation', 'allowed-tools', 'paths'];
+const PROCEDURE_ONLY_FIELDS = ['context', 'disable-model-invocation', 'allowed-tools', 'paths'];
+const DISPATCH_FIELDS = ['agent', ...PROCEDURE_ONLY_FIELDS];
 
 test('every skill has name + description, and name equals its directory', () => {
   const files = listSkillFiles();
@@ -123,33 +146,48 @@ test('every skill has name + description, and name equals its directory', () => 
   }
 });
 
-test('agent-backed skills carry the full dispatch contract and reference a known agent', () => {
+test('skill inventory is exactly the forked review skill plus the root procedures', () => {
+  const files = listSkillFiles();
+  const dirs = files.map((sf) => basename(join(sf, '..'))).sort();
+  assert.deepEqual(dirs, EXPECTED_SKILLS, `skills/ directory must be exactly ${JSON.stringify(EXPECTED_SKILLS)}`);
+  for (const sf of files) {
+    const dir = basename(join(sf, '..'));
+    const fm = extractFrontmatter(sf);
+    const actual = hasField(fm, 'agent') ? 'forked' : 'root';
+    const expected = FORKED_SKILLS.includes(dir) ? 'forked' : 'root';
+    assert.equal(actual, expected, `${dir}: expected a ${expected} skill but found ${actual} (declares agent:/none)`);
+  }
+});
+
+test('the forked specialist skill (review) carries the full dispatch contract and references a known primary agent', () => {
   const known = knownAgents();
   assert.ok(known.size, `No agents found under ${AGENT_DIR}`);
   for (const sf of listSkillFiles()) {
     const dir = basename(join(sf, '..'));
+    if (!FORKED_SKILLS.includes(dir)) continue;
     const fm = extractFrontmatter(sf);
+    // Full dispatch contract: this skill forks an isolated specialist.
     const agent = extractScalar(fm, 'agent');
-    if (agent === undefined) continue; // command skill — covered by the other test
-    // agent-backed shape: full contract
-    assert.equal(extractScalar(fm, 'context'), 'fork', `${dir}: agent-backed skill must pin context: fork`);
-    assert.equal(extractScalar(fm, 'disable-model-invocation'), 'true', `${dir}: agent-backed skill must pin disable-model-invocation: true`);
+    assert.ok(agent, `${dir}: forked skill must declare 'agent'`);
+    assert.equal(extractScalar(fm, 'context'), 'fork', `${dir}: forked skill must pin context: fork`);
+    assert.equal(extractScalar(fm, 'disable-model-invocation'), 'true', `${dir}: forked skill must pin disable-model-invocation: true`);
     const tools = extractList(fm, 'allowed-tools');
-    assert.ok(tools.length, `${dir}: agent-backed skill must declare at least one allowed-tools entry`);
+    assert.ok(tools.length, `${dir}: forked skill must declare at least one allowed-tools entry`);
     const paths = extractList(fm, 'paths');
-    assert.ok(paths.length, `${dir}: agent-backed skill must declare at least one paths entry`);
+    assert.ok(paths.length, `${dir}: forked skill must declare at least one paths entry`);
     assert.ok(known.has(agent), `${dir}: agent '${agent}' must match a known plugin agent name or alias`);
+    // ADR 0008: the fork target is the read-only primary reviewer.
+    assert.equal(agent, 'Code Reviewer', `${dir}: the forked reviewer is the read-only Code Reviewer specialist`);
   }
 });
 
-test('command skills stay minimal and do not declare agent-backed fields', () => {
+test('root-procedure skills run in the root session and must not auto-fork', () => {
   for (const sf of listSkillFiles()) {
     const dir = basename(join(sf, '..'));
+    if (FORKED_SKILLS.includes(dir)) continue; // forked shape — covered by the other test
     const fm = extractFrontmatter(sf);
-    const agent = extractScalar(fm, 'agent');
-    if (agent !== undefined) continue; // agent-backed shape — already validated
-    for (const field of AGENT_BACKED_ONLY_FIELDS) {
-      assert.ok(!hasField(fm, field), `${dir}: command skill must not declare '${field}' (must stay minimal)`);
+    for (const field of DISPATCH_FIELDS) {
+      assert.ok(!hasField(fm, field), `${dir}: root-procedure skill must not declare '${field}' (procedures run in the root session; delegation is body guidance, never an auto-fork)`);
     }
   }
 });

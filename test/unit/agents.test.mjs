@@ -13,13 +13,65 @@ const here = dirname(fileURLToPath(import.meta.url));
 const pluginRoot = join(here, '..', '..', 'plugins', 'agnthive');
 const aliases = loadAliases(pluginRoot);
 const transcripts = join(here, '..', '..', 'test', 'hooks', 'fixtures', 'transcripts');
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 function readTranscript(name) { return readFileSync(join(transcripts, name), 'utf8'); }
 
 test('loadAliases reads the bundled alias map', () => {
   assert.equal(aliases.cr.includes('code-reviewer'), true);
   assert.equal(aliases.a.includes('design'), true);
   assert.equal(aliases.e.includes('nerd'), true);
+});
+
+// --- the new roster contract (ADR 0008; modernization plan task 12) --------
+//
+// Explicit migration of the old implicit "eight agents" contract: the plugin
+// now ships three primary specialists as agents (Code Reviewer, Explorer,
+// Debugger) and five legacy compatibility agents (Manager, Architect, Tester,
+// Docwriter, Bugbuster), which remain only for explicit legacy use and are
+// not recommended delegates. The file set and the legacy marker in the
+// frontmatter descriptions are pinned here so roster drift cannot happen
+// silently. Legacy role gates themselves live in the runtime until the lean
+// profile switch (plan tasks 11/16) and are NOT weakened by this test.
+
+const AGENT_DIR = join(pluginRoot, 'agents');
+// Deliberately not a Set: the exact file name list is part of the contract.
+const PRIMARY_AGENT_FILES = ['code-reviewer.md', 'explorer.md', 'debugger.md'];
+const LEGACY_AGENT_FILES = ['manager.md', 'architect.md', 'tester.md', 'docwriter.md', 'bugbuster.md'];
+
+test('plugin ships exactly three primary specialist agents plus five legacy compatibility agents', () => {
+  const files = readdirSync(AGENT_DIR).filter((f) => f.endsWith('.md')).sort();
+  const expected = [...PRIMARY_AGENT_FILES, ...LEGACY_AGENT_FILES].sort();
+  assert.deepEqual(files, expected, `agents/ must be exactly the primary specialists ${JSON.stringify(PRIMARY_AGENT_FILES)} plus the legacy compatibility files ${JSON.stringify(LEGACY_AGENT_FILES)}`);
+});
+
+test('primary specialist agents carry the primary aliases cr, e, dbg', () => {
+  const expectedAlias = { 'code-reviewer.md': 'cr', 'explorer.md': 'e', 'debugger.md': 'dbg' };
+  for (const f of PRIMARY_AGENT_FILES) {
+    const lines = readFileSync(join(AGENT_DIR, f), 'utf8').split('\n');
+    const name = lines.find((l) => l.startsWith('name:'));
+    const alias = lines.find((l) => l.startsWith('alias:'));
+    assert.ok(name, `${f}: missing name field`);
+    assert.ok(alias, `${f}: missing alias field`);
+    assert.equal(alias.slice('alias:'.length).trim(), expectedAlias[f], `${f}: primary alias must be '${expectedAlias[f]}'`);
+  }
+});
+
+test('legacy compatibility agents are marked as legacy in their description', () => {
+  for (const f of LEGACY_AGENT_FILES) {
+    const lines = readFileSync(join(AGENT_DIR, f), 'utf8').split('\n');
+    const descLine = lines.find((l) => l.startsWith('description:'));
+    assert.ok(descLine, `${f}: missing description field`);
+    assert.ok(
+      /Legacy compatibility agent/.test(descLine),
+      `${f}: description must mark the agent as a legacy compatibility agent (found: ${descLine})`,
+    );
+  }
+});
+
+test('legacy alias map keeps the full 8-role mapping for historical evidence (plan task 12.5)', () => {
+  for (const role of ['a', 'e', 'bug', 'dbg', 't', 'cr', 'doc', 'm']) {
+    assert.ok(Array.isArray(aliases[role]) && aliases[role].length > 0, `alias '${role}' must stay mapped for legacy evidence compatibility`);
+  }
 });
 
 // --- canonicalizeSubagentLabel --------------------------------------------
@@ -148,6 +200,12 @@ test('formatSubagentList / formatSubagentGroup', () => {
   assert.equal(formatSubagentGroup([]), '');
 });
 
+// The role lists below span all eight aliases on purpose: runtime alias
+// recognition and footer enforcement stay scoped to the legacy alias map
+// (aliases.json is kept byte-identical so old evidence keeps its meaning)
+// until the lean profile switch — plan tasks 11/16. New contract lives at
+// the top: three primary specialists, five marked legacy agents.
+//
 // --- isAgntHiveSpecialistRole (ADR 0001) -----------------------------------
 
 test('isAgntHiveSpecialistRole: true for recognized canonical roles', () => {

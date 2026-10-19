@@ -5,15 +5,22 @@
 You have an approved plan (see `docs/plans/`) derived from a design
 (`docs/specs/`) and want to execute it in this session with a fresh,
 focused subagent per task plus a review after each. Use this instead of
-editing files directly when the plan has mostly-independent tasks.
+editing files directly when the plan has mostly-independent tasks. The **root
+session** runs this workflow directly — there is no separate Manager step
+([ADR 0008](../../../docs/adr/0008-root-orchestration-and-three-specialists.md)).
 
 ## Why subagents
 
-Delegating each task to a fresh implementer with curated, isolated context
-keeps it focused and preserves your own context for coordination. The
+Delegation is by need, not by role quota. Dispatch a fresh implementer with
+curated, isolated context when that isolation is genuinely useful: the
 implementer never inherits your session history — you construct exactly what
-it needs. The ledger (see [progress ledger](progress-ledger.md))
-keeps your place across compaction so completed work is never re-dispatched.
+it needs, your own context stays free for coordination, and independent work
+items can proceed in parallel. For tasks that are small, or tightly coupled to
+context you already hold, do them in the root session instead of paying for a
+handoff.
+
+The ledger (see [progress ledger](progress-ledger.md)) keeps your place across
+compaction so completed work is never re-dispatched.
 
 ## Steps
 
@@ -56,12 +63,13 @@ use verbatim"; (3) interfaces/decisions from earlier tasks the brief cannot know
 report-file path and report contract. Name the report file after the brief
 (`…/task-<N>-report.md`) and put its path in the dispatch.
 
-Always specify the model explicitly when dispatching — an omitted model inherits
-your session's model (often the most capable and most expensive). Use the
-cheapest model that handles the role: cheap for mechanical/transcription tasks
-where the plan contains the complete code, mid-tier floor for reviewers and for
-implementers working from prose, most-capable for architecture and the final
-whole-branch review.
+Choose the model and effort per task by the complexity of the work, and
+respect any explicitly selected model. The cheapest tier suits tasks whose
+plan already contains the complete code; prose-driven implementers and
+reviewers generally need a mid-tier floor because turn count, not token
+price, tends to dominate multi-step cost. Treat every cost comparison as a
+hypothesis until measured ([ADR
+0008](../../../docs/adr/0008-root-orchestration-and-three-specialists.md) Consequences).
 
 ### 4. Handle the implementer status
 
@@ -121,8 +129,8 @@ and `git log` after any compaction or resume.
 
 ### 7. Final whole-branch review
 
-After all tasks, dispatch one final `@cr` on the most capable available model
-with the whole-branch review package:
+After all tasks, dispatch one final `@cr` on the whole-branch review package
+with the effort the task's size justifies:
 
 ```bash
 node scripts/review-package.mjs MERGE_BASE HEAD
@@ -131,17 +139,19 @@ node scripts/review-package.mjs MERGE_BASE HEAD
 
 If it returns findings, dispatch **one** fix subagent with the complete findings
 list — not one fixer per finding (per-finding fixers each rebuild context and
-re-run suites; a real session's final-review fix wave cost more than all its
-tasks combined).
+re-run suites).
 
 ### 8. Finish
 
-Successful verification is required before completion (the hooks enforce it).
-Run the final review gate (`@cr`) — the whole-branch review in step 7 — and
-then document any user-facing behavior change (`@doc`) per the profile's
-[agent contracts](agent-contracts.md). Use the normal
-discover → design → implement → verify → review → docs flow for the branch as a
-whole; this workflow governs the **implement** and **review** internals.
+Completed verification is required before completion — a run counts only when
+it finished successfully for the current diff, not when it launched or when a
+named stage started ([ADR
+0009](../../../docs/adr/0009-completion-evidence-over-role-quotas.md)). Run the
+final whole-branch review (step 7) and record the docs decision for user-facing
+behavior changes — `updated`, `not_required`, or `pending`, with a reason —
+per the root [contracts](agent-contracts.md). This workflow governs the
+**implement** and **review** internals of the normal
+discover → design → implement → verify → review → docs flow.
 
 ## Red flags
 
@@ -156,6 +166,7 @@ Never:
 - re-dispatch a task the ledger already marks complete
 - tell a reviewer what not to flag, or pre-rate a finding's severity in the
   dispatch prompt
+- count a started run or a started specialist toward completion — only completed evidence counts
 
 ## Companion references
 
