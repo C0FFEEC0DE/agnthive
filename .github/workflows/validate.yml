@@ -15,6 +15,11 @@ env:
   # Opt every JavaScript action into Node.js 24 ahead of the September 2026
   # Node.js 20 runner deprecation (repo convention).
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+  # Pinned official Claude Code CLI for REQUIRED strict plugin validation
+  # (plan task 01 / ADR 0012: reproducible harness contract). Floating `latest`
+  # runs in the non-required `official-cli-canary` job below. Move this pin and
+  # re-capture docs/compatibility.md in the same change.
+  CLAUDE_CLI_PINNED_VERSION: '2.1.303'
 
 jobs:
   repository-checks:
@@ -82,25 +87,31 @@ jobs:
       # Tier-2 strict plugin validation against the OFFICIAL Claude Code CLI
       # (`claude plugin validate --strict`), which fails on unrecognized manifest
       # fields, missing metadata, and other issues the runtime merely tolerates.
-      # Linux-only: the CLI is installed best-effort via npm; if the install
-      # flakes (network/release), the next step's `command -v claude` guard skips
-      # cleanly so required checks stay green. A genuine --strict failure (real
-      # manifest regression) DOES fail this shard.
-      - name: Install Claude Code CLI (Linux, best-effort)
-        if: runner.os == 'Linux'
-        continue-on-error: true
-        shell: bash
-        run: npm install -g @anthropic-ai/claude-code
-
-      - name: claude plugin validate --strict (Linux)
+      # Required, not best-effort (plan task 01 / ADR 0012): a PINNED CLI version
+      # is installed and the validation must run — a failed install is an
+      # infrastructure failure (clear ::error below), never a silently skipped
+      # check. Linux-only, matching the previous shard split.
+      - name: Install pinned Claude Code CLI (Linux, required)
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          if command -v claude >/dev/null 2>&1; then
-            claude plugin validate --strict plugins/agnthive
-          else
-            echo "claude CLI not installed (best-effort install skipped); skipping official --strict validation"
+          npm install -g "@anthropic-ai/claude-code@${CLAUDE_CLI_PINNED_VERSION}"
+          if ! command -v claude >/dev/null 2>&1; then
+            echo "::error::pinned Claude Code CLI ${CLAUDE_CLI_PINNED_VERSION} failed to install (npm/network infrastructure failure); required official plugin validation cannot run"
+            exit 1
           fi
+          claude --version
+
+      - name: "claude plugin validate --strict (Linux, pinned CLI: manifest + agents + skills)"
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -e
+          # The three strict targets plan task 14 repeats before release; no
+          # skip branch — a missing/malformed CLI already failed above.
+          claude plugin validate --strict plugins/agnthive
+          claude plugin validate --strict plugins/agnthive/agents
+          claude plugin validate --strict plugins/agnthive/skills
 
       # POSIX-only steps run under git-bash on Windows (present on Windows
       # runners via Git for Windows) so the jq/find/git invocations are
@@ -118,3 +129,34 @@ jobs:
       - name: Check whitespace errors
         shell: bash
         run: git diff --check
+
+  # Non-required canary (plan task 01 / ADR 0012): the same strict checks
+  # against floating `latest`. Drift here is an early warning that upstream
+  # changed validation or schema behavior — it never replaces the pinned,
+  # required validation in the matrix job above.
+  official-cli-canary:
+    name: Official CLI canary (floating latest, non-required)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      - name: Install Claude Code CLI (floating latest)
+        shell: bash
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: "claude plugin validate --strict (latest: manifest + agents + skills)"
+        shell: bash
+        run: |
+          claude --version
+          set -e
+          claude plugin validate --strict plugins/agnthive
+          claude plugin validate --strict plugins/agnthive/agents
+          claude plugin validate --strict plugins/agnthive/skills

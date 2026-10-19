@@ -2,17 +2,19 @@
 #
 # Runs the structural smoke validator (scripts/plugin-install-smoke.mjs) which
 # PACKAGES the plugin into a clean temp dir and validates the packaged layout
-# (manifest fields, declared path resolution, no legacy .py/.sh runtime, hook
-# exec form, statusline parse). This structural smoke is the ENFORCED gate and
-# runs on every push to main and every PR targeting main.
+# (manifest fields + shape contract, declared path resolution, no legacy
+# .py/.sh runtime, hook exec form, statusline parse). This structural smoke is
+# the ENFORCED gate and runs on every push to main and every PR targeting main.
 #
-# The second step ATTEMPTS the real `claude plugin` lifecycle commands
-# (marketplace add, plugin install, reload, list, update, uninstall) against a
-# clean HOME when the `claude` CLI is available on PATH. It is OPPORTUNISTIC:
-# guarded by `if: command -v claude` so the workflow does not fail when the
-# CLI is not installed in CI. The structural smoke above is the source of
-# truth; the lifecycle step is best-effort coverage for environments that ship
-# the CLI.
+# The official Claude Code CLI is now a REQUIRED part of this workflow
+# (plan task 01 / ADR 0012): a PINNED version is installed and the packaged
+# plugin is validated with `claude plugin validate --strict` (manifest,
+# agents, skills) through the smoke script's --cli tier. A failed
+# install/validation is an infrastructure failure — it can no longer be
+# silently skipped. Floating `latest` runs in the non-required canary job
+# below. The real `claude plugin` lifecycle commands (marketplace add,
+# install, reload, list, update, uninstall) against a clean HOME stay
+# ADVISORY: individual lifecycle hiccups are warnings, not gate failures.
 name: Plugin Install Smoke
 
 on:
@@ -27,6 +29,10 @@ on:
 # Node.js 20 runner deprecation (mirrors the benchmark workflows).
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+  # Pinned official Claude Code CLI for the required CLI tier of the smoke
+  # script (plan task 01 / ADR 0012). Move this pin and re-capture
+  # docs/compatibility.md in the same change.
+  CLAUDE_CLI_PINNED_VERSION: '2.1.303'
 
 permissions:
   contents: read
@@ -45,19 +51,35 @@ jobs:
         with:
           node-version: '22'
 
-      # ENFORCED GATE — structural smoke. Packages the plugin into a clean temp
-      # dir and validates the packaged layout. Fails the workflow on any error.
-      - name: Structural plugin package smoke
+      # REQUIRED — pinned official CLI install (plan task 01 / ADR 0012). The
+      # CLI tier of the smoke script depends on it; a failed install must fail
+      # the required check with a clear infrastructure message.
+      - name: Install pinned Claude Code CLI (required)
         shell: bash
-        run: node scripts/plugin-install-smoke.mjs
+        run: |
+          npm install -g "@anthropic-ai/claude-code@${CLAUDE_CLI_PINNED_VERSION}"
+          if ! command -v claude >/dev/null 2>&1; then
+            echo "::error::pinned Claude Code CLI ${CLAUDE_CLI_PINNED_VERSION} failed to install (npm/network infrastructure failure); plugin install smoke CLI tier cannot run"
+            exit 1
+          fi
+          claude --version
 
-      # OPPORTUNISTIC — real claude CLI lifecycle. The `if:` on a GitHub Actions
+      # ENFORCED GATE — structural smoke + official CLI strict tier. Packages
+      # the plugin into a clean temp dir, validates the packaged layout, then
+      # (`--cli`) runs `claude plugin validate --strict` against the PACKAGED
+      # manifest/agents/skills. In CI a missing/malformed CLI fails the job
+      # (not a skip); locally `--cli` degrades to a structural-only run with a
+      # note, or hard-fails with `--require-cli`.
+      - name: Structural + official-CLI smoke (pinned)
+        shell: bash
+        run: node scripts/plugin-install-smoke.mjs --cli --cli-version "${CLAUDE_CLI_PINNED_VERSION}"
+
+      # ADVISORY — real claude CLI lifecycle. The `if:` on a GitHub Actions
       # step is an expression, not a shell command, so the command-existence
-      # guard lives inside the bash script (`if ! command -v claude`). The step
-      # also sets continue-on-error so neither a missing CLI nor a lifecycle
-      # hiccup can fail the workflow. The structural smoke above is the only
-      # enforced gate.
-      - name: Claude CLI plugin lifecycle (opportunistic)
+      # guard lives inside the bash script. continue-on-error keeps lifecycle
+      # flakiness a warning: the enforced gates above are the pinned strict
+      # validation and the structural smoke.
+      - name: Claude CLI plugin lifecycle (advisory)
         shell: bash
         continue-on-error: true
         env:
@@ -66,7 +88,7 @@ jobs:
         run: |
           set -uo pipefail
           if ! command -v claude >/dev/null 2>&1; then
-            echo "claude CLI not installed on PATH; skipping lifecycle (structural smoke is the enforced gate)"
+            echo "claude CLI not installed on PATH; skipping lifecycle (advisory step; structural + strict tiers above are the enforced gates)"
             exit 0
           fi
           mkdir -p "$CLEAN_HOME"
@@ -84,3 +106,38 @@ jobs:
             echo "::warning::marketplace add returned non-zero; CLI lifecycle skipped"
           fi
           echo "::endgroup::"
+
+  # Non-required canary (plan task 01 / ADR 0012): run the smoke's CLI tier
+  # against floating `latest`. Red here is an early warning of upstream
+  # schema/validation drift; the pinned, required job above is the source of
+  # truth.
+  plugin-install-smoke-canary:
+    name: Plugin install smoke canary (floating latest, non-required)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      - name: Install Claude Code CLI (floating latest)
+        shell: bash
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Structural + official-CLI smoke (latest)
+        shell: bash
+        run: node scripts/plugin-install-smoke.mjs --cli --require-cli
+
+      - name: "claude plugin validate --strict (latest: manifest + agents + skills)"
+        shell: bash
+        run: |
+          claude --version
+          set -e
+          claude plugin validate --strict plugins/agnthive
+          claude plugin validate --strict plugins/agnthive/agents
+          claude plugin validate --strict plugins/agnthive/skills

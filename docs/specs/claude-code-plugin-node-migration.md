@@ -5,6 +5,17 @@ ships under `plugins/agnthive/modules/`; the Bash runtime was
 removed. This document preserves the source-to-target mapping and the accepted
 behavioral deltas from the migration.
 
+> **Amendment (2026-10-19, plan task 01).** The compatibility-policy row below
+> claims the minimum supported version is pinned in a `plugin.json`
+> `requirements` key. That promise was **superseded, not implemented**: no
+> `requirements` key exists in the shipped manifest, it was never added, and it
+> is not a supported field of the official plugin manifest (strict
+> `claude plugin validate --strict` passes the `0.3.0` manifest without it).
+> Minimum-version policy now lives in the
+> [harness compatibility matrix](../compatibility.md) — documented policy only,
+> never an invented manifest field (ADR 0012). The historical row is kept
+> verbatim apart from an inline superseded marker.
+
 It maps the former Bash hook runtime (`claudecfg/hooks/*.sh` + shared
 `lib.sh`) to the shipped Node ESM modules defined in the production plan
 (`docs/plans/2026-06-21-claude-code-plugin-node-production.md`), and freezes
@@ -15,7 +26,7 @@ the public compatibility policy.
 | Policy | Value |
 |---|---|
 | Runtime prerequisite | **Node.js 22 or newer** on `PATH`. Node is an explicit plugin prerequisite, not an implicit dependency on a Claude Code installer. The dispatcher preflights `node --version` and, on failure, writes an actionable install hint to stderr + a non-blocking `additionalContext` message; it never fails silently. |
-| Supported Claude Code versions | Plugin format (`hooks/hooks.json`, `.claude-plugin/plugin.json`, exec-form `command: "node"`) targets Claude Code plugin support as documented in the Plugins / Hooks reference. Minimum supported version is pinned in `plugin.json` `requirements` and noted in the README; the plugin does not depend on unreleased hook events. |
+| Supported Claude Code versions | Plugin format (`hooks/hooks.json`, `.claude-plugin/plugin.json`, exec-form `command: "node"`) targets Claude Code plugin support as documented in the Plugins / Hooks reference. Minimum supported version is pinned in `plugin.json` `requirements` and noted in the README; the plugin does not depend on unreleased hook events. *(Superseded 2026-10-19: no `requirements` key exists or was ever added — minimum-version policy lives in [`docs/compatibility.md`](../compatibility.md) instead.)* |
 | Dangerous-intent default | `enforcement_mode` defaults to `advisory`. Users opt into `enforce` through plugin user configuration. In `enforce` mode, an unparseable command is **denied with an explanation** rather than guessed safe. (The current Bash runtime hard-denies unconditionally via `command_is_hard_denied_by_profile`; `advisory`/`enforce` is a new Node-default policy, not a port of existing behavior.) |
 | Privacy | Telemetry stores session metadata and notification events under `${CLAUDE_PLUGIN_DATA}` only. The runtime never logs credentials, full environment variables, or unnecessary prompt/transcript contents. JSONL telemetry is size-bounded and rotated. |
 | Plugin / settings boundary | Plugin `settings.json` supports only `agent` and `subagentStatusLine`. The plugin **cannot** auto-install this profile's global permissions, sandbox, auto-execution, output style, or main status line. These are documented as opt-in copy-paste snippets; the plugin never overwrites a user's `~/.claude/settings.json`. |

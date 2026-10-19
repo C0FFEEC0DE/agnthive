@@ -30,14 +30,33 @@
 //   7. The plugin settings.json (settings.json), if shipped, uses only keys a
 //      plugin is allowed to declare (agent, subagentStatusLine) — it must not
 //      carry main-session keys like statusLine, outputStyle, permissions, or env.
+//   8. Manifest shape contract (docs/compatibility.md): `defaultEnabled` is
+//      exactly false (plugin ships disabled by default); no invented
+//      version-policy key (`requirements` was promised by the old migration
+//      spec, is unsupported, and must stay absent — ADR 0012); userConfig
+//      declares the contract keys enforcement_mode, log_max_bytes,
+//      ledger_max_bytes (extra keys allowed, missing required keys fail).
 //
-// Exports packagePlugin(srcDir, destDir) and validatePackagedPlugin(pluginDir)
+// The OFFICIAL CLI tier is opt-in via `--cli` (or `--require-cli`): after the
+// structural checks pass/fail, main() resolves the `claude` executable
+// (AGNTHIVE_CLAUDE_BIN env override, else `claude` on PATH) and runs
+// `claude plugin validate --strict` against the PACKAGED plugin root, agents/,
+// and skills/. In CI (CI=true/GITHUB_ACTIONS=true, or explicit --require-cli)
+// a missing/malformed CLI is a FAILURE (infrastructure message), never a
+// silent skip; a LOCAL run without `--require-cli` degrades to a skip note.
+// A real strict-validation failure always fails the run.
+// scripts/validate.mjs (tier-1, all OS matrix shards) only uses the structural
+// tier, so it stays CLI-free.
+//
+// Exports packagePlugin(srcDir, destDir), validatePackagedPlugin(pluginDir),
+// probeClaudeVersion(argvPrefix), resolveClaudeCli(options),
+// runOfficialStrictValidation(argvPrefix, target), runCliTier(prefix, root)
 // for unit testing; CLI main() packages to a mkdtempSync temp dir, validates,
-// prints PASS/FAIL, and exits 0/1.
+// prints PASS/FAIL, and exits 0/1 (2 for usage errors).
 //
-// Node standard library only. The only subprocess is `node --check` on the
-// packaged statusline.mjs, invoked via spawnSync with an explicit argv — no
-// shell, no exec, no eval.
+// Node standard library only. The only subprocesses are `node --check` on the
+// packaged statusline.mjs and the opt-in `claude` CLI probes/validation,
+// invoked via spawnSync with an explicit argv — no shell, no exec, no eval.
 import {
   cpSync,
   existsSync,
@@ -63,6 +82,25 @@ const REQUIRED_MANIFEST_FIELDS = [
   'author',
   'license',
 ];
+
+// Manifest shape contract (docs/compatibility.md, plan task 01 / ADR 0012):
+// these describe the plugin's shipped shape, asserted statically so OS shards
+// that never install the CLI still fail on drift from what the pinned CLI
+// validated.
+// - defaultEnabled: the plugin ships disabled by default; the field must be
+//   present and exactly false.
+// - userConfig contract keys: the configuration surface documented in the
+//   compatibility matrix; extra userConfig keys are allowed, missing required
+//   keys fail.
+// - FORBIDDEN_MANIFEST_KEYS: ADR 0012 — the minimum-version policy is
+//   documented (docs/compatibility.md), never expressed as an invented
+//   manifest field. The 2026-06 node-migration spec once promised a
+//   `requirements` key; it never shipped. Remove this guard only in a
+//   reviewed change once the official manifest schema actually supports a
+//   version-policy field.
+const EXPECTED_DEFAULT_ENABLED = false;
+const REQUIRED_USERCONFIG_KEYS = ['enforcement_mode', 'log_max_bytes', 'ledger_max_bytes'];
+const FORBIDDEN_MANIFEST_KEYS = ['requirements'];
 
 /**
  * Recursively walk dir collecting files (skip node_modules/.git), optionally
@@ -199,7 +237,36 @@ export function validatePackagedPlugin(pluginDir) {
       if (ucOk) checks.push(`manifest userConfig is well-formed (keys: ${Object.keys(uc).join(', ') || 'none'})`);
     }
   } else {
-    checks.push('manifest userConfig absent (ok)');
+    errors.push(
+      'manifest userConfig missing (contract keys enforcement_mode, log_max_bytes, ledger_max_bytes are the documented plugin configuration)',
+    );
+  }
+
+  // ---- Check 1b: manifest shape contract (docs/compatibility.md).
+  if (manifest.defaultEnabled !== EXPECTED_DEFAULT_ENABLED) {
+    errors.push(
+      `manifest defaultEnabled must be present and exactly ${JSON.stringify(EXPECTED_DEFAULT_ENABLED)} (plugin ships disabled by default), got ${JSON.stringify(manifest.defaultEnabled)}`,
+    );
+  } else {
+    checks.push('manifest defaultEnabled is false (plugin ships disabled by default)');
+  }
+  if (typeof manifest.userConfig === 'object' && manifest.userConfig !== null && !Array.isArray(manifest.userConfig)) {
+    const missingUc = REQUIRED_USERCONFIG_KEYS.filter((k) => !(k in manifest.userConfig));
+    if (missingUc.length > 0) {
+      errors.push(
+        `manifest userConfig missing contract key(s): ${missingUc.join(', ')} (contract: ${REQUIRED_USERCONFIG_KEYS.join(', ')})`,
+      );
+    } else {
+      checks.push(`manifest userConfig declares contract keys: ${REQUIRED_USERCONFIG_KEYS.join(', ')}`);
+    }
+  }
+  const inventedKeys = FORBIDDEN_MANIFEST_KEYS.filter((k) => k in manifest);
+  if (inventedKeys.length > 0) {
+    errors.push(
+      `manifest declares invented version-policy key(s): ${inventedKeys.join(', ')} (minimum-version policy lives in docs/compatibility.md, not the manifest — ADR 0012)`,
+    );
+  } else {
+    checks.push('manifest declares no invented version-policy key (no requirements key)');
   }
 
   // ---- Check 2: declared paths resolve inside the packaged dir.
@@ -384,12 +451,153 @@ export function validatePackagedPlugin(pluginDir) {
   return { ok: errors.length === 0, errors, checks };
 }
 
+// ---------- Official CLI tier (plan task 01 / ADR 0012) ----------
+// The structural checks above prove the packaged shape statically. Only the
+// official CLI proves the manifest/agents/skills are ACCEPTED by the Claude
+// Code runtime (`claude plugin validate --strict`). All CLI invocations take
+// an argv prefix (default `['claude']`) so unit tests can substitute a fake
+// binary cross-platform (node + script) without shell wrappers.
+//
+// Version evidence: `claude --version` prints `<semver> (Claude Code)`; the
+// first leading semver is the version. Malformed output is an error, not a
+// version.
+
+const STRICT_VALIDATION_TARGETS = [
+  { label: 'manifest (plugin root)', rel: '.' },
+  { label: 'agents', rel: 'agents' },
+  { label: 'skills', rel: 'skills' },
+];
+
+/**
+ * Probe `<prefix> --version` and parse the leading semver. Returns
+ * { ok, version, reason }. `ok` is false for any of: spawn error
+ * (ENOENT/EPERM), signal termination, non-zero exit, or output without a
+ * leading semver — every non-ok case is a distinct, printed reason.
+ */
+export function probeClaudeVersion(argvPrefix, opts = {}) {
+  const timeoutMs = opts.timeoutMs ?? 15_000;
+  const r = spawnSync(argvPrefix[0], [...argvPrefix.slice(1), '--version'], {
+    stdio: 'pipe',
+    timeout: timeoutMs,
+    encoding: 'utf-8',
+  });
+  if (r.error) {
+    return { ok: false, version: null, reason: `spawn failed: ${r.error.code ?? r.error.message}` };
+  }
+  if (r.signal) {
+    return { ok: false, version: null, reason: `terminated by signal ${r.signal} (possible timeout after ${timeoutMs}ms)` };
+  }
+  if (r.status !== 0) {
+    return { ok: false, version: null, reason: `exit ${r.status} — not a claude CLI: ${truncateCliOutput(r.stderr ?? r.stdout ?? '')}` };
+  }
+  const raw = `${r.stdout ?? ''}${r.stderr ?? ''}`.trim();
+  const m = /(\d+\.\d+\.\d+)/.exec(raw.split('\n')[0] ?? '');
+  if (!m) {
+    return { ok: false, version: null, reason: `unparsable --version output: ${truncateCliOutput(raw)}` };
+  }
+  return { ok: true, version: m[1], reason: null, exitCode: 0 };
+}
+
+/** Environment-aware CLI resolution: AGNTHIVE_CLAUDE_BIN overrides PATH lookup. */
+export function resolveClaudeCli(opts = {}) {
+  const bin = opts.bin ?? process.env.AGNTHIVE_CLAUDE_BIN ?? 'claude';
+  const probe = probeClaudeVersion([bin], opts);
+  return { bin, ...probe };
+}
+
+/**
+ * Run `claude plugin validate --strict <target>`. Returns
+ * { ok, exitCode, signal, error, stdout, stderr, target }.
+ */
+export function runOfficialStrictValidation(argvPrefix, target, opts = {}) {
+  const timeoutMs = opts.timeoutMs ?? 120_000;
+  const argv = [...argvPrefix.slice(1), 'plugin', 'validate', '--strict', target];
+  const r = spawnSync(argvPrefix[0], argv, { stdio: 'pipe', timeout: timeoutMs, encoding: 'utf-8' });
+  const base = { target, exitCode: r.status, signal: r.signal, error: r.error ?? null, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
+  if (r.error) return { ...base, ok: false, reason: `spawn failed: ${r.error.code ?? r.error.message}` };
+  if (r.signal) return { ...base, ok: false, reason: `terminated by signal ${r.signal} (possible timeout after ${timeoutMs}ms)` };
+  if (r.status !== 0) {
+    return { ...base, ok: false, reason: `strict validation failed (exit ${r.status}) — output:\n${truncateCliOutput(r.stdout ?? '', r.stderr ?? '')}` };
+  }
+  return { ...base, ok: true, reason: null };
+}
+
+/**
+ * Run the three strict validation targets (manifest/agents/skills) against
+ * pluginRoot. When opts.expectedVersion is set, the CLI version must match it
+ * exactly (evidence for the required CI pin); any other version fails.
+ * Returns { ok, version, versionReason, mismatch, results[] }.
+ */
+export function runCliTier(argvPrefix, pluginRoot, opts = {}) {
+  const version = probeClaudeVersion(argvPrefix, opts);
+  let versionOk = version.ok;
+  let mismatch = null;
+  if (version.ok && opts.expectedVersion && version.version !== opts.expectedVersion) {
+    versionOk = false;
+    mismatch = `claude CLI version mismatch: pinned/explicit expectation is ${opts.expectedVersion}, found ${version.version} (the pin must be re-captured in docs/compatibility.md)`;
+  }
+  const results = [];
+  for (const { label, rel } of STRICT_VALIDATION_TARGETS) {
+    const target = join(pluginRoot, rel);
+    results.push({ label, ...runOfficialStrictValidation(argvPrefix, target, opts) });
+  }
+  // Version is reported as the plain semver string (null when unavailable);
+  // `versionReason` carries the probe failure, if any. A version probe
+  // failure already forces ok=false via versionOk above.
+  return {
+    ok: versionOk && !mismatch && results.every((x) => x.ok),
+    version: version.ok ? version.version : null,
+    versionReason: version.reason,
+    mismatch,
+    results,
+  };
+}
+
+function truncateCliOutput(...chunks) {
+  const text = chunks.filter(Boolean).join('\n').trim();
+  return text.length > 300 ? `${text.slice(0, 300)}...[truncated]` : text;
+}
+
 function main() {
-  // Optional positional arg: an already-packaged plugin directory to validate
-  // (e.g. an unpacked release artifact) instead of packaging a fresh copy from
-  // the source tree. Used by the release workflow's "test the exact artifact"
-  // gate so it validates the shipped artifact, not a re-packaged source copy.
-  const argDir = process.argv[2];
+  // Flags: --cli (run the official-CLI strict tier against the packaged
+  // plugin), --require-cli (make a missing/malformed CLI a hard failure even
+  // outside CI), --cli-version <v> (require an exact CLI version — evidence
+  // for the required CI pin). Positional arg (unchanged): an already-packaged
+  // plugin directory to validate (e.g. an unpacked release artifact) instead
+  // of packaging a fresh copy from the source tree. Used by the release
+  // workflow's "test the exact artifact" gate so it validates the shipped
+  // artifact, not a re-packaged source copy.
+  const rawArgs = process.argv.slice(2);
+  let wantCli = false;
+  let requireCli = false;
+  let expectVersion = null;
+  let argDir = null;
+  for (let i = 0; i < rawArgs.length; i++) {
+    const a = rawArgs[i];
+    if (a === '--cli') wantCli = true;
+    else if (a === '--require-cli') requireCli = true;
+    else if (a === '--cli-version') {
+      expectVersion = rawArgs[++i];
+      if (expectVersion === undefined || expectVersion === '') {
+        process.stdout.write(`plugin-install-smoke: --cli-version requires a value (e.g. --cli-version 2.1.303)\n`);
+        process.exit(2);
+      }
+    } else if (a.startsWith('--')) {
+      process.stdout.write(`plugin-install-smoke: unknown flag: ${a}\n`);
+      process.exit(2);
+    } else if (argDir === null) {
+      argDir = a;
+    } else {
+      process.stdout.write('plugin-install-smoke: at most one positional plugin dir\n');
+      process.exit(2);
+    }
+  }
+  if (requireCli) wantCli = true; // --require-cli implies --cli
+  // In CI the CLI tier must hard-fail on an unusable CLI — a skip must never
+  // produce a green required check (plan task 01 acceptance).
+  const inCi = process.env.CI === 'true' || process.env.CI === '1' || process.env.GITHUB_ACTIONS === 'true';
+  const hardFailOnMissingCli = requireCli || inCi;
+
   let pluginDir;
   let tmpRoot = null;
   if (argDir) {
@@ -410,13 +618,46 @@ function main() {
   let exitCode = 0;
   try {
     const { ok, errors, checks } = validatePackagedPlugin(pluginDir);
-    process.stdout.write(`Validating plugin -> ${pluginDir}\n`);
-    for (const c of checks) process.stdout.write(`  OK: ${c}\n`);
-    if (ok) {
-      process.stdout.write(`plugin-install-smoke: PASS (${checks.length} checks)\n`);
+    // Collected after the structural tier so a structural failure is reported
+    // before any CLI-tier noise; the CLI tier helps only once the shape holds.
+    let cliOkLines = 0;
+    const cliFatal = [];
+    if (wantCli && ok) {
+      const cli = resolveClaudeCli();
+      const cliPrefix = [cli.bin];
+      const probe = probeClaudeVersion(cliPrefix);
+      if (!probe.ok) {
+        if (hardFailOnMissingCli) {
+          cliFatal.push(
+            `claude CLI not usable (${probe.reason}) — infrastructure failure, not a skip: the required official validation must run (plan task 01; AGNTHIVE_CLAUDE_BIN overrides the executable)`,
+          );
+        } else {
+          process.stdout.write(
+            `  NOTE: CLI tier skipped — claude CLI not usable (${probe.reason}); structural smoke is the enforced gate\n`,
+          );
+        }
+      } else {
+        process.stdout.write(`  OK: official CLI present, version ${probe.version}${expectVersion ? '' : ' (no --cli-version pinned — reporting only)'}\n`);
+        cliOkLines++;
+        const tier = runCliTier(cliPrefix, pluginDir, { expectedVersion: expectVersion });
+        if (tier.mismatch) cliFatal.push(tier.mismatch);
+        for (const res of tier.results) {
+          if (res.ok) {
+            process.stdout.write(`  OK: official strict validation (${res.label}) — claude plugin validate --strict exit ${res.exitCode}\n`);
+            cliOkLines++;
+          } else {
+            cliFatal.push(`official strict validation failed for ${res.label} (${res.target}): ${res.reason}`);
+          }
+        }
+      }
+    }
+    const fatal = [...errors, ...cliFatal];
+    process.stdout.write(`Validated ${checks.length + cliOkLines} checks\n`);
+    if (fatal.length === 0) {
+      process.stdout.write(`plugin-install-smoke: PASS (${checks.length + cliOkLines} checks)\n`);
     } else {
-      process.stdout.write(`plugin-install-smoke: FAIL (${errors.length} error(s))\n`);
-      for (const e of errors) process.stderr.write(`  - ${e}\n`);
+      process.stdout.write(`plugin-install-smoke: FAIL (${fatal.length} error(s))\n`);
+      for (const e of fatal) process.stderr.write(`  - ${e}\n`);
       exitCode = 1;
     }
   } finally {
