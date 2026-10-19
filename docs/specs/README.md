@@ -2,6 +2,10 @@
 
 Dated design documents produced during the **brainstorm/design** phase, before a plan is written.
 
+## Current designs
+
+- [2026-10-19: harness review and simplification](2026-10-19-harness-review-and-simplification-design.md) — verified baseline, upstream contract review, findings, agent-role assessment, and target workflow accepted in [ADR 0008–0013](../adr/README.md). Runtime changes remain pending.
+
 ## Convention
 
 - One file per design: `YYYY-MM-DD-<slug>-design.md`

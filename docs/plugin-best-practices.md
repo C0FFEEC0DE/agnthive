@@ -1,6 +1,19 @@
 # Claude Code Plugin Best Practices
 
-Извлечено из официальной документации Claude Code (docs.claude.com) — июнь 2026.
+Исходная памятка составлена в июне 2026. Проверка актуальности: 2026-10-19.
+Подробные findings, границы проверки и предлагаемые изменения находятся в
+[ревью harness и orchestration](specs/2026-10-19-harness-review-and-simplification-design.md),
+а порядок реализации — в [плане агенту](plans/2026-10-19-harness-modernization-and-simplification.md).
+Этот документ не означает, что предложения уже реализованы в runtime.
+
+Актуальные ориентиры: [manifest reference](https://code.claude.com/docs/en/plugins-reference),
+[hooks](https://code.claude.com/docs/en/hooks) и
+[plugin components](https://code.claude.com/docs/en/plugins/components).
+Exec-form hooks, `defaultEnabled`, `userConfig` и plugin `subagentStatusLine`
+сохраняются. Для пользовательских команд указывайте namespace, например
+`/agnthive:review`. Strict validation проверяет структуру; применение hook
+output, background lifecycle и восстановление после compaction требуют
+отдельных runtime-проверок.
 
 ## Структура директорий
 
@@ -166,9 +179,11 @@ my-plugin/
 
 ### Нераспознанные поля
 
-Claude Code игнорирует неизвестные поля → можно держать метаданные из других экосистем (npm, VS Code) в одном файле.
-
-`claude plugin validate --strict` превратит warnings в errors для CI.
+Неизвестные top-level поля manifest удаляются при загрузке и вызывают warning;
+`claude plugin validate --strict` превращает его в ошибку. Во вложенных strict
+объектах, включая определения `userConfig`, неизвестные поля могут приводить
+к ошибке загрузки. Не используйте manifest как общий контейнер metadata других
+экосистем. См. [правила manifest validation](https://code.claude.com/docs/en/plugins-reference).
 
 ## Skills vs Commands
 

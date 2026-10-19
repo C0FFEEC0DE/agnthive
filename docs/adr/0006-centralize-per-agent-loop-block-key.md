@@ -1,8 +1,16 @@
 # ADR 0006: Centralize the per-agent loop-block key
 
-- **Status:** Proposed
+- **Status:** Accepted; implemented in baseline `2cd40df`.
 - **Decides:** The `agentId || '_session'` fallback key is computed by one
   exported helper, `agentLoopKey`, instead of being inlined at every call site.
+
+## Review update (2026-10-19)
+
+Retained: `agentLoopKey` is the shared key derivation helper. `_session` is a
+compatibility fallback when identity is absent, not evidence of an independent
+agent. [ADR 0010](0010-task-and-agent-lifecycle-identity.md) adds task ownership
+and idempotent lifecycle handling without reintroducing duplicated key logic.
+The context below describes the pre-implementation code.
 
 ## Context
 

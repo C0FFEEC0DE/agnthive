@@ -2,6 +2,10 @@
 
 Dated implementation plans produced from an approved design, executed via Subagent-Driven Development.
 
+## Current implementation plans
+
+- [2026-10-19: harness modernization and orchestration simplification](2026-10-19-harness-modernization-and-simplification.md) — detailed implementation handoff based on a repository/runtime review and accepted [ADR 0008–0013](../adr/README.md), not yet implemented. Includes root orchestration without a mandatory Manager, evidence-based gates, and a compatibility transition.
+
 ## Convention
 
 - One file per plan: `YYYY-MM-DD-<slug>.md`

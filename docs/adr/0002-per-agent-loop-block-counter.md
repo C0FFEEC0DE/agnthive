@@ -1,8 +1,20 @@
 # ADR 0002: Per-agent loop-block counter for SubagentStop
 
-- **Status:** Proposed (amended — see [Amendment (race fix)](#amendment-race-fix) and [Amendment 2](#amendment-2-map_clear-reset--explicit-per-key-entry--scalar-cleanup) below)
+- **Status:** Accepted; amended implementation present in baseline `2cd40df`. Reset semantics further amended by ADR 0010, implementation pending.
 - **Decides:** The `subagent_stop` loop-block counter is keyed by `agent_id`;
   the `stop` prefix remains session-global.
+
+## Review update (2026-10-19)
+
+Per-agent counters and per-key `map_set`/`map_delete` events remain the accepted
+concurrency contract. The historical context below predates their implementation.
+
+[ADR 0010](0010-task-and-agent-lifecycle-identity.md) supersedes the assumption
+that every UserPromptSubmit is a fresh human task and may clear the whole map.
+The new reset policy is pending implementation: preserve active siblings on
+continuations and clear only state belonging to a confirmed lifecycle boundary.
+`map_clear` remains a valid reducer operation, not permission to discard live
+agents' entries. ADR 0005/0006 still govern per-key writes and fallback keys.
 
 ## Context
 

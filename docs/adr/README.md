@@ -1,26 +1,54 @@
 # Architecture Decision Records
 
-Decisions for the `agnthive` hook runtime. Each ADR records context, decision,
-and a pinned interface contract so implementations can be executed independently.
+Architectural decisions for `agnthive`. Updated 2026-10-19 from the
+[harness/workflow review](../specs/2026-10-19-harness-review-and-simplification-design.md)
+and its [implementation plan](../plans/2026-10-19-harness-modernization-and-simplification.md).
+
+## Status and precedence
+
+**Accepted** records an architectural decision, not proof of implementation.
+Implementation status is stated separately. Baseline observations refer to
+`2cd40df` / plugin `0.3.0`; ADR 0008–0013 are accepted for the next implementation
+and do not describe shipped behavior. Switching defaults/removing legacy
+components requires the rollout gates in ADR 0012.
+
+Dated amendments take precedence over historical snippets in the same ADR.
+A later decision replaces only the scope it names; per-agent isolation and
+plugin identity remain in force even when lean removes mandatory role gates.
 
 ## Index
 
-| ADR | Title | Status |
+| ADR | Decision | Implementation / relationship |
 |-----|-------|--------|
-| [0001](0001-scope-subagent-stop-footer-to-agnthive-specialists.md) | Scope SubagentStop footer contract to AgntHive specialist agents | Proposed |
-| [0002](0002-per-agent-loop-block-counter.md) | Per-agent loop-block counter for SubagentStop | Proposed |
-| [0003](0003-honor-stop-hook-active.md) | Honor `stop_hook_active` in the Stop hook | Proposed |
-| [0004](0004-strip-plugin-namespace-in-agent-label-canonicalization.md) | Strip plugin-namespace prefix when canonicalizing agent labels | Proposed |
-| [0005](0005-carry-per-key-loop-block-entry-explicitly.md) | Carry the per-key loop-block entry explicitly to the dispatcher | Proposed |
-| [0006](0006-centralize-per-agent-loop-block-key.md) | Centralize the per-agent loop-block key | Proposed |
-| [0007](0007-namespace-prefix-is-plugin-identity.md) | The `agnthive:` namespace prefix is plugin identity, not config | Proposed |
+| [0001](0001-scope-subagent-stop-footer-to-agnthive-specialists.md) | Scope specialist footer enforcement | Baseline scoping present; missing-alias gap noted. Lean replacement: 0009 |
+| [0002](0002-per-agent-loop-block-counter.md) | Per-agent loop counters and map events | Amended baseline implementation; reset policy amendment pending in 0010 |
+| [0003](0003-honor-stop-hook-active.md) | Bounded Stop yield | Baseline implementation; local policy clarified, unresolved outcomes governed by 0009/0011 |
+| [0004](0004-strip-plugin-namespace-in-agent-label-canonicalization.md) | Namespaced agent normalization | Implemented only as narrowed by 0007; arbitrary-prefix stripping superseded |
+| [0005](0005-carry-per-key-loop-block-entry-explicitly.md) | Explicit per-key entries | Amended baseline implementation; retained |
+| [0006](0006-centralize-per-agent-loop-block-key.md) | Central agent key helper | Baseline implementation; retained |
+| [0007](0007-namespace-prefix-is-plugin-identity.md) | Fixed plugin namespace identity | Baseline behavior; retained; rename obligation recorded here |
+| [0008](0008-root-orchestration-and-three-specialists.md) | Root orchestration, three specialists, no mandatory Manager | Pending; plan 10–16 |
+| [0009](0009-completion-evidence-over-role-quotas.md) | Current completion evidence instead of role/footer quotas | Pending; plan 04, 09, 11, 13–16 |
+| [0010](0010-task-and-agent-lifecycle-identity.md) | Task/agent lifecycle and result ownership | Pending; plan 02, 05–06, 09 |
+| [0011](0011-explicit-hook-failure-and-permission-policy.md) | Explicit enforcement/advisory/telemetry failures | Pending; plan 01–03, 08, 14–15 |
+| [0012](0012-versioned-harness-contracts-and-outcome-benchmarks.md) | Versioned contracts, outcome benchmarks, rollout gates | Pending; plan 01–02, 09–10, 13–16 |
+| [0013](0013-ledger-restoration-and-minimal-telemetry.md) | Verified ledger restoration and bounded metadata | Pending host verification/implementation; plan 02, 07, 14–15 |
 
-## Origin
+## Historical correction
 
-These ADRs address the defects described in an untracked Russian bug report that
-was supplied at the repo root and removed after the ADRs were recorded. Of the
-five claims in that report, four are actionable defects (claims 1, 2, 4, 5) and
-one was **refuted** (claim 3: `agent_transcript_path` is not a documented Claude
-Code SubagentStop field; `last_assistant_message` is the primary path and is
-already preferred by `resolvedLastAssistantMessage`). No ADR is recorded for the
-refuted claim.
+ADR 0001–0007 originated from an earlier untracked bug report. The previous index
+called its `agent_transcript_path` claim refuted because the field was supposedly
+undocumented. That assertion is withdrawn: the current
+[SubagentStop reference](https://code.claude.com/docs/en/hooks#subagentstop)
+documents the subagent transcript separately from the parent transcript.
+Report ownership and fallback validation now belong to ADR 0010. This correction
+does not claim the original bug report was fully reproduced or that runtime
+fallback has already been fixed.
+
+## Recording a change
+
+Use a numbered ADR for a new independent decision. Include status, date, context,
+decision, alternatives/tradeoffs, relationships, and acceptance evidence. Preserve
+historical rationale with explicit amendments rather than silently presenting an
+old design as current. Link implementation tasks and update implementation status
+only after code and relevant checks exist.

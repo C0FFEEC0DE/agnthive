@@ -1,9 +1,21 @@
 # ADR 0007: The `agnthive:` namespace prefix is plugin identity, not config
 
-- **Status:** Proposed
+- **Status:** Accepted; fixed-prefix behavior present in baseline `2cd40df`. Repository documentation is the durable rename record.
 - **Decides:** The `agnthive:` prefix stripped by
   `canonicalizeSubagentLabel` is fixed plugin identity; it is not configurable
   and must be updated alongside the other plugin metadata surfaces on a rename.
+
+## Review update (2026-10-19)
+
+Retained: only the local plugin prefix is stripped. This ADR narrows the broad
+algorithm originally written in ADR 0004. The repository is the durable source
+of the rename obligation; no external/private memory note is required to
+understand or implement it. Historical references below to writing such a note
+are optional supporting practice, not an outstanding runtime requirement.
+
+A rename must update manifest/marketplace/package identity, canonicalization,
+documented commands, and identity fixtures together. Apply the same boundary
+to command routing under [ADR 0010](0010-task-and-agent-lifecycle-identity.md).
 
 ## Context
 

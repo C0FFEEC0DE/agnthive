@@ -1,8 +1,21 @@
 # ADR 0004: Strip plugin-namespace prefix when canonicalizing agent labels
 
-- **Status:** Proposed
-- **Decides:** `canonicalizeSubagentLabel` strips a leading `namespace:` prefix
+- **Status:** Accepted as narrowed by ADR 0007; implemented in baseline `2cd40df`.
+- **Decides:** `canonicalizeSubagentLabel` strips the local `agnthive:` prefix
   before normalizing, so `agnthive:Explorer` → `e`.
+
+## Review update (2026-10-19)
+
+The arbitrary-prefix algorithm in the original decision below is superseded
+by [ADR 0007](0007-namespace-prefix-is-plugin-identity.md). The shipped code
+strips only `agnthive:`; a foreign `other:Explorer` must not become local `e`.
+Do not implement the historical `indexOf(':')` snippet as a new change.
+
+Namespaced agent recognition is already implemented. Namespaced slash-command
+routing is a separate remaining change under
+[ADR 0010](0010-task-and-agent-lifecycle-identity.md); it does not require
+weakening plugin identity boundaries or treating frontmatter `type` as runtime
+permission policy.
 
 ## Context
 

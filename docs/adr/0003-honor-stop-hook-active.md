@@ -1,9 +1,29 @@
 # ADR 0003: Honor `stop_hook_active` in the Stop hook
 
-- **Status:** Proposed (amended — see [Amendment (gate the yield on a prior block)](#amendment-gate-the-yield-on-a-prior-block) below)
+- **Status:** Accepted; amended yield policy implemented in baseline `2cd40df`. Completion semantics clarified by ADR 0009/0011, implementation pending.
 - **Decides:** When `stop_hook_active` is true **and** there is evidence of a
   prior block this session, `handleStop` yields (clears loop state and passes
   through) instead of re-blocking.
+
+## Review update (2026-10-19)
+
+The original context describes code before this decision was implemented.
+The current runtime reads the flag and uses `hasPriorStopBlock`.
+
+The one-feedback-cycle yield is an **agnthive policy**, not a Claude Code
+requirement to allow the second stop unconditionally. The current
+[Stop reference](https://code.claude.com/docs/en/hooks#stop) describes the flag
+as continuation after a stop hook and documents a separate continuation cap.
+The plugin's existing conservative yield is retained; assertions below that
+call a one-block limit mandatory runtime behavior are historical rationale,
+superseded by this clarification.
+
+Yielding prevents a loop; it does not prove that verification or review passed.
+[ADR 0009](0009-completion-evidence-over-role-quotas.md) requires unresolved
+evidence to survive turn termination, and
+[ADR 0011](0011-explicit-hook-failure-and-permission-policy.md) distinguishes
+that outcome from successful completion. No new runtime behavior is implemented
+by this documentation update.
 
 ## Context
 

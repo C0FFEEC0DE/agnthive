@@ -1,9 +1,23 @@
 # ADR 0001: Scope SubagentStop footer contract to AgntHive specialist agents
 
-- **Status:** Proposed
+- **Status:** Accepted; specialist scoping implemented in baseline `2cd40df`. Lean replacement accepted in ADR 0009, implementation pending.
 - **Decides:** SubagentStop footer enforcement applies only to recognized
   AgntHive specialist roles; generic dispatch types and unrecognized subagents
   pass through.
+
+## Review update (2026-10-19)
+
+The context below describes the original defect, not the current implementation.
+`shouldEnforceSubagentFooter` now scopes recognized agents, but its missing-alias
+fallback still enforces non-generic unknown labels. That is a remaining gap,
+not a guarantee that every unidentified agent passes through.
+
+[ADR 0009](0009-completion-evidence-over-role-quotas.md) replaces mandatory footer
+gates with completion evidence in lean. During legacy compatibility, keep local
+specialist scoping and correct the fallback: an unavailable alias map must not
+impose local prose contracts on foreign, fork, or internal agents. See also
+[ADR 0010](0010-task-and-agent-lifecycle-identity.md) for report ownership.
+The old eight-role list below describes legacy, not the target inventory.
 
 ## Context
 

@@ -12,6 +12,8 @@ Start here, then follow the link that matches what you're doing.
 | Run the Subagent-Driven Development workflow | [`../plugins/agnthive/references/subagent-driven-development.md`](../plugins/agnthive/references/subagent-driven-development.md) · [`progress ledger`](../plugins/agnthive/references/progress-ledger.md) |
 | Follow the debugging discipline | [`root-cause tracing`](../plugins/agnthive/references/debugging-root-cause-tracing.md) · [`defense in depth`](../plugins/agnthive/references/debugging-defense-in-depth.md) · [`condition-based waiting`](../plugins/agnthive/references/debugging-condition-based-waiting.md) |
 | Use plan/spec conventions | [`plans/README.md`](plans/README.md) · [`specs/README.md`](specs/README.md) |
+| Read architectural decisions and implementation status | [ADR index](adr/README.md) |
+| Review current harness compatibility and simplify orchestration | [2026-10-19 review and design](specs/2026-10-19-harness-review-and-simplification-design.md) · [implementation plan](plans/2026-10-19-harness-modernization-and-simplification.md) |
 | Host the project site at agnthive.run | [`website.md`](website.md) |
 | Report a security issue | [`../SECURITY.md`](../SECURITY.md) |
 

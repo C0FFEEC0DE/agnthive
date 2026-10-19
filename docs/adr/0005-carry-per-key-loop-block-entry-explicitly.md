@@ -1,9 +1,18 @@
 # ADR 0005: Carry the per-key loop-block entry explicitly to the dispatcher
 
-- **Status:** Proposed (amended — see [Amendment](#amendment-recordloopblock-returns-the-entry-directly) below)
+- **Status:** Accepted; amended implementation present in baseline `2cd40df`.
 - **Decides:** `emitLoopAwareBlock` returns the per-key entry (`{ mapKey, key,
   entry }`) it already computed, so the dispatcher emits `map_set` directly
   instead of re-reading the full-map patch.
+
+## Review update (2026-10-19)
+
+Retained by the new design. The final amendment below is the implemented
+contract: `recordLoopBlock` returns `{ mapKey, key, entry }` directly for an
+agent, and the dispatcher persists that entry without constructing a whole-map
+patch. Earlier full-map clauses are historical. Changes to task reset boundaries
+in [ADR 0010](0010-task-and-agent-lifecycle-identity.md) must preserve this write
+contract.
 
 ## Context
 
