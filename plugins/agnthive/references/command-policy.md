@@ -15,8 +15,11 @@ events:
 - **PreToolUse** — emit `permissionDecision: "deny"` with a reason, or `"allow"`.
 - **PermissionRequest** — emit `decision.behavior: "deny"` with a message, or
   pass through (no decision object) so the normal permission flow proceeds.
-- **PermissionDenied** — decide `{ retry: true }` (let the agent try a different
-  command) or `{ retry: false }` (a hard-denied command must not be retried).
+- **PermissionDenied** — emit the event-specific envelope
+  `{ hookSpecificOutput: { hookEventName: "PermissionDenied", retry: true } }`
+  (let the agent try a different command) or `retry: false` (a hard-denied
+  command must not be retried). The legacy bare `{ retry }` shorthand predates
+  the hooks reference and is no longer emitted ([ADR 0011](../../../docs/adr/0011-explicit-hook-failure-and-permission-policy.md)).
 
 The profile intentionally disables release/deploy automation and guards against
 destructive, privileged, and remote-execution commands. The policy is a
@@ -46,9 +49,22 @@ Detection is **case-insensitive** and operates on a **normalized** string (see
 §4). `git`, `npm`, `cargo`, `docker`, `gh`, `kubectl`, and `helm` verbs are
 OS-agnostic, so their patterns are shared across all three families.
 
+**Matcher coverage (ADR 0011):** the policy is registered for both the `Bash`
+and the native `PowerShell` tool matchers in `hooks/hooks.json` (shared
+PreToolUse safety registration with `onFailure: "block"`, plus PostToolUse
+verification routing), so a native PowerShell tool call reaches the same policy
+as Bash — a `pwsh`/`powershell` program inside a Bash command is also
+classified as a PowerShell host. The `PermissionRequest` and `PermissionDenied`
+handlers remain registered for `Bash` only (their payloads only carry the
+legacy deny surface); CMD stays a spelling-level family: there is no separate
+CMD tool matcher, and `rd /s /q`-style commands are only inspected when they
+appear inside a Bash or PowerShell tool call.
+
 ## 3. Advisory and enforce modes
 
-The policy runs in one of two modes, selected by `AGNTHIVE_POLICY`:
+The policy runs in one of two modes, selected by the plugin's
+`enforcement_mode` userConfig (default `advisory`) or the `AGNTHIVE_POLICY`
+env override:
 
 - **`advisory` (default, fail-open on the unknown).** A command the policy can
   identify as dangerous is denied. A command the policy can identify as safe, or
@@ -139,9 +155,12 @@ output. These strings are part of the contract (the corpus asserts substrings):
 PreToolUse uses `hookSpecificOutput.permissionDecision` with an `errorDetails`
 markdown block (matching the legacy `emit_pretool_decision`). PermissionRequest
 uses `hookSpecificOutput.decision.{behavior,message,errorDetails}`. PermissionDenied
-emits `{ retry: false }` for any hard-denied command and for benchmark CI context
+emits `hookSpecificOutput: { hookEventName: "PermissionDenied", retry: false }`
+for any hard-denied command and for benchmark CI context
 (`BENCH_TASK_ID` / `BENCH_TASK_FILE` / `BENCH_WORKDIR` set), otherwise
-`{ retry: true }`.
+`hookSpecificOutput: { hookEventName: "PermissionDenied", retry: true }` —
+the event-specific envelope, not the legacy bare `{ retry }` shorthand
+([ADR 0011](../../../docs/adr/0011-explicit-hook-failure-and-permission-policy.md)).
 
 ## 7. Corpus requirements
 

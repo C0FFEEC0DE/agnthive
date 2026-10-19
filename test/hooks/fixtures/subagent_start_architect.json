@@ -1,5 +1,6 @@
 {
   "session_id": "scenario-dispatch-enforced",
+  "agent_id": "arch1",
   "agentType": "general-purpose",
   "tool_input": {
     "subagentType": "Architect",

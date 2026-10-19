@@ -1,6 +1,6 @@
 {
   "name": "agnthive",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "description": "Hook-gated SDLC profile for Claude Code — discover → design → implement → verify → review → docs, with specialist agents and a benchmark suite that catches regressions.",

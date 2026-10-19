@@ -7,6 +7,7 @@ import {
   inferStartedRolesFromTranscript, effectiveStartedRoles, formatSubagentList,
   formatSubagentGroup, GENERIC_TYPES, isAgntHiveSpecialistRole,
   shouldEnforceSubagentFooter, isGenericType, isAliasesLoaded,
+  upsertAgent, startedRolesFromRegistry, isForeignOrForkType,
 } from '../../plugins/agnthive/modules/agents.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -281,4 +282,107 @@ test('shouldEnforceSubagentFooter: safe floor — missing alias map enforces on 
   assert.equal(shouldEnforceSubagentFooter('', '', {}), false);
   assert.equal(shouldEnforceSubagentFooter(null, null, {}), false);
   assert.equal(shouldEnforceSubagentFooter('general-purpose', 'general-purpose', {}), false);
+});
+// --- ADR 0010 agent lifecycle registry (plan 06) ---------------------------
+
+test('isForeignOrForkType detects forks and foreign namespaces, keeps our own', () => {
+  assert.equal(isForeignOrForkType('fork'), true);
+  assert.equal(isForeignOrForkType('Fork'), true);
+  assert.equal(isForeignOrForkType('mcp:tester'), true);
+  assert.equal(isForeignOrForkType('Other:runner'), true);
+  assert.equal(isForeignOrForkType('agnthive:Explorer'), false);
+  assert.equal(isForeignOrForkType('Tester'), false);
+  assert.equal(isForeignOrForkType(null, 'fork'), true);
+  assert.equal(isForeignOrForkType('Tester', 'cr'), false);
+});
+
+test('shouldEnforceSubagentFooter: fork and foreign types carry no footer duty (plan 06.5)', () => {
+  const aliases = { cr: ['code-reviewer'], t: ['tester'] };
+  assert.equal(shouldEnforceSubagentFooter('fork', 'fork', aliases, true), false);
+  assert.equal(shouldEnforceSubagentFooter('fork', null, aliases, true), false);
+  assert.equal(shouldEnforceSubagentFooter('mcp-tester', 'mcp:tester', aliases, true), false);
+  const foreignLabel = shouldEnforceSubagentFooter('other-runner', 'Other:runner', aliases, true);
+  assert.equal(foreignLabel, false);
+});
+
+test('shouldEnforceSubagentFooter: fork/foreign stay exempt even at the missing-alias floor', () => {
+  assert.equal(shouldEnforceSubagentFooter('fork', 'fork', {}, false), false);
+  assert.equal(shouldEnforceSubagentFooter('mcp-tester', 'mcp:tester', {}, false), false);
+  assert.equal(shouldEnforceSubagentFooter('some-label', 'Other:thing', {}, false), false);
+  assert.equal(shouldEnforceSubagentFooter('unknown-label', null, {}, false), true);
+  assert.equal(shouldEnforceSubagentFooter('cr', 'cr', {}, false), true);
+});
+
+test('upsertAgent: first start, resume no double-count, and completion flow', () => {
+  const registry = {};
+  const first = upsertAgent(registry, { agentId: 'w1', role: 't', scope: 'run tests', taskId: 'task-1', status: 'running', seq: 5 });
+  assert.equal(first.w1.starts, 1);
+  assert.equal(first.w1.status, 'running');
+  assert.equal(first.w1.provenance, 'normal');
+  assert.equal(registry.w1, undefined, 'input registry never mutated');
+  const resume = upsertAgent(first, { agentId: 'w1', status: 'running', seq: 6 });
+  assert.equal(resume.w1.starts, 2, 'resume moves starts 1->2 without a new role bump');
+  assert.equal(resume.w1.role, 't');
+  assert.equal(resume.w1.scope, 'run tests');
+  assert.equal(resume.w1.taskId, 'task-1');
+  const done = upsertAgent(resume, { agentId: 'w1', status: 'completed', seq: 7 });
+  assert.equal(done.w1.starts, 2, 'completion upserts leave starts untouched');
+  assert.equal(done.w1.status, 'completed');
+  assert.equal(done.w1.role, 't');
+});
+
+test('upsertAgent: _session fallback for missing ids (provenance missing-id)', () => {
+  const out = upsertAgent({}, { role: 'cr', scope: 'review the patch', status: 'running', seq: 5 });
+  const rec = out._session;
+  assert.equal(rec.provenance, 'missing-id');
+  assert.equal(rec.status, 'unknown');
+  assert.equal(rec.role, 'cr');
+  assert.equal(rec.starts, 0, 'missing-id records never count starts');
+  const again = upsertAgent(out, { role: 't', status: 'running', seq: 6 });
+  assert.equal(again._session.role, 't', 'the shared _session key holds only the latest record');
+});
+
+test('upsertAgent: null role records an unrecognized foreign agent', () => {
+  const out = upsertAgent({}, { agentId: 'f1', role: null, scope: 'external fork work', status: 'completed', seq: 8 });
+  const rec = out.f1;
+  assert.equal(rec.role, null);
+  assert.equal(rec.provenance, 'unrecognized');
+  assert.equal(rec.status, 'unknown', 'null role forces status unknown');
+  assert.equal(rec.starts, 0);
+  assert.equal(rec.scope, 'external fork work');
+});
+
+test('startedRolesFromRegistry filters to recognized roles only', () => {
+  const aliases = { cr: ['code-reviewer'], t: ['tester'], m: ['manager'] };
+  const state = {
+    agents: {
+      w1: { role: 't', status: 'completed' },
+      w2: { role: 'cr', status: 'running' },
+      f1: { role: null, status: 'unknown' },
+      g1: { role: 'general-purpose', status: 'completed' },
+      s1: { role: 'stranger', status: 'completed' },
+    },
+  };
+  assert.deepEqual(startedRolesFromRegistry(state, aliases), ['cr', 't']);
+  assert.deepEqual(startedRolesFromRegistry(state), ['cr', 'stranger', 't']);
+  assert.deepEqual(startedRolesFromRegistry({}, aliases), []);
+  // A missing taskId on both sides counts as the unscoped scope: records seeded
+  // without taskId aggregate under a state with no open task (assertions above).
+});
+
+test('startedRolesFromRegistry: records are task-scoped (CR MED-LOW 8)', () => {
+  const aliases = { cr: ['code-reviewer'], t: ['tester'], m: ['manager'] };
+  const active = startedRolesFromRegistry({
+    task_id: 'task-1',
+    agents: {
+      live: { role: 'cr', taskId: 'task-1', status: 'running' },
+      live2: { role: 't', taskId: 'task-1', status: 'completed' },
+      stale: { role: 'a', taskId: 'task-0', status: 'completed' },
+    },
+  }, aliases);
+  assert.deepEqual(active, ['cr', 't'], 'records from an earlier task id are filtered');
+  const unscoped = startedRolesFromRegistry({
+    agents: { w1: { role: 't', taskId: 'task-0', status: 'completed' }, w2: { role: 'cr', status: 'running' } },
+  }, aliases);
+  assert.deepEqual(unscoped, ['cr'], 'a no-task session only counts unscoped records');
 });

@@ -46,6 +46,12 @@ Full diagram and the pieces: [`plugins/agnthive/references/architecture.md`](plu
 
 Full names work too: `@code-reviewer`, `@tester`, etc.
 
+All eight agent definitions ship; ADR 0008 (in 0.4.0) makes Code Reviewer,
+Explorer, and Debugger the primary specialists and marks Manager, Architect,
+Tester, Docwriter, and Bugbuster deprecated compatibility agents kept for
+explicit legacy workflows (removed after the compatibility window). See
+[`plugins/agnthive/references/agent-contracts.md`](plugins/agnthive/references/agent-contracts.md).
+
 ## Usage
 
 ```
@@ -78,6 +84,15 @@ These are the documented entry points; the hooks enforce the actual handoff and 
 | refactor | verification or `@t` + `@cr` + (`@a` or `@e`) |
 | review | `@cr` |
 | docs | `@doc` |
+
+These are the **legacy-profile** gates (the default `workflow_profile=legacy`):
+completion counts current verification evidence plus started-and-completed
+specialist roles. The experimental `lean` profile drops the mandatory role
+quotas and Manager-idle gate while keeping the current-verification and
+independent-review gates; completion evidence is read from the plugin's
+session state (`verification[]` records scoped to the current change revision
+and the agent registry), not from footer text. The default flips only after
+the ADR 0012 outcome benchmark passes.
 
 ## Install
 
@@ -117,6 +132,7 @@ README.
 All configuration is **environment variables and the plugin-scoped `userConfig`**. The plugin never reads or writes `~/.claude/settings.json`, so installation is non-destructive.
 
 - **Command policy mode:** `userConfig.enforcement_mode` (default `advisory`) or the `AGNTHIVE_POLICY` env var (`advisory` fail-open vs `enforce` fail-closed on unparseable indirection). The legacy `CLAUDE_CREW_POLICY` alias is still honored.
+- **Workflow profile:** `userConfig.workflow_profile` (default `legacy`) or the `AGNTHIVE_WORKFLOW_PROFILE` env var selects the SDLC gate shape. `legacy` keeps the full specialist-handoff and footer gates; `lean` is **experimental** (root orchestration, no mandatory role quotas, verification + review evidence gates stay). The default flips only after the ADR 0012 outcome benchmark passes.
 - **Log rotation / ledger size:** `userConfig.log_max_bytes` (1 MiB default) and `userConfig.ledger_max_bytes` (64 KiB default), overridable via `AGNTHIVE_LOG_MAX_BYTES` / `AGNTHIVE_LEDGER_MAX_BYTES` (with `CLAUDE_CREW_*` legacy aliases).
 - **Knob precedence:** every tunable knob reads `AGNTHIVE_*` (explicit) > `CLAUDE_CREW_*` (legacy alias) > `CLAUDE_PLUGIN_OPTION_*` (the `userConfig` bridge, lowest priority) — so a `userConfig` value always applies unless an explicit env var overrides it.
 - **Progress ledger:** `AGNTHIVE_PROGRESS_FILE` overrides the location; default `<projectDir>/.agnthive/progress.md` (gitignored).

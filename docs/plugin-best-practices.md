@@ -4,7 +4,15 @@
 Подробные findings, границы проверки и предлагаемые изменения находятся в
 [ревью harness и orchestration](specs/2026-10-19-harness-review-and-simplification-design.md),
 а порядок реализации — в [плане агенту](plans/2026-10-19-harness-modernization-and-simplification.md).
-Этот документ не означает, что предложения уже реализованы в runtime.
+Статус реализации: значительная часть рекомендаций реализована в 0.4.0 —
+exec-form hooks, `defaultEnabled: false`, `userConfig` (теперь с
+`workflow_profile`), plugin `subagentStatusLine`, одиночная версия в
+`plugin.json` при отсутствии `version` в `marketplace.json` (вариант 1 ниже),
+строгая CI-валидация на pinned CLI. Host-runtime проверки (применение hook
+output в live-сессии, background lifecycle, доставка контекста после
+compaction) всё ещё unverified — см.
+[матрицу совместимости](compatibility.md); незавершённые пункты не выдавать за
+работающие.
 
 Актуальные ориентиры: [manifest reference](https://code.claude.com/docs/en/plugins-reference),
 [hooks](https://code.claude.com/docs/en/hooks) и

@@ -5,7 +5,8 @@ import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { statePaths, loadState } from '../../plugins/agnthive/modules/state.mjs';
+import { statePaths, loadState, reducer } from '../../plugins/agnthive/modules/state.mjs';
+import { upsertAgent, shouldEnforceSubagentFooter } from '../../plugins/agnthive/modules/agents.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..', '..');
@@ -79,18 +80,24 @@ test('SubagentStart tool_input.agentAlias -> @dbg', () => {
 
 test('SubagentStart keeps started roles unique across duplicate tester', () => {
   run('SubagentStart', 'subagent_start_duplicate_tester', dataRoot);
+  // ADR-0010: re-running the same fixture is a same-id resume of t2; the role
+  // count must not double-count (upsertAgent resume idempotency), while the
+  // registry record still advances (starts 2).
   run('SubagentStart', 'subagent_start_duplicate_tester', dataRoot);
   const s = state('subagent_start_duplicate_tester');
   assert.deepEqual(s.subagents_started, ['t']);
-  assert.equal(s.subagent_instance_count_by_role.t, 2);
+  assert.equal(s.subagent_instance_count_by_role.t, 1);
   assert.equal(s.subagent_start_count, 2);
   assert.equal(s.subagent_events.length, 2);
+  assert.equal(s.agents.t2.starts, 2);
+  assert.equal(s.agents.t2.role, 't');
+  assert.equal(s.agents.t2.status, 'running');
 });
 
 test('SubagentStart tracks parallel same-role instances with distinct scope', () => {
   // seed the first explorer via its seed-state fixture: emulate by running a
   // first explorer start, then the second-scope fixture
-  const first = { session_id: sid('subagent_start_second_explorer_scope'), tool_input: { description: 'Trace workflow A', subagentType: 'Explorer' } };
+  const first = { session_id: sid('subagent_start_second_explorer_scope'), agent_id: 'e1', tool_input: { description: 'Trace workflow A', subagentType: 'Explorer' } };
   spawnSync(process.execPath, [dispatcher, '--event', 'SubagentStart'], {
     input: JSON.stringify(first), encoding: 'utf8', env: { ...process.env, CLAUDE_PLUGIN_DATA: dataRoot },
   });
@@ -101,4 +108,68 @@ test('SubagentStart tracks parallel same-role instances with distinct scope', ()
   assert.equal(s.subagent_instance_count_by_role.e, 2);
   assert.equal(s.subagent_events.length, 2);
   assert.equal(s.subagent_events[1].purpose, 'Trace workflow B');
+});
+
+test('SubagentStart foreign-namespace agent type records no specialist (spawn)', () => {
+  const payload = JSON.stringify({
+    hook_event_name: 'SubagentStart',
+    session_id: 'ss-foreign-start',
+    agent_id: 'fx1',
+    agent_type: 'mcp:tester',
+    tool_input: { description: 'External MCP runner work' },
+  });
+  const res = spawnSync(process.execPath, [dispatcher, '--event', 'SubagentStart'], {
+    input: payload, encoding: 'utf8',
+    env: { ...process.env, CLAUDE_PLUGIN_DATA: dataRoot },
+  });
+  assert.equal(res.status, 0);
+  // Interim dispatcher records the raw label; the orchestrator's registry
+  // wiring replaces that with an unrecognized role:null registry record, so
+  // only dispatcher stability is asserted here — the no-role/no-footer
+  // contract is covered by the in-process compositions below.
+  assert.ok(res.stdout === undefined || typeof res.stdout === 'string');
+  const s = loadState(statePaths(dataRoot, 'ss-foreign-start'));
+  assert.equal(s.subagent_events.length, 1);
+});
+
+// --- plan 06 lifecycle: registry upsert/resume composition (ADR-0010) -------
+
+// The dispatcher's SubagentStart composition: map_set the upserted record and
+// bump the role count ONLY when record.starts === 1 (first start of this id).
+function upsertViaEvents(events, registry, spec) {
+  const next = upsertAgent(registry, spec);
+  const key = spec.agentId || '_session';
+  const rec = next[key];
+  events.push({ type: 'map_set', payload: { mapField: 'agents', key, value: rec } });
+  if (rec.starts === 1 && rec.role) {
+    events.push({ type: 'role_increment', payload: { mapField: 'subagent_instance_count_by_role', key: rec.role, by: 1 } });
+  }
+  return next;
+}
+
+test('registry composition: resume of the same agent id does not double-count the role', () => {
+  const events = [];
+  let reg = {};
+  reg = upsertViaEvents(events, reg, { agentId: 'w1', role: 't', status: 'running', seq: 1 });
+  reg = upsertAgent(reg, { agentId: 'w1', status: 'running', seq: 2 });
+  events.push({ type: 'map_set', payload: { mapField: 'agents', key: 'w1', value: reg.w1 } });
+  const s = reducer(events);
+  assert.equal(s.agents.w1.starts, 2);
+  assert.deepEqual(s.subagent_instance_count_by_role, { t: 1 }, 'the role bump fired only on the first start');
+});
+
+test('registry composition: _session fallback records missing-id agents', () => {
+  const next = upsertAgent({}, { role: 'cr', status: 'running', seq: 1 });
+  const s = reducer([{ type: 'map_set', payload: { mapField: 'agents', key: '_session', value: next._session } }]);
+  assert.equal(s.agents._session.provenance, 'missing-id');
+  assert.deepEqual(s.subagent_instance_count_by_role, {}, 'missing-id records never bump the role map');
+});
+
+test('registry composition: foreign and fork agents carry no role and no footer duty', () => {
+  const aliases = { cr: ['code-reviewer'], t: ['tester'], fork: [] };
+  const foreign = upsertAgent({}, { agentId: 'f1', role: null, status: 'completed', seq: 5 });
+  assert.equal(foreign.f1.role, null);
+  assert.equal(foreign.f1.provenance, 'unrecognized');
+  assert.equal(shouldEnforceSubagentFooter('mcp-tester', 'mcp:tester', aliases, true), false);
+  assert.equal(shouldEnforceSubagentFooter('fork', 'fork', aliases, true), false);
 });

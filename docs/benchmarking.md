@@ -18,7 +18,7 @@ Current task assertions include:
 - implementation tasks verify the final Claude response includes exact stop-safe summary lines for `Verification status:`, `Review outcome:`, `Changed files:` or `No files changed:`, and `Remaining risks:`
 - transcript-sensitive tasks verify handoff markers only when the benchmark is explicitly about stable output shape
 - workflow-combination tasks prefer `required_used_agents` and `required_used_agent_groups` so CI checks which specialist roles actually ran instead of brittle `Task:` headings
-- role-sensitive tasks resolve actual subagent usage from `SubagentStart` and recorded handoff lines in the debug log; `@alias` patterns in transcript entries (e.g. `@code-reviewer`, `@explorer`, `@cr`) are canonicalized to canonical role aliases
+- role-sensitive tasks resolve actual subagent usage from `SubagentStart` and recorded handoff lines in the debug log — and, since ADR 0009, from the session's structured plugin state, which is authoritative when present (see [Agent-Dispatch Evidence Split](#agent-dispatch-evidence-split)); `@alias` patterns in transcript entries (e.g. `@code-reviewer`, `@explorer`, `@cr`) are canonicalized to canonical role aliases
 - when a task needs a stable visible marker for role usage, the runner also accepts explicit `Handoff evidence: @alias ...` transcript lines as canonical handoff evidence
 - docs-required tasks changed documentation
 - docs-only tasks did not change non-doc files
@@ -66,28 +66,30 @@ The subagent smoke suite under `bench/tasks/subagents/smoke/*.json` keeps one ca
 
 The runner resolves agent-usage evidence from three disjoint sources so a strict observed-dispatch contract can be layered in without changing the legacy pass/fail behavior:
 
-- **hook** — real `SubagentStart` events and `Recorded subagent handoff: @alias` echoes captured in the effective debug log. Only these count as genuine dispatch (`hookSourceAliases`).
+- **hook** — real `SubagentStart` events and `Recorded subagent handoff: @alias` echoes captured in the effective debug log (the legacy debug-log tier). Since ADR 0009/0012 these echoes are **claims, not evidence**: when the runner finds the session's plugin state, the plugin state drives the observed tier and this tier is demoted to claimed.
 - **transcript** — launch-like lines inferred from the structured session transcript (`inferUsedAgentAliasesFromTranscript`).
 - **claimed** — `Handoff evidence: @alias ...` markers and prose `@alias` patterns in the final result text (`inferUsedAgentAliasesFromResultText`).
 
 `extractUsedAgentEvidence` returns these as disjoint sets plus a `byAlias` map; `extractUsedAgentAliases` returns their union (unchanged legacy behavior used by pass/fail).
 
+**Plugin-state evidence (ADR-0009/0010/0012, authoritative).** The runner reads the plugin's own per-session event store (`${CLAUDE_PLUGIN_DATA}/<safe-session-id>/events/*.json` + the `state.json` snapshot) through the **same shared reader the runtime uses** (`plugins/agnthive/modules/state.mjs`), so success is not reconstructed from transcript prose or debug-log phrases. Which candidate root answered is recorded as provenance; a root whose replayed state carries a different or empty session id is skipped (strict session match), and corrupt event files are counted as `truncated_events`. When plugin state is found, its registry roles are the authoritative **observed** tier and the legacy debug-log tier is demoted to **claimed** — planted or truncated debug text can no longer fabricate dispatch evidence. Without plugin state the observed tier stays **empty** (evidence loss lowers the result) while the transcript/claimed text tiers keep their legacy credit for standard-mode unions. Verification and review are checked the same way: when the state carries `verification[]` / `review_results[]` records, a revision-scoped valid record is required and summary footer text alone no longer closes the gate — the new failure codes are `verification_evidence_missing` and `review_evidence_missing` (no records at all keeps the legacy runner-owned rerun check).
+
 Per-task `result.json` gains four additive fields (existing fields are unchanged):
 
-- `observed_agent_aliases` — hook source only (real dispatch).
-- `claimed_agent_aliases` — textual claims (transcript + claimed) **minus** any alias that has a real hook, so an alias proved by a `SubagentStart` is counted as observed, not claimed. `observed` and `claimed` form a clean partition: `observed ∪ claimed == used_agent_aliases`.
-- `agent_evidence_by_alias` — per-alias `{hook, transcript, claimed}` booleans.
-- `dispatch_mode` — `'standard' | 'observed' | 'enforced'`.
+- `observed_agent_aliases` — plugin-state roles when state was found; empty when no state answered (evidence loss, never guessed from text).
+- `claimed_agent_aliases` — textual claims (transcript + claimed + any demoted debug-log tier) **minus** any alias that has real evidence, so an alias proved by plugin state (or, in the legacy fallback, by a `SubagentStart`) is counted as observed, not claimed. `observed` and `claimed` form a clean partition over `used_agent_aliases`.
+- `agent_evidence_by_alias` — per-alias `{hook, transcript, claimed, state}` booleans.
+- `dispatch_mode` — `'standard' | 'observed' | 'enforced'` (with `observed_agent_aliases_source`: `plugin_state` | `none`).
 
-`task-summary.txt` gains corresponding lines: `Observed agent aliases (hook):`, `Claimed agent aliases (text):`, and `Dispatch mode:`.
+`task-summary.txt` gains corresponding lines (`Observed agent aliases (observed):`, `Evidence source:`, `Plugin state:`, `Verification evidence (plugin state):`, `Review evidence (plugin state):`, `Claimed agent aliases (text):`, `Dispatch mode:`), and the run also writes a per-run `evidence.json` artifact (bounded counters and record ids — never record payloads) plus `evidence_provenance` in `result.json`.
 
 `dispatch_mode` is resolved by `resolveDispatchMode(task)` from `task.dispatch_contract.mode`:
 
 - **`standard`** (default, absent) — credits the union of hook + transcript + claimed. Pass/fail behavior is unchanged from the legacy contract.
-- **`observed`** — strict: only a real `SubagentStart` (the hook source) satisfies `required_used_agents`; prose `Handoff evidence:` claims and transcript launch-text do **not**. `effectiveUsedAliasesForEnforcement` returns `observed_agent_aliases` (hook-only) instead of the union, so a role mentioned only in prose still triggers `required_used_agents_missing`.
+- **`observed`** — strict: only the authoritative observed tier satisfies `required_used_agents`; prose `Handoff evidence:` claims and transcript launch-text do **not**. Since ADR 0009 that tier comes from the session's plugin state (the demoted debug-log tier is only credited in runs where no plugin state exists — the marked legacy fallback). `effectiveUsedAliasesForEnforcement` returns `observed_agent_aliases` instead of the union, so a role mentioned only in prose still triggers `required_used_agents_missing`.
 - **`enforced`** — parsed and surfaced identically to `observed` for pass/fail, **and** backed by a hard `PreToolUse` harness guard (Stage 5, wired). When a task is in `enforced` mode, the plugin's `PreToolUse` handler for `Edit|MultiEdit|Write|NotebookEdit` denies any root edit until at least one of the required roles has a real `SubagentStart` recorded in session state — forcing dispatch as a harness constraint rather than relying on prompt discipline. Non-bench sessions never carry the marker, so `dispatch_contract_mode` stays `''` and the guard is inert; `observed`/`standard` modes pass through unchanged.
 
-Under `observed`/`enforced`, the runner's `requiredUsedAgentMisses` is fed `enforceUsed` (hook-only aliases), so `classifyTaskFailures` fails the task when a required role has no real `SubagentStart`. Under `standard` the union is still credited unchanged. The `observed_*` / `claimed_*` / `agent_evidence_by_alias` fields remain diagnostic in all modes; the strict wiring only narrows which aliases count toward `required_used_agents_missing`.
+Under `observed`/`enforced`, the runner's `requiredUsedAgentMisses` is fed `enforceUsed` (the plugin-state observed tier, or its legacy hook-only fallback when state is absent), so `classifyTaskFailures` fails the task when a required role never really started. Under `standard` the union is still credited unchanged. The `observed_*` / `claimed_*` / `agent_evidence_by_alias` fields remain diagnostic in all modes; the strict wiring only narrows which aliases count toward `required_used_agents_missing`.
 
 ## Dispatch Contract Marker
 
@@ -168,7 +170,7 @@ The old strict `summaryPassesGate(summary, opts)` (`passed === tasks`, `tool_fai
 
 ## Agent-Backed Skill Taxonomy
 
-The `/bug` skill is now **agent-backed**: like `/test`, `/design`, `/docs`, `/refactor`, and `/review`, it declares `agent: Bugbuster`, `context: fork`, `disable-model-invocation: true`, and a scoped `allowed-tools`/`paths` set, so invoking it dispatches the Bugbuster in an isolated forked subagent rather than running inline. The agent-backed skill set is therefore `bug, design, docs, refactor, review, test`; the command skills (minimal name+description entry points, no agent dispatch) are `debug, explore, manager`. This matters for benchmark dispatch contracts because the `bug` alias now resolves to a real `SubagentStart` against the Bugbuster, the same way `test` resolves to the Tester.
+Since ADR 0008 (implemented in 0.4.0), `/review` is the **only** agent-backed skill: it declares `agent: Code Reviewer`, `context: fork`, `disable-model-invocation: true`, and a scoped `allowed-tools`/`paths` set, so invoking it dispatches the Code Reviewer in an isolated read-only forked subagent. The other eight skills (`manager`, `explore`, `bug`, `debug`, `design`, `test`, `refactor`, `docs`) are **root procedures** — plain entry points the root session executes directly, delegating to a specialist only when the work earns isolation. The repository validator pins this inventory (`AGENT_BACKED_SKILLS = ['review']` in `scripts/validate.mjs`). For legacy per-role dispatch contracts the `bug` alias still resolves to the deprecated Bugbuster compatibility agent and `test` to the Tester, exactly as in earlier runs.
 
 ## Hook Test Layers
 
@@ -227,9 +229,10 @@ Concurrent benchmark runs are limited by a two-slot gate enforced through `scrip
 
 **Log rotation for hook telemetry:**
 
-Hooks write session events to `~/.claude/logs/*.jsonl` (notifications, compact
-markers, config changes, session index). To prevent unbounded log growth on
-long-running CI runners, `appendJsonl` in `plugins/agnthive/modules/notifications.mjs` rotates
+Hooks write session events to `${CLAUDE_PLUGIN_DATA}/logs/*.jsonl` (notifications, compact
+markers, config changes, session index, instructions-loaded, stop-failure). To prevent
+unbounded log growth on long-running CI runners, `appendJsonl` in
+`plugins/agnthive/modules/notifications.mjs` rotates
 every stream past `AGNTHIVE_LOG_MAX_BYTES` (default 1 MB): the file is moved
 to a `.old` sidecar and a fresh log is started.
 
@@ -412,3 +415,28 @@ The benchmark root contains:
 
 Use `summary.json` as the machine-readable gate and `benchmark-report.md` as the human-readable markdown report with overview and per-task status tables. The per-task artifacts remain the debugging source for failures.
 The workflow log now prints task metadata, model, workdir, prompt excerpt, raw Claude JSON excerpt, parsed failure reasons, debug log excerpt, verification output, patch excerpt, full `result.json` for each task, and the rendered markdown report table.
+
+## Outcome Suite (ADR-0012)
+
+The outcome benchmark suite under `bench/tasks/outcomes/` scores END STATES instead of role-protocol text: a task asserts files that exist, repo state flags, verified behavior, and changed-path scope — it never requires agent aliases, handoff footers, or the dispatch-contract marker. Role-dispatch compliance stays with the `subagents` compatibility suite; the two suites are independent evidence layers (ADR-0012).
+
+Suite layout and contract: tasks under `bench/tasks/outcomes/tasks/`, integrity-pinned seed sources under `bench/tasks/outcomes/seeds/`, the task and metrics contract in `bench/tasks/outcomes/schema/outcome-schema.mjs`, and the metrics emitter in `bench/tasks/outcomes/tools/emit-outcome-metrics.mjs`. See `bench/tasks/outcomes/README.md` for the full field and predicate vocabulary.
+
+Arms: `native` (no plugin), `legacy` (current profile), `lean` (candidate slimmed profile). Each task declares its own arm subset (1..3); plugin-only lifecycle scenarios and evidence-flag predicates never include `native`. The suite declares a floor of 3 paired repetitions per arm (`MIN_LIVE_REPS`) for gate-eligible live runs; the runner config owns the actual rep loop. The orchestrator ablation (Manager vs root) is declared per task via `ablation`; the two-independent-subtasks task carries it.
+
+Mock-first: every task must run with no model spend. Mock predicates (`evaluate_in: "mock"`) check the task's declared initial state offline (fixtures and seeds) — the suite validator runs them at PR time and every mock run re-checks them. Live predicates (`evaluate_in: "live"`) assert the run's end state and are evaluated only by the runner in live runs; in mock mode they are `unverified` and outcome pass rates stay null — mock verifies plumbing, live verifies quality.
+
+Mock run (no model):
+
+    node scripts/run-benchmark.mjs --output-dir /tmp/agnthive-outcomes \
+      --task-glob 'bench/tasks/outcomes/tasks/*.json' --mode mock
+
+Metrics document (rollout-gate input, plan tasks 11/15): the suite emitter aggregates one or more run output dirs into a single per-arm document, validated against the metrics contract before it is written:
+
+    node bench/tasks/outcomes/tools/emit-outcome-metrics.mjs \
+      --run /tmp/agnthive-outcomes --arm lean \
+      --out /tmp/agnthive-outcomes/outcome-metrics.json
+
+`--run DIR [--arm NAME]` repeats per run (arm fallback: `BENCH_ARM`); `BENCH_MOCK=1` is refused against live runs. The document contains `schema_kind: "outcome-metrics"`, `schema_version: "1.0"`, `suite: "outcomes"`, the `mode`, a `contracts_revision` digest (over `bench/fixtures/`, the suite seeds and schema code, and `bench/patterns/forbidden-meta-chatter.json`), `run_metadata` (model/provider/effort/token_cap/cli_version), per-arm metric blocks keyed by arm (`outcome_pass_rate`, `false_completions`, `permission_denials`, `material_findings`, token and cost accounting, median turns/runtime/dispatches, and mock vs live predicate tallies), the flattened per-(task, rep) `records`, and `gate_inputs`.
+
+Gate contract (ADR-0012): `gate_inputs` is `available: true` only for live metrics where every involved arm was fully evaluated and findings-evidenced and ran at least 3 reps per task; the gate then reads `gate_inputs.lean.<baseline>.{new_false_completions, permission_denials_delta, lost_material_findings, paired}` for each baseline arm present (`native` and/or `legacy`). Lean may become the profile default only when every baseline shows no new false completions, no permission regressions, and no lost material findings. When evidence is missing, `gate_inputs` reports `available: false` with a reason instead of fabricating numbers.

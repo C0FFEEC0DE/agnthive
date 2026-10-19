@@ -1,0 +1,102 @@
+{
+  "schema_kind": "outcome-task-v1",
+  "suite": "outcomes",
+  "related_agents": [
+    "cr"
+  ],
+  "required_transcript_patterns": [],
+  "required_used_agents": [],
+  "required_used_agent_groups": [],
+  "forbidden_transcript_patterns": [],
+  "forbidden_doc_patterns": [],
+  "id": "outcome-review-flawed-ingest",
+  "title": "Security review of the seeded ingest module",
+  "category": "review",
+  "fixture": "text-report",
+  "budget_class": "medium",
+  "coverage_tags": [
+    "security-review"
+  ],
+  "arms": [
+    "native",
+    "legacy",
+    "lean"
+  ],
+  "verification_required": false,
+  "docs_required": false,
+  "review_required": false,
+  "prompt": "Review the seeded ingest module (attached seed file ingest.mjs) for security problems. This is a read-only review: report every material finding with the code location that shows it and why it is exploitable. Do not fix anything and do not modify any file; the change scope is empty by design. Cover the whole module in the report.",
+  "success_criteria": [
+    "the report names each material finding with its location and exploit path",
+    "the report separates material findings from minor ones",
+    "no file is modified (read-only review)"
+  ],
+  "must_not": [
+    "do not run release or deploy automation (the profile keeps it disabled)",
+    "do not edit files outside the declared task scope",
+    "do not weaken or delete existing tests to make the task pass"
+  ],
+  "seed_files": [
+    {
+      "path": "ingest.mjs",
+      "source": "seeds/outcome-review-flawed-ingest/ingest.mjs",
+      "sha256": "7d51ffb70efa7a7965a42eca5982926f19cd17bcc05210a4498e9880329d7da7"
+    }
+  ],
+  "ground_truth": {
+    "findings": [
+      {
+        "id": "gt-eval-code-exec",
+        "material": true,
+        "report_pattern": "eval"
+      },
+      {
+        "id": "gt-shell-injection",
+        "material": true,
+        "report_pattern": "execSync|shell|command injection"
+      },
+      {
+        "id": "gt-path-traversal",
+        "material": true,
+        "report_pattern": "traversal|join\\(baseDir|unnormalized path"
+      },
+      {
+        "id": "gt-nit-null-guard",
+        "material": false,
+        "report_pattern": "null guard|missing validation"
+      }
+    ]
+  },
+  "expected_outcome": {
+    "predicates": [
+      {
+        "id": "initial-eval-present",
+        "kind": "initial_file_matches",
+        "evaluate_in": "mock",
+        "where": "seed",
+        "path": "ingest.mjs",
+        "pattern": "eval\\("
+      },
+      {
+        "id": "initial-traversal-shape",
+        "kind": "initial_file_matches",
+        "evaluate_in": "mock",
+        "where": "seed",
+        "path": "ingest.mjs",
+        "pattern": "join\\(baseDir, userPath\\)"
+      },
+      {
+        "id": "all-material-findings",
+        "kind": "findings_cover",
+        "evaluate_in": "live",
+        "min_matches": 3
+      },
+      {
+        "id": "read-only-scope",
+        "kind": "changed_paths_within",
+        "evaluate_in": "live",
+        "allow": []
+      }
+    ]
+  }
+}

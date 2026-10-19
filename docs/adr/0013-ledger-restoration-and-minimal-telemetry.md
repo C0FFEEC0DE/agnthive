@@ -1,6 +1,6 @@
 # ADR 0013: Deterministic ledger restoration and minimal telemetry
 
-- **Status:** Accepted; implementation pending host-contract verification.
+- **Status:** Accepted; implemented in 0.4.0 (working tree): SessionStart compact/resume restore, metadata-only PostCompact, notification_type bridge, StopFailure telemetry, AGNTHIVE_VERBOSE_COMPACT_LOG opt-in; delivery of context on the pinned CLI still unverified (plan task 14).
 - **Date:** 2026-10-19.
 - **Decides:** Restore task context through a verified lifecycle channel and log bounded metadata by default.
 - **Basis:** [Review](../specs/2026-10-19-harness-review-and-simplification-design.md), F07/F10.

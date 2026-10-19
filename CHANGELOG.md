@@ -12,7 +12,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 > the paths referenced below (`claudecfg/`, `scripts/*.py`, `tests/`) no longer
 > exist and are preserved here as a historical record only.
 
-## [Unreleased]
+## [0.4.0] - 2026-10-19 (plugin `agnthive`)
+
+The full plugin-era entry lives in
+[`plugins/agnthive/CHANGELOG.md`](plugins/agnthive/CHANGELOG.md) § 0.4.0.
+Summary of the shipped feature set (ADR 0008–0013; `lean` experimental,
+`legacy` default — the default flips only after the ADR 0012 outcome
+benchmark passes its rollout gate):
+
+### Added
+- Verification evidence model (ADR 0009): append-only `verification[]` records scoped to the current change revision (`pending|passed|failed|unknown`; launched ≠ passed; a later edit invalidates earlier verification), review evidence in `review_results[]`, the docs decision field is reserved (writer lands with the docs-flow task)
+- Task + agent lifecycle identity (ADR 0010): task transitions separate from prompt identity, duplicate-`prompt_id` dedupe, `agents{}` registry keyed by stable agent id, forks/foreign-namespace types exempt from the footer contract
+- Explicit failure policy (ADR 0011): enforce/guidance/telemetry classes with per-class failure behavior, `timeout` on every registration, `onFailure: "block"` on the shared Bash/PowerShell PreToolUse safety registration, `PermissionDenied` `hookSpecificOutput` envelope
+- PowerShell tool parity: native `PowerShell` matcher for the safety and verification routing
+- StopFailure telemetry + ledger restoration at `SessionStart` compact/resume (ADR 0013): metadata-only PostCompact by default with the `AGNTHIVE_VERBOSE_COMPACT_LOG=1` opt-in, `notification_type` in the Notification stream (legacy `subtype` bridged), bounded `stop-failure.jsonl` records with API error text never logged
+- `userConfig.workflow_profile` selector (`legacy` default, `lean` experimental, ADR 0008/0012) with `AGNTHIVE_WORKFLOW_PROFILE` env override
+- Benchmark evidence read from the plugin session state through the shared runtime reader (ADR 0009/0012): plugin-state roles are the authoritative observed tier, transcript/debug text demoted to claims/fallback, revision-scoped verification/review evidence gates
+- Outcome benchmark suite (ADR 0012) under `bench/tasks/outcomes/`: 9 end-state tasks, mock-first predicates, per-arm metrics emitter, and `gate_inputs` for the lean-default rollout decision
+- Runtime contract fixtures under `test/compatibility/` (plan task 02; 4 active + 12 pending capture)
+- Root orchestration procedures and three primary specialists (ADR 0008, plan tasks 12): `/manager` no longer spawns a Manager agent; `/review` is the only forked specialist skill
+
+### Changed
+- Validators (plan task 13): hooks event vocabulary incl. `StopFailure`, `timeout`/`onFailure` policy, PowerShell parity, `userConfig` contract keys incl. `workflow_profile`, agent-backed skill inventory fixed to `['review']`
+
+### Deferred
+- Compatibility-agent removal (plan task 16) — after the compatibility window
+- Lean default flip — gated on the ADR 0012 outcome benchmark; no live outcome run exists yet
+
+## [Unreleased] (legacy `claudecfg` profile — superseded, historical)
 
 ### Added
 - Subagent-Driven Development workflow (`claudecfg/workflows/subagent-driven-development.md`) with file-based handoff scripts (`scripts/task-brief.sh`, `scripts/review-package.sh`), durable progress ledger (`claudecfg/hooks/lib.sh::progress_ledger_path`, `claudecfg/hooks/post-compact.sh`), and plan/spec conventions (`docs/plans/README.md`, `docs/specs/README.md`)

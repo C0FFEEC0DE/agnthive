@@ -133,3 +133,62 @@ export function transcriptIndicatesBackgroundedAgent(transcriptPath) {
   const tail = tailJsonlLines(transcriptPath, 400);
   return /backgrounded agent/i.test(tail) || /backgrounded agent/i.test(content);
 }
+// --- ADR-0010 subagent report ownership (plan 06.3) -------------------------
+
+/** First non-empty string among the given values (null when none). */
+function firstString(values) {
+  for (const v of values) {
+    if (typeof v === 'string' && v !== '') return v;
+  }
+  return null;
+}
+/**
+ * Delivered report probes, most-specific first (ADR-0010 report ownership).
+ * Only fields the payload actually carries are probed — no invented fields.
+ */
+function deliveredReportText(data) {
+  const probes = [];
+  for (const f of ['report', 'last_assistant_message', 'assistant_message', 'result']) {    probes.push(data[f]);
+  }  const m = data.message;
+  if (typeof m === 'string') { probes.splice(1, 0, m); }
+  else if (m && typeof m === 'object') {    probes.push(m.text);
+    probes.push(flattenedText(m.content));
+  }
+  probes.push(data.text);  for (const v of probes) {
+    if (typeof v === 'string' && hasNonWsText(v)) return v;
+  }
+  return '';
+}
+
+/**
+ * resolveSubagentReport (plan 06.3, ADR-0010): resolve the subagent's report
+ * text with explicit ownership. Source labels:
+ *   'handback'           — delivered report data (the payload's own fields)
+ *   'subagent_transcript' — last assistant message of the subagent's OWN
+ *                          transcript (agent_transcript_path)
+ *   'parent_transcript'  — last assistant message of the PARENT transcript;
+ *                          explicitly labeled so it can never pass as the
+ *                          child's result (ADR-0010: parent transcript is
+ *                          never the child's report). Returned ONLY when
+ *                          opts.allowParentTranscript === true — the default
+ *                          resolution NEVER reads the parent transcript.
+ *   'unknown'            — nothing else produced text ({ text: '' }).
+ * `parsed` may be the parseHookInput shape (parsed.data) or the raw payload;
+ * agentId comes from parsed.agentId (or data.agent_id / data.agentId).
+ */
+export function resolveSubagentReport(parsed, state = null, opts = {}) {  let data = {};
+  if (parsed?.data && typeof parsed.data === 'object') data = parsed.data;
+  else if (parsed && typeof parsed === 'object') data = parsed;
+  const agentId = firstString([parsed?.agentId, data.agent_id, data.agentId]);  const delivered = deliveredReportText(data);
+  if (delivered) return { source: 'handback', text: delivered, agentId };
+  const agentPath = firstString([parsed?.agentTranscriptPath, data.agent_transcript_path, data.agentTranscriptPath]);
+  if (agentPath && fileExists(agentPath)) {
+    const text = extractLastAssistantMessageFromTranscript(agentPath);
+    if (text) return { source: 'subagent_transcript', text, agentId };
+  }
+  if (opts?.allowParentTranscript === true) {
+    const parentPath = firstString([parsed?.transcriptPath, state?.transcript_path]);
+    const text = parentPath ? extractLastAssistantMessageFromTranscript(parentPath) : '';    if (text) return { source: 'parent_transcript', text, agentId };
+  }
+  return { source: 'unknown', text: '', agentId };
+}

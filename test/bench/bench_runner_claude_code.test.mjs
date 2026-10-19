@@ -48,6 +48,7 @@ import {
   runClaude,
   completedTaskRecoveryMode,
   classifyTaskFailures,
+  mergePluginStateAgentEvidence,
 } from '../../scripts/bench_runner_claude_code.mjs';
 import { taskFunctionalFailures } from '../../scripts/bench/lib.mjs';
 
@@ -142,28 +143,39 @@ test('extractUsedAgentEvidence separates real dispatch (hook) from prose claims'
   assert.equal(resolveDispatchMode({ dispatch_contract: { mode: 'enforced' } }), 'enforced');
 });
 
-test('observed/claimed partition mirrors main() wiring: hook is observed, text claims exclude hook', () => {
+test('mergePluginStateAgentEvidence mirrors main() wiring: state is observed, text tiers are claimed', () => {
   const labelMap = { bug: 'bug', bugbuster: 'bug', t: 't', tester: 't' };
-  // Real SubagentStart for @bug; prose also claims @bug and @t (no hook for @t).
+  // Legacy debug-log hook echo + prose claims; plugin state observed @bug.
   const debugLogText = 'Hook SubagentStart:bug (scope: fix division)';
   const resultText = 'Handoff evidence: @bug fixed it.\n@t verified the regression.';
   const evidence = extractUsedAgentEvidence(debugLogText, null, { resultText }, labelMap);
-  // Mirror the derivation in main() (bench_runner_claude_code.mjs ~line 2010-2018).
-  const observedAgentAliases = evidence.hook;
-  const claimedSet = new Set([...evidence.transcript, ...evidence.claimed]);
-  for (const alias of evidence.hook) claimedSet.delete(alias);
-  const claimedAgentAliases = Array.from(claimedSet);
-  const usedAgentAliases = extractUsedAgentAliases(debugLogText, null, { resultText }, labelMap);
-  // Observed = real dispatch only.
-  assert.deepEqual(observedAgentAliases, ['bug']);
-  // A hook-backed alias must NOT leak into claimed (the union-dup bug).
-  assert.ok(!claimedAgentAliases.includes('bug'), 'hook alias leaked into claimed');
+  const merged = mergePluginStateAgentEvidence(evidence, ['bug'], true);
+  // Observed = structured plugin-state roles only (real SubagentStart).
+  assert.deepEqual(merged.observed, ['bug']);
+  // A state-observed alias must NOT leak into claimed (the union-dup bug).
+  assert.ok(!merged.claimed.includes('bug'), 'state alias leaked into claimed');
   // A prose-only alias is captured as claimed.
-  assert.ok(claimedAgentAliases.includes('t'), 'prose-only alias missing from claimed');
-  // observed ∪ claimed == used (clean partition, no double-counting).
+  assert.ok(merged.claimed.includes('t'), 'prose-only alias missing from claimed');
+  // observed + claimed == used (clean partition, no double-counting).
   assert.deepEqual(
-    [...observedAgentAliases, ...claimedAgentAliases].sort(),
-    usedAgentAliases.sort(),
+    [...merged.observed, ...merged.claimed].sort(),
+    merged.used,
+  );
+  assert.equal(merged.source, 'plugin_state');
+  assert.equal(merged.byAlias.bug.state, true);
+  assert.equal(merged.byAlias.bug.hook, true);
+  assert.equal(merged.byAlias.t.state, false);
+
+  // Without plugin state the legacy debug-log tier is demoted to claimed
+  // (ADR-0012: planted or truncated debug text never fabricates observed
+  // evidence) and the observed tier stays empty.
+  const mergedNoState = mergePluginStateAgentEvidence(evidence, [], false);
+  assert.deepEqual(mergedNoState.observed, []);
+  assert.ok(mergedNoState.claimed.includes('bug'), 'debug-log alias must be claimed without state');
+  assert.equal(mergedNoState.source, 'none');
+  assert.deepEqual(
+    [...mergedNoState.observed, ...mergedNoState.claimed].sort(),
+    mergedNoState.used,
   );
 });
 
@@ -582,6 +594,11 @@ test('buildResult replicates the full result.json schema with correct types', ()
     'used_agent_aliases', 'observed_agent_aliases', 'claimed_agent_aliases',
     'agent_evidence_by_alias', 'dispatch_mode', 'missing_required_used_agents',
     'missing_required_used_agent_groups', 'fatal_error', 'failures',
+    'evidence_source', 'evidence_provenance', 'plugin_state',
+    'verification_evidence', 'review_evidence', 'state_agent_roles',
+    'observed_agent_aliases_source',
+    'rep', 'turns', 'token_usage', 'cost_usd', 'cost_source',
+    'predicate_results', 'findings_evidence', 'dispatch_count',
   ];
   assert.deepEqual(Object.keys(result).sort(), [...expectedKeys].sort());
   // Type checks on key fields.

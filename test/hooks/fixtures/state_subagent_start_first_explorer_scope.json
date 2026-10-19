@@ -34,6 +34,7 @@
   "subagent_instance_count_by_role": {
     "e": 1
   },
+  "agents": {"e1": {"role": "e", "scope": "Trace workflow A", "taskId": "", "status": "running", "starts": 1, "parent": null, "provenance": "normal", "updatedAt": 1}},
   "required_subagents": [],
   "required_subagent_any_of": [],
   "stop_block_count": 0,

@@ -200,6 +200,11 @@ export function isAgntHiveSpecialistRole(label, aliases = {}) {
 export function shouldEnforceSubagentFooter(label, rawType = null, aliases = {}, aliasesLoaded) {
   if (isGenericType(label)) return false;
   if (isGenericType(rawType)) return false;
+  // ADR-0010 (plan 06.5): forks and foreign-namespace agent types carry no
+  // AgntHive role contract — they are never footer-blocked, even at the
+  // missing-aliases safe floor (which would otherwise enforce on any
+  // non-empty label). This exemption runs BEFORE the floor on purpose.
+  if (isForeignOrForkType(rawType, label)) return false;
   const loaded = typeof aliasesLoaded === 'boolean'
     ? aliasesLoaded
     : isAliasesLoaded(aliases);
@@ -207,6 +212,118 @@ export function shouldEnforceSubagentFooter(label, rawType = null, aliases = {},
   // No alias map (missing/corrupt): enforce on every non-generic subagent as a
   // safe floor. An empty/blank label is treated as unidentified and not enforced.
   return typeof label === 'string' && label !== '';
+}
+
+// --- ADR-0010 agent lifecycle registry (plan tasks 06.1-06.4) ---------------
+
+/**
+ * isForeignOrForkType (plan 06.5, ADR-0010): true for runtime agent types that
+ * carry no AgntHive role contract — forks and other plugins' namespaced types
+ * (e.g. mcp:tester, otherplugin:runner). Also true for a canonicalized label
+ * of exactly 'fork'. An absent/unshaped rawType falls back to the label check
+ * only. Pure; no I/O; no alias-map dependency.
+ */
+export function isForeignOrForkType(rawType, label = null) {
+  if (typeof rawType === 'string' && rawType !== '') {
+    // Raw runtime types compare case-insensitively. The 'agnthive:' namespace
+    // is our own; any other namespaced type is foreign. A canonicalized label
+    // cannot carry a namespace (canonicalizeSubagentLabel strips only the
+    // 'agnthive:' prefix and maps other colons to dashes), so the label check
+    // matches the bare 'fork' spelling only.
+    const t = rawType.toLowerCase();
+    if (t === 'fork') return true;
+    const colon = t.indexOf(':');
+    if (colon >= 1 && t.slice(0, colon) !== 'agnthive') return true;
+  }
+  return label === 'fork';
+}
+/**
+ * upsertAgent (plan 06.1-06.2): pure registry upsert — a registry flows in, a
+ * NEW registry flows out; input never mutated, no I/O.
+ *
+ * spec keys: { agentId, role, scope, taskId, status, seq, parent?, provenance? }
+ *   - agentId missing/null/'' upserts into the shared '_session' fallback key:
+ *     provenance 'missing-id', status 'unknown' (ADR-0010: the _session
+ *     fallback cannot certify independent identities when IDs are missing).
+ *   - role arrives ALREADY canonical (caller normalizes labels through the
+ *     alias map); null records foreign/fork/unknown agents: role:null,
+ *     provenance 'unrecognized', status 'unknown'. Omitted preserves the previous
+ *     record's role.
+ *   - status 'running'/'completed' accepted; anything else → 'unknown'. Null
+ *     roles and missing ids FORCE status 'unknown' regardless of spec.status.
+ *   - `starts` increments only on a 'running' status, so an id-less runtime's
+ *     '_session' record NEVER reaches starts=1 and never counts role starts
+ *     (deliberate, @cr 0.4.0 MED-LOW 9: counting per-labeled-start would
+ *     certify independent identities that missing ids cannot distinguish;
+ *     id-less runtimes fall back to the transcript path instead).
+ */
+export function upsertAgent(registry, spec = {}) {
+  const base = (registry && typeof registry === 'object' && !Array.isArray(registry)) ? registry : {};
+  const s = (spec && typeof spec === 'object') ? spec : {};
+  const hasId = typeof s.agentId === 'string' && s.agentId !== '';
+  const agentId = hasId ? s.agentId : '_session';
+  const prev = (base[agentId] && typeof base[agentId] === 'object') ? base[agentId] : null;
+  const roleStr = typeof s.role === 'string' && s.role !== '' ? s.role : null;
+  const role = s.role === undefined
+    ? (prev && prev.role != null ? prev.role : null)
+    : roleStr;
+  const scope = s.scope !== undefined
+    ? (typeof s.scope === 'string' ? s.scope : '')
+    : (prev && typeof prev.scope === 'string' ? prev.scope : '');
+  const taskId = (typeof s.taskId === 'string' && s.taskId !== '')
+    ? s.taskId
+    : (prev && typeof prev.taskId === 'string' ? prev.taskId : '');
+  const parent = (typeof s.parent === 'string' && s.parent !== '')
+    ? s.parent
+    : (prev && typeof prev.parent === 'string' ? prev.parent : null);
+  const provenance = typeof s.provenance === 'string' && s.provenance !== ''
+    ? s.provenance
+    : (hasId ? (role === null ? 'unrecognized' : 'normal') : 'missing-id');
+  const status = (!hasId || role === null)
+    ? 'unknown'
+    : (s.status === 'running' || s.status === 'completed' ? s.status : 'unknown');
+  const starts = (prev ? Number(prev.starts) || 0 : 0) + (status === 'running' ? 1 : 0);
+  const updatedAt = Number.isFinite(s.seq) ? s.seq : (s.updatedAt ?? (prev ? prev.updatedAt : null));
+  return {
+    ...base,
+    [agentId]: {
+      ...prev,
+      role, scope, taskId, status, starts, provenance, updatedAt,
+      ...(parent ? { parent } : {}),
+    },
+  };
+}
+
+/**
+ * startedRolesFromRegistry (plan 06.4): roles recorded in the ADR-0010 agents
+ * registry (state.agents), unique and sorted. Filtering: a role counts only
+ * when recognized - a key of `aliases` when a non-empty map is supplied (the
+ * recommended dispatcher call passes ALIASES); without aliases, roles that
+ * upsertAgent recorded pass through and generic dispatch types and null roles
+ * are still filtered.
+ *
+ * CR MED-LOW 8: records are task-scoped - a record counts only when its
+ * taskId equals state.task_id (a missing taskId counts as unscoped; both
+ * empty strings match, so sessions with no open task still aggregate every
+ * unscoped record). Records started under an
+ * earlier task id cannot pre-satisfy the next task fresh contract quotas;
+ * running siblings kept by loopBlockResetKeys remain the concurrency guard.
+ */
+export function startedRolesFromRegistry(state, aliases = null) {
+  const registry = (state?.agents && typeof state.agents === 'object' && !Array.isArray(state.agents))
+    ? state.agents : {};
+  const strict = isAliasesLoaded(aliases);
+  const taskScope = state?.task_id ?? '';
+  const roles = new Set();
+  for (const record of Object.values(registry)) {
+    const role = (record && typeof record === 'object' ? record.role : null);
+    if (typeof role !== 'string' || role === '') continue;
+    if ((record?.taskId ?? '') !== taskScope) continue;
+    if (isGenericType(role)) continue;
+    if (strict && !isAgntHiveSpecialistRole(role, aliases)) continue;
+    roles.add(role);
+  }
+  return [...roles].sort();
 }
 
 /** format_subagent_list: "@a, @b" or "none" for an empty list. */

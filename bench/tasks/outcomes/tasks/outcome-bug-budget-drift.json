@@ -1,0 +1,113 @@
+{
+  "schema_kind": "outcome-task-v1",
+  "suite": "outcomes",
+  "related_agents": [
+    "t",
+    "dbg"
+  ],
+  "required_transcript_patterns": [],
+  "required_used_agents": [],
+  "required_used_agent_groups": [],
+  "forbidden_transcript_patterns": [],
+  "forbidden_doc_patterns": [],
+  "id": "outcome-bug-budget-drift",
+  "title": "Fix the per-line rounding drift in the budget module",
+  "category": "bugfix",
+  "fixture": "text-report",
+  "budget_class": "medium",
+  "coverage_tags": [
+    "nontrivial-bug"
+  ],
+  "arms": [
+    "native",
+    "legacy",
+    "lean"
+  ],
+  "verification_required": true,
+  "docs_required": false,
+  "review_required": false,
+  "prompt": "The seeded budget module is wrong: it rounds each line before summing, so multi-line totals drift from a single end-rounded total whenever half cents appear across lines. The seeded tests still pass, so tests alone will not lead you there. Add a regression case with an amount of 10.335 on one line plus three 10.3 lines, all at 5 percent tax, asserting the end-rounded total is 43.41. Then fix subtotal so it rounds once after aggregation and the whole suite passes. Work only in the budget module and its test file.",
+  "success_criteria": [
+    "a regression test pins the four-line half-cent example and asserts 43.41",
+    "subtotal rounds once after aggregation; per-line rounding is gone",
+    "the seeded tests still pass together with the new regression case"
+  ],
+  "must_not": [
+    "do not run release or deploy automation (the profile keeps it disabled)",
+    "do not edit files outside the declared task scope",
+    "do not weaken or delete existing tests to make the task pass"
+  ],
+  "seed_files": [
+    {
+      "path": "budget.mjs",
+      "source": "seeds/outcome-bug-budget-drift/budget.mjs",
+      "sha256": "7ec707a866f11d0ef8ab93430ed308c55ba6a848fa00ead03699851ec5da6ea5"
+    },
+    {
+      "path": "budget.test.mjs",
+      "source": "seeds/outcome-bug-budget-drift/budget.test.mjs",
+      "sha256": "06551ba3eba93ec70a4435eb9ef3e231426c230277b819e5011673edd78bb526"
+    }
+  ],
+  "expected_outcome": {
+    "verification_commands": [
+      "node --test"
+    ],
+    "predicates": [
+      {
+        "id": "initial-per-line-rounding",
+        "kind": "initial_file_matches",
+        "evaluate_in": "mock",
+        "where": "seed",
+        "path": "budget.mjs",
+        "pattern": "total \\+= roundMoney"
+      },
+      {
+        "id": "initial-seeded-tests",
+        "kind": "initial_file_matches",
+        "evaluate_in": "mock",
+        "where": "seed",
+        "path": "budget.test.mjs",
+        "pattern": "matches end-rounded totals"
+      },
+      {
+        "id": "drift-shape-gone",
+        "kind": "file_not_matches",
+        "evaluate_in": "live",
+        "path": "budget.mjs",
+        "pattern": "total \\+= roundMoney"
+      },
+      {
+        "id": "regression-amount",
+        "kind": "file_matches",
+        "evaluate_in": "live",
+        "path": "budget.test.mjs",
+        "pattern": "10\\.335"
+      },
+      {
+        "id": "regression-total",
+        "kind": "file_matches",
+        "evaluate_in": "live",
+        "path": "budget.test.mjs",
+        "pattern": "43\\.41"
+      },
+      {
+        "id": "suite-passes",
+        "kind": "commands_pass",
+        "evaluate_in": "live",
+        "commands": [
+          "node --test"
+        ]
+      },
+      {
+        "id": "scope-budget-only",
+        "kind": "changed_paths_within",
+        "evaluate_in": "live",
+        "allow": [
+          "budget.mjs",
+          "budget.test.mjs"
+        ]
+      }
+    ]
+  }
+}

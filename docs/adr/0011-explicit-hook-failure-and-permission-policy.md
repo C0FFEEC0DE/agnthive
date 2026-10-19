@@ -1,6 +1,6 @@
 # ADR 0011: Explicit hook failure and permission policy
 
-- **Status:** Accepted; implementation pending.
+- **Status:** Accepted; implemented in 0.4.0 (working tree); host canaries pending (plan task 14); legacy removal deferred to the compatibility window (plan task 16).
 - **Date:** 2026-10-19.
 - **Decides:** Enforcement, workflow guidance, and telemetry have separate failure behavior; advisory mode does not blanket-approve commands.
 - **Basis:** [Review](../specs/2026-10-19-harness-review-and-simplification-design.md), F05/F09.

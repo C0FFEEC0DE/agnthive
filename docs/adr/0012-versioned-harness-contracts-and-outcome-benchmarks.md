@@ -1,6 +1,6 @@
 # ADR 0012: Versioned harness contracts and outcome benchmarks
 
-- **Status:** Accepted; implementation pending.
+- **Status:** Accepted; implemented in 0.4.0 (working tree): compatibility matrix, contract fixtures, plugin-state bench evidence, outcome suite; the lean default flip still awaits the ADR 0012 outcome-benchmark rollout gate (plan task 14); legacy removal deferred (plan task 16).
 - **Date:** 2026-10-19.
 - **Decides:** Pin the tested harness contract and measure task outcomes separately from role-dispatch compliance.
 - **Basis:** [Review](../specs/2026-10-19-harness-review-and-simplification-design.md), F03/F10 and agent-role assessment.

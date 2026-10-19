@@ -1,0 +1,102 @@
+{
+  "schema_kind": "outcome-task-v1",
+  "suite": "outcomes",
+  "related_agents": [
+    "t"
+  ],
+  "required_transcript_patterns": [],
+  "required_used_agents": [],
+  "required_used_agent_groups": [],
+  "forbidden_transcript_patterns": [],
+  "forbidden_doc_patterns": [],
+  "id": "outcome-background-verification",
+  "title": "Verify safeDivide from a background task",
+  "category": "feature",
+  "fixture": "python-math",
+  "budget_class": "small",
+  "coverage_tags": [
+    "background-verification"
+  ],
+  "arms": [
+    "legacy",
+    "lean"
+  ],
+  "verification_required": true,
+  "docs_required": false,
+  "review_required": false,
+  "prompt": "Add safeDivide(left, right) to the seeded calculator: it returns null when right is 0 and otherwise behaves like the existing divide. Add tests for both paths, run the verification command, and let the verification run happen in the background while you finish the change. Work only in the calculator pair.",
+  "success_criteria": [
+    "safeDivide returns null on a zero divisor and divides otherwise",
+    "tests cover both paths and the full suite passes",
+    "the final verification result is recorded and current with the last change"
+  ],
+  "must_not": [
+    "do not run release or deploy automation (the profile keeps it disabled)",
+    "do not edit files outside the declared task scope",
+    "do not weaken or delete existing tests to make the task pass"
+  ],
+  "scenario": {
+    "type": "background_verify"
+  },
+  "expected_outcome": {
+    "verification_commands": [
+      "node --test"
+    ],
+    "predicates": [
+      {
+        "id": "initial-calculator-surface",
+        "kind": "initial_file_matches",
+        "evaluate_in": "mock",
+        "where": "fixture",
+        "path": "calculator.mjs",
+        "pattern": "export function"
+      },
+      {
+        "id": "safedivide-in-source",
+        "kind": "file_matches",
+        "evaluate_in": "live",
+        "path": "calculator.mjs",
+        "pattern": "export function safeDivide"
+      },
+      {
+        "id": "safedivide-in-tests",
+        "kind": "file_matches",
+        "evaluate_in": "live",
+        "path": "calculator.test.mjs",
+        "pattern": "safeDivide"
+      },
+      {
+        "id": "suite-passes",
+        "kind": "commands_pass",
+        "evaluate_in": "live",
+        "commands": [
+          "node --test"
+        ]
+      },
+      {
+        "id": "verification-latest-passed",
+        "kind": "evidence_flag",
+        "evaluate_in": "live",
+        "field": "verification.latest.status",
+        "op": "equals",
+        "equals": "passed"
+      },
+      {
+        "id": "verification-current",
+        "kind": "evidence_flag",
+        "evaluate_in": "live",
+        "field": "verification.current",
+        "op": "exists"
+      },
+      {
+        "id": "scope-calculator-only",
+        "kind": "changed_paths_within",
+        "evaluate_in": "live",
+        "allow": [
+          "calculator.mjs",
+          "calculator.test.mjs"
+        ]
+      }
+    ]
+  }
+}

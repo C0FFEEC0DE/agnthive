@@ -1,6 +1,6 @@
 # ADR 0010: Task boundaries and agent identity survive background events
 
-- **Status:** Accepted; implementation pending.
+- **Status:** Accepted; implemented in 0.4.0 (working tree); host canaries pending (plan task 14); legacy removal deferred to the compatibility window (plan task 16).
 - **Date:** 2026-10-19.
 - **Decides:** Incoming messages do not automatically create a new task; background/resume processing preserves active task and agent state.
 - **Relationship:** Amends the unconditional UserPromptSubmit map-reset policy in [ADR 0002](0002-per-agent-loop-block-counter.md); retains per-key mutation and identity helpers from ADR 0002/0005/0006. Retains plugin-only namespace handling from ADR 0007.

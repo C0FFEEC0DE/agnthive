@@ -1,5 +1,6 @@
 {
   "session_id": "case-subagent-start-parallel-explorer",
+  "agent_id": "e2",
   "tool_input": {
     "description": "Trace workflow B",
     "subagentType": "Explorer"

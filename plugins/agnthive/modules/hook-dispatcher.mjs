@@ -19,7 +19,10 @@ import { statePaths, appendEvent, loadState } from './state.mjs';
 import {
   classifyPrompt, userPromptResetPatch, sessionBackgroundManagerPending,
   clearLoopBlockPatch, agentLoopKey, hasPriorStopBlock, taskTypeRequiresImplementationSummary,
+  promptCorrelationPatch, taskTransition, loopBlockResetKeys,
+  leanProfileGates, leanRequiredRoles,
 } from './workflow.mjs';
+import { resolveWorkflowProfile, reportWorkflowProfileNote } from './plugin-config.mjs';
 import {
   commandClass, resultFromBashPayload, verificationAppendEvent,
   currentRevision, nextRevisionValue, isMutatingShellCommand,
@@ -28,9 +31,10 @@ import {
 import {
   extractSubagentLabel, extractSubagentScope, loadAliases, effectiveStartedRoles,
   shouldEnforceSubagentFooter, isGenericType, isAliasesLoaded,
+  upsertAgent, startedRolesFromRegistry, isForeignOrForkType, isAgntHiveSpecialistRole,
 } from './agents.mjs';
 import {
-  resolvedLastAssistantMessage, transcriptIndicatesBackgroundedAgent,
+  resolvedLastAssistantMessage, transcriptIndicatesBackgroundedAgent, resolveSubagentReport,
 } from './transcripts.mjs';
 import {
   sessionBlockReason, sessionAgentEnforcementReason, sessionManagerIdleReason,
@@ -48,7 +52,7 @@ import {
 import { buildSessionStartRestore } from './ledger.mjs';
 import {
   classifyCommand, resolveMode as resolvePolicyMode, permissionDeniedOutcome,
-  pretoolErrorDetails, permRequestErrorDetails, permRequestMessage,
+  pretoolErrorDetails, permRequestErrorDetails, permRequestMessage, isBenchmarkCi,
 } from './command-policy.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -66,40 +70,87 @@ const ALIASES_LOADED = isAliasesLoaded(ALIASES);
 // to the map this file used to carry locally, with SessionEnd + StopFailure
 // both telemetry and SessionStart guidance.
 
-// UserPromptSubmit: classify the prompt, persist the task type / manager mode /
-// required roles / docs flag plus the stop-loop reset to session state, and
-// emit the workflow context message (if any) as additionalContext. Mirrors
+// UserPromptSubmit: classify the prompt, persist the ADR-0010 prompt
+// correlation (prompt_seq / last_prompt_id) with the session bookkeeping, run
+// the task transition, reset the stop-loop state, and emit the workflow
+// context message (if any) as additionalContext. Mirrors
 // claudecfg/hooks/user-prompt-submit.sh.
 function handleUserPromptSubmit(parsed) {
+  const prof = resolveWorkflowProfile(process.env);
+  reportWorkflowProfileNote(prof);
   const prompt = parsed.data?.prompt ?? '';
-  const cls = classifyPrompt(prompt);
-  // ADR-0002 amendment: the turn reset is split — scalar stop-loop fields go
-  // through one set_many, while per-agent maps are cleared via map_clear events
-  // so no scalar set_many overloads a map field (model consistency: all
-  // subagent_stop_blocks mutations flow through map_* events). The clear is a
-  // deliberate whole-map reset for a new turn, not a per-key race fix.
-  const reset = userPromptResetPatch();
-  const fields = {
+  const cls = classifyPrompt(prompt, { profile: prof.profile, benchContext: isBenchmarkCi(process.env) });
+  // Resolve the session paths once and reuse for everything this handler
+  // persists (persistPatch / the helpers would resolve them again internally).
+  const paths = statePathsFor(parsed);
+  const state = loadStateFor(parsed);
+  // ADR-0010 prompt correlation (plan 05.2): prompt_id correlation only, never
+  // provenance; a duplicate delivery (same prompt_id + same classification)
+  // skips both the reset and the task transition.
+  const corr = promptCorrelationPatch(parsed, state, cls);
+  safeAppend(paths, 'set_many', { fields: {
     session_id: parsed.sessionId ?? '',
     cwd: parsed.cwd ?? '',
     transcript_path: parsed.transcriptPath ?? '',
-    task_type: cls.taskType,
-    manager_mode: cls.managerMode,
-    docs_required: cls.docsRequired,
-    required_subagents: cls.requiredSubagents,
-    required_subagent_any_of: cls.requiredSubagentAnyOf,
-    dispatch_contract_mode: cls.dispatchContractMode,
-    ...reset.scalar,
-  };
-  // Resolve the session paths once and reuse for the scalar set_many and the
-  // per-map map_clear events (persistPatch would resolve them again internally).
-  const paths = statePathsFor(parsed);
-  safeAppend(paths, 'set_many', { fields });
-  for (const mapField of reset.mapClears) {
-    safeAppend(paths, 'map_clear', { mapField });
+    workflow_profile: prof.profile,
+    ...corr.fields,
+  } });
+  if (!corr.dedupe) {
+    // ADR-0010 task identity (plan 05.3-05.5): the classification persists
+    // through the task transition only — start/new_task/plan_only/complete
+    // carry it in tt.fields, so a continuing turn cannot overwrite an open
+    // contract's required roles / dispatch mode (anti-F02). `completed` is
+    // only ever evidenced by the registry, never from report text (F02).
+    const tt = taskTransition(state, cls, {
+      promptId: parsed.promptId ?? '',
+      prompt,
+      dedupe: corr.dedupe,
+      backgroundCorrelation: hasPendingBackgroundTasks(state),
+      // CR BLOCK 1: the completed signal is only the TaskCompleted-evidenced
+      // single-shot pending flag — never report text (F02).
+      completed: state?.task_completed_pending === state?.task_id && state?.task_id !== '',
+      profile: prof.profile,
+      seq: corr.fields.prompt_seq,
+    });
+    if (tt.isNewTask) {
+      // ADR-0010 reset discipline (plan 05.7): at a task boundary the loop
+      // blocks reset per agent key — running siblings keep their counters —
+      // instead of the legacy whole-map clear.
+      const resetKeys = loopBlockResetKeys(state?.agents, state?.subagent_stop_blocks);
+      for (const key of resetKeys.mapDeletes) {
+        safeAppend(paths, 'map_delete', { mapField: resetKeys.mapField, key });
+      }
+      safeAppend(paths, 'set_many', { fields: resetKeys.scalarResets });
+    } else {
+      // ADR-0002 amendment: the turn reset is split — scalar stop-loop fields
+      // go through one set_many, while per-agent maps are cleared via map_clear
+      // events so no scalar set_many overloads a map field (model consistency:
+      // all subagent_stop_blocks mutations flow through map_* events).
+      const reset = userPromptResetPatch();
+      safeAppend(paths, 'set_many', { fields: reset.scalar });
+      for (const mapField of reset.mapClears) {
+        safeAppend(paths, 'map_clear', { mapField });
+      }
+    }
+    safeAppend(paths, 'set_many', { fields: tt.fields });
+    for (const mapField of tt.mapClears) {
+      safeAppend(paths, 'map_clear', { mapField });
+    }
+    // CR BLOCK 1: single-shot release — the TaskCompleted-evidenced pending
+    // flag survives only until the transition that consumes it.
+    if (tt.isNewTask || tt.transition === 'complete') {
+      safeAppend(paths, 'set_many', { fields: { task_completed_pending: '' } });
+    }
   }
   if (cls.contextMessage) return additionalContext(cls.contextMessage, 'UserPromptSubmit');
   return passthrough();
+}
+
+// ADR-0010: a submission correlates to pending background work only via a
+// non-empty background_tasks registry — never from prompt_id presence.
+function hasPendingBackgroundTasks(state) {
+  const reg = state?.background_tasks;
+  return !!(reg && typeof reg === 'object' && !Array.isArray(reg) && Object.keys(reg).length > 0);
 }
 
 // PreToolUse: classify the Bash command against the portable command policy
@@ -335,6 +386,13 @@ function appendMapDelete(parsed, mapField, key) {
   safeAppend(statePathsFor(parsed), 'map_delete', { mapField, key });
 }
 
+// ADR-0010: the registry key for a runtime agent id — the id itself, or the
+// upsertAgent '_session' fallback when the runtime omits an id. Must stay in
+// lock-step with upsertAgent's own hasId rule.
+function agentRegistryKey(agentId) {
+  return typeof agentId === 'string' && agentId !== '' ? agentId : '_session';
+}
+
 // SubagentStart: record the handoff — increment the start counter, add the role
 // to subagents_started, bump the per-role instance count, append the event log
 // entry — and emit the handoff contract. Mirrors subagent-start.sh.
@@ -342,18 +400,38 @@ function handleSubagentStart(parsed) {
   const label = extractSubagentLabel(parsed.data, ALIASES);
   const scope = extractSubagentScope(parsed.data);
   const paths = statePathsFor(parsed);
-  let index = 1;
-  try { index = (loadState(paths).subagent_start_count || 0) + 1; } catch {}
+  const state = loadStateFor(parsed);
+  const index = ((state?.subagent_start_count) || 0) + 1;
   const events = [
     { type: 'increment', payload: { field: 'subagent_start_count', by: 1 } },
     { type: 'append', payload: { field: 'subagent_events', value: { index, role: label || '', ...(scope ? { purpose: scope } : {}) } } },
   ];
   if (label) {
     events.push({ type: 'append_unique', payload: { field: 'subagents_started', value: label } });
-    events.push({ type: 'role_increment', payload: { mapField: 'subagent_instance_count_by_role', key: label, by: 1 } });
   }
   for (const ev of events) {
     safeAppend(paths, ev.type, ev.payload);
+  }
+  // ADR-0010 agent registry (plan 06.1-06.2): every start upserts the agent
+  // record keyed by the runtime agent id ('_session' fallback). The role is
+  // recorded only for a recognized AgntHive specialist whose raw type is not a
+  // fork/foreign type; forks/foreign/unknown record role null. The registry
+  // map is mutated only via per-key map_set (ADR-0002 race discipline).
+  const agentKey = agentRegistryKey(parsed.agentId);
+  const record = upsertAgent(state?.agents ?? {}, {
+    agentId: parsed.agentId ?? '',
+    role: label && !isForeignOrForkType(parsed.agentType, label) && isAgntHiveSpecialistRole(label, ALIASES) ? label : null,
+    scope,
+    taskId: state?.task_id ?? '',
+    status: 'running',
+    seq: index,
+  })[agentKey];
+  appendMapSet(parsed, 'agents', agentKey, record);
+  // Resume idempotency: the role count bumps only on the FIRST start of this
+  // agent id (record.starts === 1) — a resumed/duplicate id never
+  // double-counts, and unrecognized (role null) records never bump.
+  if (record.starts === 1 && record.role) {
+    safeAppend(paths, 'role_increment', { mapField: 'subagent_instance_count_by_role', key: record.role, by: 1 });
   }
   const message = label
     ? `Recorded subagent handoff: @${label}. Parallel same-role handoffs are allowed when they have distinct scopes. Return outcome, changed files or 'no changes', verification status, and remaining risks or next step. If you edit code, run or request verification before stopping.`
@@ -368,9 +446,27 @@ function readTranscriptText(path) {
   try { return readFileSync(path, 'utf8'); } catch { return ''; }
 }
 
+// ADR-0010 (plan 06.4): role evidence for the role gates is the sorted union
+// of the transcript-derived roles (legacy model) and the ADR-0010 agent
+// registry (state.agents), filtered to recognized AgntHive specialist roles.
+function startedRolesUnion(state, transcriptText) {
+  const roles = new Set(effectiveStartedRoles(state, transcriptText, ALIASES));
+  for (const r of startedRolesFromRegistry(state, ALIASES)) roles.add(r);
+  return [...roles].sort();
+}
+
 // Load the session state for a parsed input, or null on error / no session.
 function loadStateFor(parsed) {
   try { return loadState(statePathsFor(parsed)); } catch { return null; }
+}
+
+// Lean profile projection (plan task 11.2): the enforcement gate reads the open
+// contract narrowed by leanRequiredRoles — the t/doc/one-of role quotas are
+// dropped while a recorded @cr requirement survives. Legacy passes the state
+// through unmodified, so the gate stays byte-identical.
+function leanProjectedState(state) {
+  const projected = leanRequiredRoles(state);
+  return { ...state, required_subagents: projected.required, required_subagent_any_of: projected.anyOf };
 }
 
 // Persist a loop-aware block: record the block + policy-stall patch, then emit
@@ -407,6 +503,11 @@ function emitBlock(parsed, state, prefix, reason, message, agentId = null) {
 function handleStop(parsed) {
   const state = loadStateFor(parsed);
   if (!state) return passthrough();
+  // ADR 0012 / plan task 11: workflow profile gates resolve once per handler
+  // call — legacy keeps every gate; lean narrows role quotas and makes the
+  // footer lines advisory while sessionBlockReason always stays blocking.
+  const prof = resolveWorkflowProfile(process.env);
+  const gates = leanProfileGates(state, prof.profile);
   // ADR 0003: when the runtime signals stop_hook_active, it is re-invoking the
   // Stop hook after our own previous block — yield (clear loop state and pass
   // through) instead of re-blocking, honoring the standard loop-prevention
@@ -430,7 +531,7 @@ function handleStop(parsed) {
   }
   const transcriptPath = parsed.transcriptPath ?? state.transcript_path ?? '';
   const transcriptText = readTranscriptText(transcriptPath);
-  const startedRoles = effectiveStartedRoles(state, transcriptText, ALIASES);
+  const startedRoles = startedRolesUnion(state, transcriptText);
   const lastMessage = resolvedLastAssistantMessage(parsed.data ?? {}, transcriptPath);
   const docsRequired = state.docs_required === true;
   const hint = stopSafeNoChangeFooterHint(docsRequired);
@@ -447,7 +548,9 @@ function handleStop(parsed) {
     return passthrough();
   }
 
-  reason = sessionAgentEnforcementReason(state, startedRoles);
+  reason = gates.enforceRoleQuotas
+    ? sessionAgentEnforcementReason(state, startedRoles)
+    : sessionAgentEnforcementReason(leanProjectedState(state), startedRoles);
   if (reason) return emitBlock(parsed, state, 'stop', reason, lastMessage);
 
   if (state.code_changed === true) {
@@ -459,7 +562,10 @@ function handleStop(parsed) {
     }
   }
 
-  if (state.code_changed === true && taskTypeRequiresImplementationSummary(state.task_type || 'other')) {
+  // ADR 0012: in lean the footer lines are reporting guidance, not blocking
+  // syntax contracts — the five footer-line blocks are advisory (skipped);
+  // the code_changed no-summary / false-no-changes checks above still block.
+  if (gates.enforceFooterGates && state.code_changed === true && taskTypeRequiresImplementationSummary(state.task_type || 'other')) {
     if (!messageMentionsVerificationStatus(lastMessage)) {
       return emitBlock(parsed, state, 'stop', `Final response must include a Verification status: line after code or config changes.${hint}`, lastMessage);
     }
@@ -500,23 +606,41 @@ function handleSubagentStop(parsed) {
   if (isGenericType(parsed.agentType)) return passthrough();
   const label = extractSubagentLabel(parsed.data, ALIASES);
   if (!shouldEnforceSubagentFooter(label, parsed.agentType, ALIASES, ALIASES_LOADED)) return passthrough();
+  // ADR 0012 (plan task 11): resolve the workflow profile gates once per call;
+  // in lean the footer-line blocks below become advisory.
+  const prof = resolveWorkflowProfile(process.env);
+  const gates = leanProfileGates(state, prof.profile);
   const transcriptPath = parsed.transcriptPath ?? state.transcript_path ?? '';
-  const lastMessage = resolvedLastAssistantMessage(parsed.data ?? {}, transcriptPath);
+  // ADR-0010 report ownership (plan 06.3): resolve the subagent's report from
+  // its own delivered payload / its own transcript first; the parent
+  // transcript stays a legacy fallback (explicitly never the child's report —
+  // the explicit tiers record whose text the gates read).
+  const report = resolveSubagentReport(parsed, state);
+  const lastMessage = report.text || resolvedLastAssistantMessage(parsed.data ?? {}, transcriptPath);
   if (!lastMessage) {
     return emitBlock(parsed, state, 'subagent_stop', 'No assistant summary message was found for this subagent stop event.', lastMessage, parsed.agentId);
   }
-  if (!messageMentionsConcreteOutcome(lastMessage)) {
-    return emitBlock(parsed, state, 'subagent_stop', 'Subagent output must include a concrete outcome line (e.g. Outcome: <result>).', lastMessage, parsed.agentId);
+  // ADR 0012: in lean the footer-line blocks are advisory (skipped); the
+  // no-summary gate above and the completion path below still apply.
+  if (gates.enforceFooterGates) {
+    if (!messageMentionsConcreteOutcome(lastMessage)) {
+      return emitBlock(parsed, state, 'subagent_stop', 'Subagent output must include a concrete outcome line (e.g. Outcome: <result>).', lastMessage, parsed.agentId);
+    }
+    if (!messageMentionsChangedFiles(lastMessage)) {
+      return emitBlock(parsed, state, 'subagent_stop', 'Subagent output must include a Changed files: or No files changed: line.', lastMessage, parsed.agentId);
+    }
+    if (!messageMentionsVerificationStatus(lastMessage)) {
+      return emitBlock(parsed, state, 'subagent_stop', 'Subagent output must include a Verification status: line.', lastMessage, parsed.agentId);
+    }
+    if (!messageMentionsRemainingRisks(lastMessage) && !messageMentionsNextStep(lastMessage)) {
+      return emitBlock(parsed, state, 'subagent_stop', 'Subagent output must include a Remaining risks: or Next step: line.', lastMessage, parsed.agentId);
+    }
   }
-  if (!messageMentionsChangedFiles(lastMessage)) {
-    return emitBlock(parsed, state, 'subagent_stop', 'Subagent output must include a Changed files: or No files changed: line.', lastMessage, parsed.agentId);
-  }
-  if (!messageMentionsVerificationStatus(lastMessage)) {
-    return emitBlock(parsed, state, 'subagent_stop', 'Subagent output must include a Verification status: line.', lastMessage, parsed.agentId);
-  }
-  if (!messageMentionsRemainingRisks(lastMessage) && !messageMentionsNextStep(lastMessage)) {
-    return emitBlock(parsed, state, 'subagent_stop', 'Subagent output must include a Remaining risks: or Next step: line.', lastMessage, parsed.agentId);
-  }
+  // ADR-0010: the subagent's registry record completes on a gate-passing stop
+  // (a block leaves the status 'running'); role/scope/taskId are preserved by
+  // the upsert. The registry map is mutated only via per-key map_set.
+  const registryKey = agentRegistryKey(parsed.agentId);
+  appendMapSet(parsed, 'agents', registryKey, upsertAgent(state.agents, { agentId: parsed.agentId ?? '', status: 'completed' })[registryKey]);
   // ADR-0002 race fix: clear only this agent's map key via a per-key delete
   // event, not a full-map set_many snapshot that could clobber a concurrently
   // written sibling agent's entry. ADR 0006: the per-agent key (with the
@@ -532,12 +656,24 @@ function handleSubagentStop(parsed) {
 function handleTaskCompleted(parsed) {
   const state = loadStateFor(parsed);
   if (!state) return null;
+  const prof = resolveWorkflowProfile(process.env);
+  const gates = leanProfileGates(state, prof.profile);
   const transcriptText = readTranscriptText(parsed.transcriptPath ?? state.transcript_path ?? '');
-  const startedRoles = effectiveStartedRoles(state, transcriptText, ALIASES);
+  const startedRoles = startedRolesUnion(state, transcriptText);
   let reason = sessionBlockReason(state);
   if (reason) return exitBlock(`Task cannot be completed yet: ${reason}`);
-  reason = sessionAgentEnforcementReason(state, startedRoles);
+  reason = gates.enforceRoleQuotas
+    ? sessionAgentEnforcementReason(state, startedRoles)
+    : sessionAgentEnforcementReason(leanProjectedState(state), startedRoles);
   if (reason) return exitBlock(`Task cannot be completed yet: ${reason}`);
+  // CR BLOCK 1 (minimal honest completion evidence): every gate passed and
+  // a task is open - arm the single-shot pending-completion flag; the next
+  // user prompt turns it into the verified completed transition input.
+  // The flag never comes from report text (F02).
+  if (state.active_task && state.active_task.id && state.active_task.status === 'open') {
+    persistPatch(parsed, { task_completed_pending: state.active_task.id });
+  }
+
   return null;
 }
 
@@ -547,13 +683,20 @@ function handleTaskCompleted(parsed) {
 function handleTeammateIdle(parsed) {
   const state = loadStateFor(parsed);
   if (!state) return null;
+  const prof = resolveWorkflowProfile(process.env);
+  const gates = leanProfileGates(state, prof.profile);
   const transcriptText = readTranscriptText(parsed.transcriptPath ?? state.transcript_path ?? '');
-  const startedRoles = effectiveStartedRoles(state, transcriptText, ALIASES);
+  const startedRoles = startedRolesUnion(state, transcriptText);
   let reason = sessionBlockReason(state);
   if (reason) return exitBlock(`Do not go idle yet: ${reason}`);
-  reason = sessionManagerIdleReason(state, startedRoles);
-  if (reason) return exitBlock(`Do not go idle yet: ${reason}`);
-  reason = sessionAgentEnforcementReason(state, startedRoles);
+  // ADR 0012: the mandatory-Manager idle gate relaxes in lean.
+  if (gates.enforceManagerIdleGate) {
+    reason = sessionManagerIdleReason(state, startedRoles);
+    if (reason) return exitBlock(`Do not go idle yet: ${reason}`);
+  }
+  reason = gates.enforceRoleQuotas
+    ? sessionAgentEnforcementReason(state, startedRoles)
+    : sessionAgentEnforcementReason(leanProjectedState(state), startedRoles);
   if (reason) return exitBlock(`Do not go idle yet: ${reason}`);
   return null;
 }
@@ -667,7 +810,8 @@ function handleSessionEnd(parsed) {
 // API error text is never treated as a completion summary; write the stream and
 // return passthrough — telemetry failures never block (ADR 0011).
 function handleStopFailure(parsed) {
-  logEvent(parsed, 'stop-failure.jsonl', stopFailurePayload(parsed.data ?? {}));
+  const data = parsed.data ?? {};
+  logEvent(parsed, 'stop-failure.jsonl', stopFailurePayload({ ...data, session_id: parsed.sessionId ?? data.session_id ?? '' }));
   return passthrough();
 }
 function handleConfigChange(parsed) {
@@ -701,9 +845,22 @@ const handlers = {
 };
 
 /**
+ * Test-only seam (CR M7): swap the handler for `event` and return a restore
+ * closure. Production wiring never touches this; unit tests use it to inject
+ * a throwing handler and pin the ADR-0011 crash paths for each event class.
+ */
+export function __setHandlerForTest(event, fn) {
+  const prev = handlers[event];
+  handlers[event] = fn;
+  return () => { handlers[event] = prev; };
+}
+
+/**
  * Pure, side-effect-free dispatch core. Given an event name and a parsed
- * input, return the output object. A handler crash or an unknown event never
- * blocks the runtime — it degrades to passthrough.
+ * input, return the output object. Per ADR 0011, an event with no handler
+ * degrades to passthrough; a handler crash degrades by event class — enforce
+ * events deny under AGNTHIVE_POLICY=enforce, guidance/telemetry events keep
+ * the runtime moving with a stderr note. (unit-testable via the seam below)
  */
 export function dispatch(event, parsed, matcher = null) {
   const fn = handlers[event];

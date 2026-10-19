@@ -45,6 +45,15 @@ export function parseHookInput(input) {
     // so callers can thread them without re-parsing `data`.
     agentId: typeof data.agent_id === 'string' ? data.agent_id : null,
     agentType: typeof data.agent_type === 'string' ? data.agent_type : null,
+    // ADR 0010 lifecycle identity: the runtime prompt correlation id. Submit
+    // and expansion of the SAME invocation share it — correlation only, never
+    // provenance (a duplicate prompt_id is not evidence of message origin).
+    promptId: typeof data.prompt_id === 'string' ? data.prompt_id : null,
+    // ADR 0010 subagent result ownership: the subagent's own transcript path,
+    // documented separately from the parent transcript_path above. Surfaced so
+    // report-resolution can prefer the subagent-scoped fallback without
+    // re-parsing `data`.
+    agentTranscriptPath: typeof data.agent_transcript_path === 'string' ? data.agent_transcript_path : null,
   };
 }
 

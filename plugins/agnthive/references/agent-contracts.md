@@ -31,7 +31,11 @@ Hook enforcement is shared across agents and workflows:
 - `Stop`, `TaskCompleted`, and `TeammateIdle` fall back to transcript `@alias` patterns (e.g. `@explorer` -> `e`, `@code-reviewer` -> `cr`, plus legacy persona aliases) when runtimes omit explicit `SubagentStart`
 - `SubagentStop` requires a concrete handoff footer with `Outcome:`, `Changed files:` or `No files changed:`, `Verification status:`, and one closure line: `Remaining risks:` or `Next step:`
 - `Stop`, `TaskCompleted`, and `TeammateIdle` block incomplete workflow completion
-- `PostToolUse` and `PostToolUseFailure` track edit and verification state
+- `PostToolUse` and `PostToolUseFailure` track edit and verification state: completion is a `verification[]` record scoped to the current change revision — launched/pending is not passed, an unknown outcome is not passed, and a later code/config edit invalidates the earlier result ([ADR 0009](../../../docs/adr/0009-completion-evidence-over-role-quotas.md)); completed reviews land in `review_results[]`, and the agent registry (`agents{}`) keys lifecycle by stable agent id with per-key map events
+- Failure policy ([ADR 0011](../../../docs/adr/0011-explicit-hook-failure-and-permission-policy.md)): events are classed `enforce` (PreToolUse, PermissionRequest, PermissionDenied, PostToolUseFailure), `guidance` (workflow gates), and `telemetry` (observability); an enforce-class handler that cannot run or classify blocks with a diagnostic, advisory stays neutral (no blanket allow), telemetry failures are nonblocking; every registration carries a `timeout` (`10s` sync / `30s` async) and the shared Bash/PowerShell PreToolUse safety registration carries `onFailure: "block"`; `PermissionDenied` emits the event-specific `hookSpecificOutput: { hookEventName: "PermissionDenied", retry }` envelope
+- `StopFailure` is telemetry ([ADR 0013](../../../docs/adr/0013-ledger-restoration-and-minimal-telemetry.md)): one bounded record per observed turn failure in `stop-failure.jsonl` (`ts`, `session_id`, `error_name`, `exit_code`, `signal`, `agent_id`) — API error text is never logged and a failure never counts as completion
+- `SessionStart` `compact`/`resume` restores a bounded task/revision summary and the ledger location ([ADR 0013](../../../docs/adr/0013-ledger-restoration-and-minimal-telemetry.md)); `PostCompact` is metadata-only bookkeeping
+- `workflow_profile` (`legacy` default, `lean` experimental) selects the gate shape ([ADR 0008](../../../docs/adr/0008-root-orchestration-and-three-specialists.md)/0012): lean drops role quotas, the Manager-idle gate, and footer blocking, and keeps the review and current-verification gates; the default flips only after the outcome benchmark gate passes
 
 Footers are a concise reporting shape, not proof of completion: in the lean
 profile they are reporting guidance ([ADR 0009](../../../docs/adr/0009-completion-evidence-over-role-quotas.md)),
@@ -44,8 +48,10 @@ Relevant files (plugin Node runtime — the single `hook-dispatcher.mjs` handles
 
 - [`modules/hook-dispatcher.mjs`](../modules/hook-dispatcher.mjs) — event dispatch entrypoint (UserPromptSubmit, SubagentStart/Stop, Stop, TaskCompleted, PostToolUse, …)
 - [`modules/summary-contract.mjs`](../modules/summary-contract.mjs) — handoff/stop-footer recognition
-- [`modules/workflow.mjs`](../modules/workflow.mjs) — workflow-gate enforcement (required-role groups, stop/TaskCompleted blocks)
-- [`hooks/hooks.json`](../hooks/hooks.json) — event → command manifest
+- [`modules/workflow.mjs`](../modules/workflow.mjs) — workflow-gate enforcement (required-role groups, stop/TaskCompleted blocks, task transitions, lean gate projection)
+- [`modules/verification.mjs`](../modules/verification.mjs) — verification result normalization and revision scoping
+- [`modules/plugin-config.mjs`](../modules/plugin-config.mjs) — `workflow_profile` resolution (`AGNTHIVE_WORKFLOW_PROFILE` > userConfig bridge > `legacy`)
+- [`hooks/hooks.json`](../hooks/hooks.json) — event → command manifest (exec form, timeouts, `onFailure`, PowerShell parity)
 
 ## Bench Runner Assertions
 

@@ -3,11 +3,13 @@
 // Mock mode uses the Node mock runner; command mode spawns BENCH_RUNNER_CMD
 // (split into an explicit argv — never a shell string).
 // Node port of scripts/run-benchmark.sh — no Bash, no jq.
-import { mkdirSync, rmSync, cpSync, existsSync, readFileSync, writeFileSync, readdirSync, statSync } from 'node:fs';
-import { join, relative as relPath, isAbsolute } from 'node:path';
+import { mkdirSync, rmSync, cpSync, copyFileSync, existsSync, readFileSync, writeFileSync, readdirSync, statSync } from 'node:fs';
+import { join, dirname, resolve, relative as relPath, isAbsolute, sep } from 'node:path';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { isMain, readJson, writeJson, median, rate } from './bench/lib.mjs';
+import { validateOutcomeTask } from '../bench/tasks/outcomes/schema/outcome-schema.mjs';
 import { renderSummary } from './render-benchmark-summary.mjs';
 
 const REPO_ROOT = join(fileURLToPath(import.meta.url), '..', '..');
@@ -74,6 +76,82 @@ function validateResult(result) {
   if (!result.task_id || !result.status || !result.notes) return false;
   for (const f of REQUIRED_RESULT_FIELDS) if (!(f in result)) return false;
   return true;
+}
+// ---------- outcome suite staging (BLOCK 2 + M4, @cr 0.4.0 fix-first) ----------
+// Outcome tasks gate live predicates on pinned seed files. Validate the task
+// contract with the schema module (M4), then copy each pinned seed into the
+// run workarea and sha256-verify it before the agent spawns; a drifted or
+// tampered pin fails with a clear code instead of running with unsatisfiable
+// live predicates.
+const OUTCOME_SUITE_DIR = join(REPO_ROOT, 'bench', 'tasks', 'outcomes');
+const OUTCOME_FIXTURES_DIR = join(REPO_ROOT, 'bench', 'fixtures');
+
+// Returns {ok:true} or {ok:false, code, detail}; never reads agent output.
+function stageOutcomeTask(task, taskFile, taskWorkdir) {
+  if (task.suite === 'outcomes') {
+    const v = validateOutcomeTask(task, { taskPath: relPath(REPO_ROOT, taskFile), suiteDir: OUTCOME_SUITE_DIR, fixturesDir: OUTCOME_FIXTURES_DIR });
+    if (!v.ok) return { ok: false, code: 'outcome_task_validation_failed', detail: 'schema violations: ' + v.errors.slice(0, 3).join('; ') };
+  }
+  const workdirAbs = resolve(taskWorkdir);
+  const workPrefix = workdirAbs + sep;
+  for (const seed of Array.isArray(task.seed_files) ? task.seed_files : []) {
+    const source = typeof seed.source === 'string' ? seed.source : '';
+    const destRel = typeof seed.path === 'string' ? seed.path : '';
+    if (!source || !destRel) {
+      return { ok: false, code: 'seed_staging_rejected', detail: 'seed_files entries need source and path strings' };
+    }
+    const src = resolve(OUTCOME_SUITE_DIR, source);
+    const dest = resolve(workdirAbs, destRel);
+    if (src !== OUTCOME_SUITE_DIR && !src.startsWith(OUTCOME_SUITE_DIR + sep)) {
+      return { ok: false, code: 'seed_staging_rejected', detail: 'seed source escapes the outcome suite dir: ' + source };
+    }
+    if (!dest.startsWith(workPrefix)) {
+      return { ok: false, code: 'seed_staging_rejected', detail: 'seed path escapes the task workdir: ' + destRel };
+    }
+    if (!existsSync(src)) {
+      return { ok: false, code: 'seed_missing', detail: 'seed source missing under the outcome suite dir: ' + source };
+    }
+    const digest = createHash('sha256').update(readFileSync(src)).digest('hex');
+    if (digest !== seed.sha256) {
+      return { ok: false, code: 'seed_integrity_mismatch', detail: 'seed ' + source + ' sha256 mismatch (task may drift from the pinned seed)' };
+    }
+    mkdirSync(dirname(dest), { recursive: true });
+    copyFileSync(src, dest);
+    const stagedDigest = createHash('sha256').update(readFileSync(dest)).digest('hex');
+    if (stagedDigest !== seed.sha256) {
+      rmSync(dest, { force: true });
+      return { ok: false, code: 'seed_integrity_mismatch', detail: 'staged seed ' + seed.path + ' failed sha256 verification; removed' };
+    }
+  }
+  return { ok: true };
+}
+
+// Synthetic failed result so a staged-out task still lands in the summary
+// (kept consistent with the selected/executed/unresolved slice arithmetic).
+function syntheticFailureResult(taskId, code, detail) {
+  return {
+    task_id: taskId,
+    status: 'failed',
+    notes: code + ': ' + detail,
+    completed: false,
+    verification_required: true,
+    tests_run: false,
+    tests_passed: false,
+    review_required: true,
+    review_present: false,
+    docs_required: false,
+    docs_updated: false,
+    policy_violations: 0,
+    tool_failures: 0,
+    runtime_seconds: 0,
+    changed_files: [],
+  };
+}
+
+function fallbackTaskId(p) {
+  // Deterministic, filesystem-safe id for tasks whose JSON cannot be read.
+  const base = (relPath(REPO_ROOT, p).split('/').pop() || 'task').replace(/\.json$/i, '').replace(/[^A-Za-z0-9-]+/g, '-').toLowerCase();
+  return 'task-' + base;
 }
 
 function buildSummary(args, mode, runnerDescription, resultFiles, selectedTaskPaths, selectedTaskIds, executedTaskPaths, executedTaskIds, failedTaskPaths, failedTaskIds, configuredTaskCount, executedTaskCount) {
@@ -210,7 +288,11 @@ export function run(args) {
   const selectedTaskIds = [];
   for (const tf of taskFiles) {
     selectedTaskPaths.push(relativeTaskPath(tf));
-    selectedTaskIds.push(readJson(tf).id);
+    // Malformed task JSON must not crash selection; the per-task loop
+    // records it as a synthetic failed task.
+    let selectedId = null;
+    try { selectedId = readJson(tf).id; } catch { selectedId = null; }
+    selectedTaskIds.push(typeof selectedId === 'string' && selectedId ? selectedId : fallbackTaskId(tf));
   }
 
   const resultFiles = [];
@@ -222,7 +304,25 @@ export function run(args) {
   const failFast = process.env.BENCH_FAIL_FAST === '1' || process.env.BENCH_FAIL_FAST === 'true';
 
   for (const taskFile of taskFiles) {
-    const task = readJson(taskFile);
+    // Malformed task JSON (LOW a/M4) becomes a synthetic failed task so the
+    // run continues and the task stays visible as unresolved — never a crash.
+    let task = null;
+    let taskParseError = null;
+    try { task = readJson(taskFile); } catch (e) { taskParseError = String((e && e.message) || e); }
+    if (task === null || typeof task !== 'object') {
+      const failId = fallbackTaskId(taskFile);
+      const failPath = relativeTaskPath(taskFile);
+      const failOut = join(opts.outputDir, 'tasks', failId);
+      rmSync(failOut, { recursive: true, force: true });
+      mkdirSync(failOut, { recursive: true });
+      writeJson(join(failOut, 'result.json'), syntheticFailureResult(failId, 'outcome_task_validation_failed', 'task JSON could not be parsed: ' + (taskParseError || 'task is not a JSON object')));
+      process.stdout.write(`Staging failed for task: ${failId} (outcome_task_validation_failed)\n`);
+      resultFiles.push(join(failOut, 'result.json'));
+      executedTaskCount++; executedTaskPaths.push(failPath); executedTaskIds.push(failId);
+      failedTaskPaths.push(failPath); failedTaskIds.push(failId);
+      if (failFast) { process.stdout.write(`Fail-fast enabled; stopping after staging failure: ${failId}\n`); break; }
+      continue;
+    }
     const taskId = task.id;
     const taskPathRel = relativeTaskPath(taskFile);
     const category = task.category;
@@ -238,6 +338,19 @@ export function run(args) {
     if (existsSync(projectClaudeDir)) {
       mkdirSync(join(taskWorkdir, '.claude'), { recursive: true });
       cpSync(projectClaudeDir, join(taskWorkdir, '.claude'), { recursive: true });
+    }
+
+    // BLOCK 2/M4: validate the task contract and stage pinned seeds into the
+    // workarea before the agent spawns; staging failure = synthetic failure.
+    const staged = stageOutcomeTask(task, taskFile, taskWorkdir);
+    if (!staged.ok) {
+      process.stdout.write(`Staging failed for task: ${taskId} (${staged.code}: ${staged.detail})\n`);
+      writeJson(join(taskOutputDir, 'result.json'), syntheticFailureResult(taskId, staged.code, staged.detail));
+      resultFiles.push(join(taskOutputDir, 'result.json'));
+      executedTaskCount++; executedTaskPaths.push(taskPathRel); executedTaskIds.push(taskId);
+      failedTaskPaths.push(taskPathRel); failedTaskIds.push(taskId);
+      if (failFast) { process.stdout.write(`Fail-fast enabled; stopping after staging failure: ${taskId}\n`); break; }
+      continue;
     }
 
     const childEnv = {

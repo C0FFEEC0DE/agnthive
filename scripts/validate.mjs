@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 // validate.mjs — Node ESM port of scripts/validate.sh.
 // Checks: JSON validity, workflow syntax, agent/skill
-// frontmatter (plugin two-shape skill model), slash-command inventory,
-// workflow policy invariants, GitHub Actions Node.js 24 readiness, notification
-// docs, hook test manifests, benchmark task structure, internal markdown links,
-// and the no-legacy-runtime gate.
+// frontmatter (plugin two-shape skill model), slash-command inventory, the
+// plugin hook-manifest + userConfig contract (exec form, single dispatcher,
+// event vocabulary with StopFailure, timeout/onFailure policy, PowerShell
+// parity), workflow policy invariants, GitHub Actions Node.js 24 readiness,
+// notification docs, hook test manifests, benchmark task structure, internal
+// markdown links, and the no-legacy-runtime gate.
 //
 // External linters (actionlint) are invoked via spawnSync with an
 // explicit argv — no shell, no exec, no eval. The plugin runtime is Node-only and
@@ -18,13 +20,12 @@ import { readFileSync, readdirSync, existsSync, statSync, mkdtempSync, rmSync } 
 import { spawnSync } from 'node:child_process';
 import { join, relative, dirname, basename, extname, sep } from 'node:path';
 import { tmpdir } from 'node:os';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { checkNoLegacyRuntime } from './check-no-legacy-runtime.mjs';
 import { SCRIPT_TO_EVENT } from './test-hooks.mjs';
 import { packagePlugin, validatePackagedPlugin } from './plugin-install-smoke.mjs';
 
 const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url));
-process.chdir(REPO_ROOT);
 
 let ERRORS = 0;
 function reportError(msg) {
@@ -188,12 +189,15 @@ function checkAgentFrontmatter() {
 // ---------- skill frontmatter (plugin two-shape model) ----------
 // The plugin ships skills as nested dirs: skills/<name>/SKILL.md. There are two
 // shapes, enforced here so they cannot silently drift:
-//   - Agent-backed skills (bug, design, docs, refactor, review, test) declare
-//     the full agent-dispatch contract: name, description, agent, context: fork,
-//     disable-model-invocation: true, non-empty allowed-tools, non-empty paths.
-//     The `agent` value must match a known plugin agent name or alias.
-//   - Command skills (debug, explore, manager) are minimal: name + description
-//     only. They must NOT carry agent/context/allowed-tools/paths (that would
+//   - Agent-backed (forked-specialist) skills — exactly one ships: review, the
+//     read-only Code Reviewer. Full dispatch contract: name, description,
+//     agent, context: fork, disable-model-invocation: true, non-empty
+//     allowed-tools, non-empty paths. The `agent` value must match a known
+//     plugin agent name or alias.
+//   - Root-procedure/command skills (bug, debug, design, docs, explore,
+//     manager, refactor, test) are name + description (+ argument-hint) only.
+//     They run in the root session; delegation stays body guidance. They must
+//     NOT carry agent/context/allowed-tools/paths (that would
 //     make them a third, ambiguous shape).
 function checkSkillFrontmatter() {
   console.log('--- Checking skill frontmatter ---');
@@ -276,86 +280,429 @@ function checkSkillFrontmatter() {
   console.log('');
 }
 
+
 // ---------- slash command inventory ----------
 // In the plugin model the slash commands ARE the bundled skills: each
-// skills/<name>/SKILL.md is invocable as /<name>. The 6 agent-backed skills are
-// the "skill" subset; the 3 command skills complete the 9-command inventory.
+// skills/<name>/SKILL.md is invocable as /<name> (there is no separate
+// commands/ directory).
+export const SLASH_COMMAND_NAMES = [
+  'manager', 'explore', 'bug', 'debug', 'design', 'test', 'refactor', 'review', 'docs',
+];
+export const SLASH_COMMAND_ALIASES = ['m', 'e', 'bug', 'dbg', 'a', 't', 'a', 'cr', 'doc'];
+// The agent-backed (forked-specialist) skill inventory after ADR 0008 / plan
+// task 12: the canonical dispatch contract rides only /review; the other
+// agent-shaped commands are root procedures and must NOT declare
+// agent/context/allowed-tools/paths.
+export const AGENT_BACKED_SKILLS = ['review'];
+
+export function collectSlashCommandInventoryErrors() {
+  const checks = [];
+  const errors = [];
+  errors.push(...slashInventoryDirScanErrors(checks));
+  errors.push(...slashInventoryReadmeErrors(checks));
+  return { checks, errors };
+}
+
 function checkSlashCommandInventory() {
   console.log('--- Checking slash command inventory ---');
-  const COMMAND_NAMES = ['manager', 'explore', 'bug', 'debug', 'design', 'test', 'refactor', 'review', 'docs'];
-  const COMMAND_ALIASES = ['m', 'e', 'bug', 'dbg', 'a', 't', 'a', 'cr', 'doc'];
-  const EXPECTED_COMMANDS = COMMAND_NAMES.slice();
-  const EXPECTED_SKILLS = ['bug', 'design', 'docs', 'refactor', 'review', 'test'];
+  const { checks, errors } = collectSlashCommandInventoryErrors();
+  for (const c of checks) console.log(`OK: ${c}`);
+  for (const e of errors) reportError(e);
+  console.log('');
+}
+function slashInventoryDirScanErrors(checks) {
+  const errors = [];
+  const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
   const aliasFor = (name) => {
-    const i = COMMAND_NAMES.indexOf(name);
-    return i >= 0 ? COMMAND_ALIASES[i] : '';
+    const i = SLASH_COMMAND_NAMES.indexOf(name);
+    return i >= 0 ? SLASH_COMMAND_ALIASES[i] : '';
   };
-  const cmp = (a, b) => a < b ? -1 : a > b ? 1 : 0;
-
   const skillsDir = join(REPO_ROOT, 'plugins', 'agnthive', 'skills');
   const agentDir = join(REPO_ROOT, 'plugins', 'agnthive', 'agents');
   const skillDirs = existsSync(skillsDir)
     ? readdirSync(skillsDir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name)
     : [];
-
-  // Command inventory: the 9 skill dirs must equal the bundled command set.
+  // The 9 skill dirs must equal the bundled command set.
   {
     const actual = skillDirs.slice().sort(cmp);
-    const expected = EXPECTED_COMMANDS.slice().sort(cmp);
+    const expected = SLASH_COMMAND_NAMES.slice().sort(cmp);
     if (JSON.stringify(actual) !== JSON.stringify(expected))
-      reportError('Plugin skills/ directory inventory does not match the bundled slash-command inventory');
-    else console.log('OK: plugin skills/ command inventory');
+      errors.push('Plugin skills/ directory inventory does not match the bundled slash-command inventory');
+    else checks.push('plugin skills/ command inventory');
   }
-  // Skill (agent-backed) inventory: dirs whose SKILL.md declares `agent:`.
+  // Agent-backed (forked specialist) inventory: dirs whose SKILL.md declares
+  // `agent:` must be exactly the one dispatch-bearing skill.
   {
     const agentBacked = skillDirs.filter((n) => {
-      const fm = extractFrontmatterLines(readLines(join(skillsDir, n, 'SKILL.md')), `skills/${n}/SKILL.md`);
+      const sf = join(skillsDir, n, 'SKILL.md');
+      const fm = extractFrontmatterLines(readLines(sf), `skills/${n}/SKILL.md`);
       return fm ? fm.some((l) => l.startsWith('agent:')) : false;
     }).sort(cmp);
-    const expected = EXPECTED_SKILLS.slice().sort(cmp);
+    const expected = AGENT_BACKED_SKILLS.slice().sort(cmp);
     if (JSON.stringify(agentBacked) !== JSON.stringify(expected))
-      reportError('Plugin agent-backed skill inventory does not match the bundled skill inventory');
-    else console.log('OK: plugin agent-backed skill inventory');
+      errors.push('Plugin agent-backed skill inventory does not match the bundled skill inventory');
+    else checks.push('plugin agent-backed skill inventory');
   }
-
-  // Each command's SKILL.md exists, and the agent carrying its alias exists.
-  for (const command of EXPECTED_COMMANDS) {
+  // Each command's SKILL.md exists, name matches, and the agent carrying its
+  // alias exists on some plugin agent file.
+  for (const command of SLASH_COMMAND_NAMES) {
     const skillFile = join(skillsDir, command, 'SKILL.md');
     const expectedAlias = aliasFor(command);
-    if (!existsSync(skillFile)) { reportError(`Missing skill for slash command /${command}: ${skillFile}`); continue; }
+    if (!existsSync(skillFile)) { errors.push(`Missing skill for slash command /${command}: ${skillFile}`); continue; }
     const sfm = extractFrontmatterLines(readLines(skillFile), `skills/${command}/SKILL.md`);
     const skillName = sfm ? extractScalar(sfm, 'name') : '';
     if (skillName !== command)
-      reportError(`Skill name mismatch for /${command}: expected '${command}', found '${skillName}'`);
-    // The command's mapped agent alias must be present on a plugin agent file.
-    const agentFiles = globDir(agentDir, '.md');
-    const aliasPresent = agentFiles.some((af) => {
+      errors.push(`Skill name mismatch for /${command}: expected '${command}', found '${skillName}'`);
+    const aliasPresent = globDir(agentDir, '.md').some((af) => {
       const afm = extractFrontmatterLines(readLines(af), basename(af));
       return afm ? extractScalar(afm, 'alias') === expectedAlias : false;
     });
     if (!aliasPresent)
-      reportError(`No plugin agent carries alias '${expectedAlias}' for slash command /${command}`);
+      errors.push(`No plugin agent carries alias '${expectedAlias}' for slash command /${command}`);
   }
+  return errors;
+}
+// README markdown slash-command list must mirror the bundled command set.
+function slashInventoryReadmeErrors(checks) {
+  const errors = [];
+  const file = join(REPO_ROOT, 'README.md');
+  const label = 'README slash-command list';
+  const sectionStart = '### Slash commands';
+  const sectionEnd = '### Required handoffs';
+  if (!existsSync(file)) { errors.push(`${label} not found: ${file}`); return errors; }
+  const lines = readLines(file);
+  let inSection = false;
+  const actual = new Set();
+  for (const line of lines) {
+    if (line.trim() === sectionStart) { inSection = true; continue; }
+    if (inSection && line.trim() === sectionEnd) break;
+    if (inSection) {
+      const m = line.match(/^- `\/([^`]+)`/);
+      if (m) actual.add(m[1]);
+      }
+  }
+  const expected = new Set(SLASH_COMMAND_NAMES);
+  if (actual.size !== expected.size || [...actual].some((x) => !expected.has(x)))
+    errors.push(`${label} does not match the bundled slash-command inventory: ${file}`);
+  else checks.push(label);
+  return errors;
+}
 
-  function compareCommandLists(file, label, start, end) {
-    if (!existsSync(file)) { reportError(`${label} not found: ${file}`); return; }
-    const lines = readLines(file);
-    let inSection = false;
-    const actual = new Set();
-    for (const line of lines) {
-      if (line.trim() === start) { inSection = true; continue; }
-      if (inSection && line.trim() === end) break;
-      if (inSection) {
-        const m = line.match(/^- `\/([^`]+)`/);
-        if (m) actual.add(m[1]);
+// ---------- plugin hook manifest + userConfig contract (task 13) ----------
+// The landed plugin manifests are the truth this gate encodes:
+//   - hooks.json: description + hooks map only; every event name stays in the
+//     host/dispatcher vocabulary (including the StopFailure registration);
+//     records stay nested {matcher, hooks:[...]}; every command hook keeps
+//     exec form (type "command", command "node", non-empty args array) routing
+//     to the ONE Node dispatcher with a consistent --event; every registration
+//     declares a bounded timeout (10s sync, 30s async); onFailure uses the
+//     hooks-reference vocabulary block|warn|disable, and "block" is reserved
+//     for the shared PreToolUse shell-policy registrations (Bash and PowerShell
+//     parity) per ADR 0011 - a handler that cannot run cannot decide advisory
+//     vs enforce.
+//   - plugin.json userConfig: the contract keys enforcement_mode (advisory or
+//     enforce), log_max_bytes, ledger_max_bytes, and workflow_profile
+//     (legacy|lean, default legacy — landed by task 11). An UNKNOWN userConfig
+//     key fails here: this repo gate is stricter than the packaged smoke
+//     (plugin-install-smoke.mjs keeps the documented compat-window stance of
+//     allowing extra keys).
+export const KNOWN_HOOK_EVENTS = new Set([
+  'SessionStart', 'InstructionsLoaded', 'UserPromptSubmit', 'PreToolUse',
+  'PermissionRequest', 'PermissionDenied', 'PostToolUse', 'PostToolUseFailure',
+  'SubagentStart', 'SubagentStop', 'Stop', 'TeammateIdle', 'TaskCompleted',
+  'Notification', 'ConfigChange', 'PreCompact', 'PostCompact', 'SessionEnd',
+  'StopFailure',
+]);
+export const MATCHER_EVENTS = new Set([
+  'InstructionsLoaded', 'PreToolUse', 'PermissionRequest', 'PermissionDenied',
+  'PostToolUse', 'PostToolUseFailure',
+]);
+export const VALID_HOOK_RECORD_KEYS = new Set(['matcher', 'hooks']);
+export const VALID_COMMAND_HOOK_KEYS = new Set(['type', 'command', 'args', 'async', 'timeout', 'onFailure']);
+export const ON_FAILURE_VALUES = new Set(['block', 'warn', 'disable']);
+export const SHELL_POLICY_MATCHERS = ['Bash', 'PowerShell'];
+export const SYNC_TIMEOUT_SECONDS = 10;
+export const ASYNC_TIMEOUT_SECONDS = 30;
+export const DISPATCHER_TARGET = '${CLAUDE_PLUGIN_ROOT}/modules/hook-dispatcher.mjs';
+export const USER_CONFIG_CONTRACT_KEYS = [
+  'enforcement_mode', 'log_max_bytes', 'ledger_max_bytes', 'workflow_profile',
+];
+// Value domain of the workflow_profile userConfig key (task 11 / ADR 0012):
+// legacy is the default; lean is experimental.
+export const WORKFLOW_PROFILE_VALUES = new Set(['legacy', 'lean']);
+export const DEFAULT_WORKFLOW_PROFILE = 'legacy';
+export const ENFORCEMENT_MODE_VALUES = new Set(['advisory', 'enforce']);
+// Allowlist for hooks.json's own top-level keys.
+const VALID_MANIFEST_KEYS = new Set(['description', 'hooks']);
+
+/** Short, stable JSON-ish rendering of a value for error messages. */
+function describeJsValue(v) {
+  if (v === undefined) return 'undefined';
+  try {
+    return JSON.stringify(v);
+  } catch {
+    return String(v);
+  }
+}
+
+/**
+ * Pure structural validator for the plugin hooks.json manifest.
+ * Takes the parsed manifest and returns a list of error strings
+ * (empty = valid): no filesystem access, no shared state, so
+ * test/validators can drive negative fixtures against it directly.
+ */
+export function validateHookManifestStructure(manifest) {
+  const errors = [];
+  if (manifest === null || typeof manifest !== 'object' || Array.isArray(manifest)) {
+    return [`hook manifest must be a JSON object, got ${describeJsValue(manifest)}`];
+  }
+  for (const key of Object.keys(manifest)) {
+    if (!VALID_MANIFEST_KEYS.has(key)) {
+      errors.push(`unsupported top-level key(s) in hooks.json: ${key} (allowed: description, hooks)`);
+    }
+  }
+  const hooks = manifest.hooks;
+  if (!hooks || typeof hooks !== 'object' || Array.isArray(hooks)) {
+    errors.push('hook manifest must map event names to hook-record arrays');
+    return errors;
+  }
+  for (const [event, entries] of Object.entries(hooks)) {
+    if (!KNOWN_HOOK_EVENTS.has(event)) {
+      errors.push(`unknown hook event '${event}' (allowed events: ${[...KNOWN_HOOK_EVENTS].join(', ')})`);
+      continue;
+    }
+    if (!Array.isArray(entries)) {
+      errors.push(`hook event '${event}' must be an array of hook records`);
+      continue;
+    }
+    if (entries.length === 0) {
+      errors.push(`hook event '${event}' must declare at least one hook record`);
+      continue;
+    }
+    entries.forEach((rec, i) => {
+      errors.push(...hookRecordErrors(event, i, rec));
+    });
+  }
+  errors.push(...shellPolicyErrors(hooks));
+  return errors;
+}
+
+/** Validate one nested hook record under one event. Internal. */
+function hookRecordErrors(event, index, rec) {
+  const label = `${event}[${index}]`;
+  const errors = [];
+  if (!rec || typeof rec !== 'object' || Array.isArray(rec)) {
+    errors.push(`${label}: hook record must be an object`);
+    return errors;
+  }
+  const badKeys = Object.keys(rec).filter((k) => !VALID_HOOK_RECORD_KEYS.has(k));
+  if (badKeys.length) {
+    errors.push(`${label}: unknown hook record field(s): ${badKeys.join(', ')} (allowed: matcher, hooks)`);
+  }
+  if (!('matcher' in rec)) {
+    errors.push(`${label}: hook record must declare a matcher`);
+  } else if (typeof rec.matcher !== 'string' || rec.matcher.length === 0) {
+    errors.push(`${label}: hook record matcher must be a non-empty string, got ${describeJsValue(rec.matcher)}`);
+  } else if (MATCHER_EVENTS.has(event) && rec.matcher === '*') {
+    errors.push(`${label}: matcher-based event '${event}' must use a real tool matcher, not '*'`);
+  }
+  if (!('hooks' in rec)) {
+    errors.push(`${label}: hook record must use the nested {matcher, hooks: [...]} format (missing 'hooks')`);
+    return errors;
+  }
+  if (!Array.isArray(rec.hooks)) {
+    errors.push(`${label}: 'hooks' must be an array of command hook definitions`);
+    return errors;
+  }
+  if (rec.hooks.length === 0) {
+    errors.push(`${label}: 'hooks' array must not be empty`);
+    return errors;
+  }
+  rec.hooks.forEach((hd, j) => {
+    errors.push(...commandHookErrors(event, index, j, hd));
+  });
+  return errors;
+}
+
+/** Validate one command hook definition. Internal. */
+function commandHookErrors(event, recordIndex, hookIndex, hd) {
+  const label = `${event}[${recordIndex}].hooks[${hookIndex}]`;
+  const errors = [];
+  if (!hd || typeof hd !== 'object' || Array.isArray(hd)) {
+    errors.push(`${label}: command hook must be an object`);
+    return errors;
+  }
+  const badKeys = Object.keys(hd).filter((k) => !VALID_COMMAND_HOOK_KEYS.has(k));
+  if (badKeys.length) {
+    errors.push(`${label}: unknown command hook field(s): ${badKeys.join(', ')}
+(allowed: ${[...VALID_COMMAND_HOOK_KEYS].join(', ')})`);
+  }
+  if (hd.type !== 'command') {
+    errors.push(`${label}: hook type must be "command", got ${describeJsValue(hd.type)} (exec form)`);
+  }
+  if (typeof hd.command !== 'string' || hd.command.length === 0) {
+    errors.push(`${label}: command hook must declare command: "node" (exec form)`);
+  } else if (hd.command !== 'node') {
+    errors.push(`${label}: hook command must be "node" (exec form, single dispatcher), got ${describeJsValue(hd.command)}`);
+  }
+  if (!Array.isArray(hd.args) || hd.args.length === 0) {
+    errors.push(`${label}: command hook must declare a non-empty args array (exec form)`);
+  } else {
+    if (!hd.args.includes(DISPATCHER_TARGET)) {
+      errors.push(`${label}: hook must route to the single Node dispatcher (${DISPATCHER_TARGET})`);
+    }
+    const evIdx = hd.args.indexOf('--event');
+    if (evIdx >= 0 && hd.args[evIdx + 1] !== event) {
+      errors.push(`${label}: --event ${describeJsValue(hd.args[evIdx + 1])} does not match the registered event '${event}'`);
+    }
+  }
+  if (!('timeout' in hd)) {
+    errors.push(`${label}: missing required 'timeout' (synchronous registrations use ${SYNC_TIMEOUT_SECONDS}s, asynchronous ${ASYNC_TIMEOUT_SECONDS}s)`);
+  } else if (typeof hd.timeout !== 'number' || !Number.isFinite(hd.timeout) || hd.timeout <= 0) {
+    errors.push(`${label}: 'timeout' must be a positive finite number of seconds, got ${describeJsValue(hd.timeout)}`);
+  } else if (hd.async === true) {
+    if (hd.timeout !== ASYNC_TIMEOUT_SECONDS) {
+      errors.push(`${label}: asynchronous registration (async: true) must declare timeout: ${ASYNC_TIMEOUT_SECONDS}, got ${describeJsValue(hd.timeout)}`);
+    }
+  } else if ('async' in hd && typeof hd.async !== 'boolean') {
+    errors.push(`${label}: 'async' must be a boolean, got ${describeJsValue(hd.async)}`);
+  } else if (hd.timeout !== SYNC_TIMEOUT_SECONDS) {
+    errors.push(`${label}: synchronous registration must declare timeout: ${SYNC_TIMEOUT_SECONDS} (async: ${ASYNC_TIMEOUT_SECONDS}), got ${describeJsValue(hd.timeout)}`);
+  }
+  if ('onFailure' in hd) {
+    if (!ON_FAILURE_VALUES.has(hd.onFailure)) {
+      errors.push(`${label}: 'onFailure' must be one of block|warn|disable (hooks reference vocabulary), got ${describeJsValue(hd.onFailure)}`);
+    } else if (hd.onFailure === 'block' && event !== 'PreToolUse') {
+      errors.push(`${label}: onFailure:"block" is allowed only on the shared PreToolUse shell-policy registrations (ADR 0011), found on '${event}'`);
+    }
+  }
+  return errors;
+}
+
+/**
+ * PreToolUse shell-policy parity (task 03 / F09 / ADR 0011): both shell tool
+ * matchers must get the shared blocker registration, each carrying
+ * onFailure:"block" and routing the shell policy with --matcher Bash.
+ */
+function shellPolicyErrors(hooks) {
+  const errors = [];
+  const pre = Array.isArray(hooks.PreToolUse) ? hooks.PreToolUse : [];
+  const byMatcher = new Map();
+  for (const rec of pre) {
+    if (rec && typeof rec.matcher === 'string') byMatcher.set(rec.matcher, rec);
+  }
+  for (const shellMatcher of SHELL_POLICY_MATCHERS) {
+    const rec = byMatcher.get(shellMatcher);
+    if (!rec) {
+      errors.push(`PreToolUse must register the shared shell-policy blocker for the ${shellMatcher} matcher (Bash/PowerShell parity, ADR 0011)`);
+      continue;
+    }
+    const hookDefs = Array.isArray(rec.hooks) ? rec.hooks : [];
+    if (!hookDefs.some((hd) => hd && hd.onFailure === 'block')) {
+      errors.push(`PreToolUse '${shellMatcher}' shell-policy registration must carry onFailure:"block" (an unrunnable handler cannot decide advisory vs enforce — ADR 0011)`);
+    }
+    if (shellMatcher === 'PowerShell') {
+      const routesBashPolicy = hookDefs.some((hd) => {
+      if (!hd || !Array.isArray(hd.args)) return false;
+      const i = hd.args.indexOf('--matcher');
+      return i >= 0 && hd.args[i + 1] === 'Bash';
+    });
+      if (!routesBashPolicy) {
+        errors.push(`PreToolUse 'PowerShell' registration must route the shared shell policy with --matcher Bash`);
       }
     }
-    const expected = new Set(EXPECTED_COMMANDS);
-    if (actual.size !== expected.size || [...actual].some((x) => !expected.has(x)))
-      reportError(`${label} does not match the bundled slash-command inventory: ${file}`);
-    else console.log(`OK: ${label}`);
   }
-  compareCommandLists(join(REPO_ROOT, 'README.md'), 'README slash-command list', '### Slash commands', '### Required handoffs');
+  return errors;
+}
+
+/**
+ * Pure validator for the plugin manifest userConfig shape. Contract keys are
+ * required with typed, in-domain defaults; UNKNOWN keys fail the repo gate
+ * (the packaged smoke stays looser for the compatibility window).
+ */
+export function validateUserConfigShape(userConfig) {
+  if (userConfig === undefined) {
+    return [`plugin userConfig missing: expected ${USER_CONFIG_CONTRACT_KEYS.join(', ')}`];
+  }
+  if (userConfig === null || typeof userConfig !== 'object' || Array.isArray(userConfig)) {
+    return [`plugin userConfig must be an object mapping config keys to definitions, got ${describeJsValue(userConfig)}`];
+  }
+  const errors = [];
+  const keys = Object.keys(userConfig);
+  const allowed = [...USER_CONFIG_CONTRACT_KEYS];
+  const unknown = keys.filter((k) => !allowed.includes(k));
+  if (unknown.length) {
+    errors.push(`unknown userConfig key(s): ${unknown.join(', ')} (allowed: ${allowed.join(', ')})`);
+  }
+  const missing = USER_CONFIG_CONTRACT_KEYS.filter((k) => !keys.includes(k));
+  if (missing.length) {
+    errors.push(`plugin userConfig missing contract key(s): ${missing.join(', ')} (contract: ${USER_CONFIG_CONTRACT_KEYS.join(', ')})`);
+  }
+  USER_CONFIG_CONTRACT_KEYS.forEach((key) => {
+    const def = keys.includes(key) ? userConfig[key] : null;
+    if (!def || typeof def !== 'object' || Array.isArray(def)) return;
+    if (key === 'enforcement_mode') {
+      if (def.type !== undefined && def.type !== 'string') {
+        errors.push(`userConfig.enforcement_mode type must be "string", got ${describeJsValue(def.type)}`);
+      }
+      if ('default' in def && !ENFORCEMENT_MODE_VALUES.has(def.default)) {
+        errors.push(`userConfig.enforcement_mode default must be one of advisory|enforce, got ${describeJsValue(def.default)}`);
+      }
+    }
+    if (key === 'log_max_bytes' || key === 'ledger_max_bytes') {
+      if (def.type !== undefined && def.type !== 'number') {
+        errors.push(`userConfig.${key} type must be "number", got ${describeJsValue(def.type)}`);
+      }
+      if ('default' in def && (typeof def.default !== 'number' || !Number.isFinite(def.default) || def.default <= 0)) {
+        errors.push(`userConfig.${key} default must be a positive finite byte threshold, got ${describeJsValue(def.default)}`);
+      }
+    }
+    if (key === 'workflow_profile') {
+      if (def.type !== undefined && def.type !== 'string') {
+        errors.push(`userConfig.workflow_profile type must be "string", got ${describeJsValue(def.type)}`);
+      }
+      if ('default' in def && (typeof def.default !== 'string' || !WORKFLOW_PROFILE_VALUES.has(def.default))) {
+        errors.push(`userConfig.workflow_profile default must be one of legacy|lean, got ${describeJsValue(def.default)}`);
+      }
+    }
+  });
+  return errors;
+}
+
+// ---------- plugin manifest contract (repo gate) ----------
+/**
+ * Repo-facing check: validate the SOURCE plugin manifest pair
+ * (hooks/hooks.json + .claude-plugin/plugin.json) with the same pure
+ * validators test/validators drives; the packaged tier (install smoke) keeps
+ * its own compat-window stance.
+ */
+function checkPluginManifestContract() {
+  console.log('--- Checking plugin hook manifest + userConfig contract ---');
+  const hooksPath = join(REPO_ROOT, 'plugins', 'agnthive', 'hooks', 'hooks.json');
+  const pluginManifestPath = join(REPO_ROOT, 'plugins', 'agnthive', '.claude-plugin', 'plugin.json');
+  let hookErrors = [];
+  try {
+    hookErrors = validateHookManifestStructure(JSON.parse(readFileSync(hooksPath, 'utf-8')));
+  } catch (e) {
+    hookErrors = [`hooks manifest ${relative(REPO_ROOT, hooksPath)} is missing or not parseable JSON: ${e.message}`];
+  }
+  if (hookErrors.length === 0) {
+    console.log('OK: hooks.json event vocabulary, nested records, exec form, single dispatcher, timeout/onFailure policy, PowerShell parity');
+  } else {
+    for (const e of hookErrors) reportError(e);
+  }
+  let ucErrors = [];
+  try {
+    const pluginManifest = JSON.parse(readFileSync(pluginManifestPath, 'utf-8'));
+    ucErrors = validateUserConfigShape(pluginManifest.userConfig);
+  } catch (e) {
+    ucErrors = [`plugin manifest ${relative(REPO_ROOT, pluginManifestPath)} is missing or not parseable JSON: ${e.message}`];
+  }
+  if (ucErrors.length === 0) {
+    console.log('OK: plugin.json userConfig contract keys + value domains');
+  } else {
+    for (const e of ucErrors) reportError(e);
+  }
   console.log('');
 }
 
@@ -677,6 +1024,11 @@ function checkPluginInstallSmoke() {
 
 // ---------- main ----------
 function main() {
+  // Anchor the process at the repo root for anything that resolves relative
+  // paths (imported test harnesses and fixture readers); pure validators take
+  // parsed data, so nothing in this file requires the anchor — except main().
+  process.chdir(REPO_ROOT);
+
   console.log('=== Validation Script ===');
   console.log(`Repository: ${REPO_ROOT}`);
   console.log('');
@@ -684,7 +1036,8 @@ function main() {
   checkWorkflowSyntax();
   checkAgentFrontmatter();
   checkSkillFrontmatter();
-  checkSlashCommandInventory();
+   checkSlashCommandInventory();
+  checkPluginManifestContract();
   checkWorkflowPolicy();
   checkNode24Readiness();
   checkNotificationDocs();
@@ -700,4 +1053,11 @@ function main() {
   process.exit(1);
 }
 
-main();
+// Cross-platform main-module detection (same pattern as
+// scripts/plugin-install-smoke.mjs): test/validators tests import this module
+// for its exported contract validators and constants, so main() must only run
+// when validate.mjs is the entry script. pathToFileURL normalizes argv[1] to a
+// file:// URL comparable to import.meta.url on all platforms (Windows drive
+// paths included).
+const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isMain) main();

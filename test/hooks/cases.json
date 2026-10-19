@@ -542,7 +542,7 @@
     "seed_state": "test/hooks/fixtures/state_subagent_start_duplicate_tester.json",
     "expect_exit": 0,
     "stdout_jq": ".hookSpecificOutput.hookEventName == \"SubagentStart\" and (.hookSpecificOutput.additionalContext | contains(\"@t\"))",
-    "state_jq": ".subagent_start_count == 2 and .subagents_started == [\"t\"] and .subagent_instance_count_by_role.t == 2 and (.subagent_events | length) == 2"
+    "state_jq": ".subagent_start_count == 2 and .subagents_started == [\"t\"] and .subagent_instance_count_by_role.t == 2 and (.subagent_events | length) == 2 and .agents.t1.status == \"running\" and .agents.t2.starts == 1"
   },
   {
     "name": "subagent_start_tracks_parallel_same_role_instances_with_distinct_scope",
@@ -551,7 +551,7 @@
     "seed_state": "test/hooks/fixtures/state_subagent_start_first_explorer_scope.json",
     "expect_exit": 0,
     "stdout_jq": ".hookSpecificOutput.hookEventName == \"SubagentStart\" and (.hookSpecificOutput.additionalContext | contains(\"Parallel same-role handoffs are allowed\"))",
-    "state_jq": ".subagent_start_count == 2 and .subagents_started == [\"e\"] and .subagent_instance_count_by_role.e == 2 and (.subagent_events | length) == 2 and .subagent_events[0].purpose == \"Trace workflow A\" and .subagent_events[1].purpose == \"Trace workflow B\""
+    "state_jq": ".subagent_start_count == 2 and .subagents_started == [\"e\"] and .subagent_instance_count_by_role.e == 2 and (.subagent_events | length) == 2 and .subagent_events[0].purpose == \"Trace workflow A\" and .subagent_events[1].purpose == \"Trace workflow B\" and .agents.e1.status == \"running\" and .agents.e2.starts == 1"
   },
   {
     "name": "subagent_start_supports_tool_input_agent_name",

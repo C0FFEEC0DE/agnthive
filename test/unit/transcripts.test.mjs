@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import {
   tailJsonlLines, extractLastAssistantMessageFromJsonlStream,
   extractLastAssistantMessageFromTranscript, resolvedLastAssistantMessage,
-  transcriptIndicatesBackgroundedAgent,
+  transcriptIndicatesBackgroundedAgent, resolveSubagentReport,
 } from '../../plugins/agnthive/modules/transcripts.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -104,4 +104,48 @@ test('backgrounded: false for review_agent_started fixture', () => {
 test('backgrounded: false for missing path', () => {
   assert.equal(transcriptIndicatesBackgroundedAgent(''), false);
   assert.equal(transcriptIndicatesBackgroundedAgent('/no/such.jsonl'), false);
+});
+// --- ADR 0010 report ownership (plan 06.3) ---------------------------------
+
+test('resolveSubagentReport prefers delivered report data and stamps agentId', () => {
+  const r = resolveSubagentReport({ agentId: 'w1', data: { report: 'Outcome: DONE, all tests pass' } });
+  assert.deepEqual(r, { source: 'handback', text: 'Outcome: DONE, all tests pass', agentId: 'w1' });
+  const m = resolveSubagentReport({ agentId: 'w2', data: { message: { text: 'Message object text' } } });
+  assert.equal(m.source, 'handback');
+  assert.equal(m.text, 'Message object text');
+});
+
+test('resolveSubagentReport probes message content arrays without inventing fields', () => {
+  const r = resolveSubagentReport({ data: { message: { content: [{ type: 'text', text: 'from content' }] } } });
+  assert.equal(r.source, 'handback');
+  assert.equal(r.text, 'from content');
+  const n = resolveSubagentReport({ data: { result: 42 } });
+  assert.deepEqual(n, { source: 'unknown', text: '', agentId: null });
+});
+
+test('resolveSubagentReport: transcript fallback and parent exclusion', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'resolve-report-'));
+  const agentPath = join(dir, 'agent.jsonl');
+  writeFileSync(agentPath, JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [{ text: 'Subagent final reply' }] } }) + '\n');
+  const parentPath = join(dir, 'parent.jsonl');
+  writeFileSync(parentPath, JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [{ text: 'PARENT MUST NOT LEAK' }] } }) + '\n');
+  const viaAgent = resolveSubagentReport({ agentId: 'w1', agentTranscriptPath: agentPath });
+  assert.deepEqual(viaAgent, { source: 'subagent_transcript', text: 'Subagent final reply', agentId: 'w1' });
+  const parentOnly = resolveSubagentReport({ agentId: 'w2', transcriptPath: parentPath });
+  assert.deepEqual(parentOnly, { source: 'unknown', text: '', agentId: 'w2' });
+  const optIn = resolveSubagentReport({ agentId: 'w2', transcriptPath: parentPath }, null, { allowParentTranscript: true });
+  assert.equal(optIn.source, 'parent_transcript');
+  assert.equal(optIn.text, 'PARENT MUST NOT LEAK');
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('resolveSubagentReport accepts the raw payload and data.agent_transcript_path', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'resolve-report-'));
+  const agentPath = join(dir, 'agent2.jsonl');
+  writeFileSync(agentPath, JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [{ text: 'Raw path reply' }] } }) + '\n');
+  const r = resolveSubagentReport({ agent_id: 'x7', agent_transcript_path: agentPath });
+  assert.equal(r.source, 'subagent_transcript');
+  assert.equal(r.text, 'Raw path reply');
+  assert.equal(r.agentId, 'x7');
+  rmSync(dir, { recursive: true, force: true });
 });

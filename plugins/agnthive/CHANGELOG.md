@@ -10,6 +10,97 @@ profile history; entries here begin with the plugin.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-19
+
+Feature set from the 2026-10-19 harness modernization plan (ADR 0008–0013).
+Lean is shipped **experimental** with `legacy` still the default profile; the
+default flips only after the ADR 0012 outcome benchmark passes its rollout
+gate (no live outcome-benchmark run was executed in this release cycle, so
+the gate has not been exercised — see plan task 14; a bounded exploration
+with a local model is possible but was not run). Compatibility-agent
+removal (plan task 16) is deferred to the dedicated compatibility window.
+
+### Added
+
+- **Verification evidence model (ADR 0009, plan task 04).** Verification is
+  append-only state: `verification[]` records (`{id, kind, command, toolUseId,
+  status pending|passed|failed|unknown, startedRevision, completedRevision,
+  cwd, exitStatus, signal, source}`) plus `revision` / `fs_revision_hint`.
+  A launched run is pending, an unknown outcome is never passed, and a later
+  code/config edit invalidates earlier verification. Completed reviews land in
+  `review_results[]`; the docs decision field is reserved (writer lands with
+  the docs-flow task).
+- **Task + agent lifecycle identity (ADR 0010, plan tasks 05–06).** Task
+  identity is separate from prompt identity (`task_id`, `active_task`,
+  explicit start/continue/complete transitions); a re-delivered `prompt_id`
+  is deduped instead of resetting state; siblings keep their counters outside
+  task boundaries. Agents are tracked in an `agents{}` registry keyed by
+  stable agent id (`starts` counts events, not instances); forks and
+  foreign-namespace types never inherit the footer contract.
+- **Failure policy classes (ADR 0011, plan task 08).** Events are classed
+  `enforce` / `guidance` / `telemetry`; a failed enforce handler blocks with a
+  diagnostic, advisory stays neutral (no blanket allow), telemetry failures
+  are nonblocking. Every hook registration declares a `timeout` (`10s` sync /
+  `30s` async) and the shared PreToolUse shell-policy registration carries
+  `onFailure: "block"`.
+- **PowerShell parity (plan task 03).** `hooks.json` registers a native
+  `PowerShell` matcher for the PreToolUse safety policy and PostToolUse
+  verification routing; `PermissionDenied` now emits the event-specific
+  `hookSpecificOutput: { hookEventName: "PermissionDenied", retry }` envelope
+  instead of the legacy bare `{ retry }` shorthand.
+- **StopFailure telemetry + bounded compact logging (ADR 0013, plan task 07).**
+  Ledger restoration moved to `SessionStart` `compact`/`resume` (bounded
+  task/revision summary + ledger path, once per restoration cycle); PostCompact
+  records are metadata-only by default with the
+  `AGNTHIVE_VERBOSE_COMPACT_LOG=1` opt-in for bounded summary text; the
+  `Notification` stream records `notification_type` (bridging the legacy
+  `subtype` alias) plus `agent_id`/`prompt_id` correlation ids; `StopFailure`
+  writes bounded `stop-failure.jsonl` records — API error text is never logged.
+- **`workflow_profile` selector (plan task 11, experimental).**
+  `userConfig.workflow_profile` (`legacy` default) / `AGNTHIVE_WORKFLOW_PROFILE`
+  selects the gate shape: lean drops role quotas, the Manager-idle gate, and
+  footer blocking while keeping the current-verification and review gates; a
+  non-empty invalid value falls back to `legacy` with a stderr note. Legacy
+  behavior is byte-stable.
+- **Benchmark evidence from plugin state (ADR 0009/0010/0012, plan task 09).**
+  `scripts/bench_runner_claude_code.mjs` reads the plugin's per-session event
+  store through the shared runtime reader (provenance recorded, strict session
+  match); plugin-state registry roles are the authoritative observed tier,
+  debug-log phrases are demoted to claimed, and revision-scoped
+  `verification[]`/`review_results[]` records back the verification/review
+  gates (`verification_evidence_missing` / `review_evidence_missing`).
+- **Outcome benchmark suite (ADR 0012, plan task 10).** `bench/tasks/outcomes/`
+  (schema + emitter + 9 end-state tasks + pinned seeds): outcome scoring
+  without mandatory roles, mock-first evaluation, per-arm metrics, and
+  `gate_inputs` for the lean-default rollout decision. See
+  `docs/benchmarking.md` → *Outcome Suite (ADR-0012)*.
+- **Runtime contract fixtures (plan task 02).** `test/compatibility/` pins
+  event-specific output classes (4 active entries, 12 `pending_capture`
+  awaiting live canaries; synthetic payloads never claim `captured`).
+
+### Changed
+
+- **Role simplification (ADR 0008, plan task 12).** Three primary specialists
+  (`@e`, `@dbg`, `@cr`); `/manager`, `/explore`, `/bug`, `/debug`, `/test`,
+  `/design`, `/refactor`, `/docs` are root procedures; `/review` stays the only
+  forked specialist skill. Manager/Architect/Tester/Docwriter/Bugbuster remain
+  as deprecated compatibility agents for explicit legacy workflows.
+- **Validators (plan task 13).** `scripts/validate.mjs` enforces the hooks
+  event vocabulary with `StopFailure`, `timeout`/`onFailure` policy, PowerShell
+  matcher parity, the `userConfig` contract including `workflow_profile`
+  (`legacy|lean`), and the agent-backed skill inventory (`['review']`);
+  negative fixtures assert the drift cases.
+- **Bench runner plumbing.** Per-(task, rep) records carry `rep`, token usage,
+  cost (only when the provider reports it), and outcome predicate results;
+  `evidence.json` and `evidence_provenance` artifacts land per run.
+
+### Deferred
+
+- **Compatibility debt removal (plan task 16)** — after the compatibility
+  window.
+- **Lean default flip** — requires the ADR 0012 outcome-benchmark gate; no
+  live outcome run exists yet (task 14), so no cost or quality claim is made.
+
 ## [0.3.0] - 2026-08-17
 
 ### Added

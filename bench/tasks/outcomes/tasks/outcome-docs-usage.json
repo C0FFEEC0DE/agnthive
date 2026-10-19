@@ -1,0 +1,73 @@
+{
+  "schema_kind": "outcome-task-v1",
+  "suite": "outcomes",
+  "related_agents": [
+    "doc"
+  ],
+  "required_transcript_patterns": [],
+  "required_used_agents": [],
+  "required_used_agent_groups": [],
+  "forbidden_transcript_patterns": [],
+  "forbidden_doc_patterns": [],
+  "id": "outcome-docs-usage",
+  "title": "Document the rendered-report usage",
+  "category": "docs",
+  "fixture": "text-report",
+  "budget_class": "small",
+  "coverage_tags": [
+    "docs-only"
+  ],
+  "arms": [
+    "native",
+    "legacy",
+    "lean"
+  ],
+  "verification_required": false,
+  "docs_required": true,
+  "review_required": false,
+  "prompt": "Write usage documentation for the seeded text reporter in the fixture README.md: a Usage section that shows the exported render functions with one call example per function, including renderMetric. Document behavior only from the seed source; do not touch any source file, the README is the only file you may change.",
+  "success_criteria": [
+    "README.md gains a Usage section naming each exported render function",
+    "each documented call example matches the real behavior in reporter.mjs",
+    "only README.md changed"
+  ],
+  "must_not": [
+    "do not run release or deploy automation (the profile keeps it disabled)",
+    "do not edit files outside the declared task scope",
+    "do not weaken or delete existing tests to make the task pass"
+  ],
+  "expected_outcome": {
+    "predicates": [
+      {
+        "id": "initial-reporter-surface",
+        "kind": "initial_file_matches",
+        "evaluate_in": "mock",
+        "where": "fixture",
+        "path": "reporter.mjs",
+        "pattern": "renderMetric"
+      },
+      {
+        "id": "usage-section",
+        "kind": "file_matches",
+        "evaluate_in": "live",
+        "path": "README.md",
+        "pattern": "^## Usage"
+      },
+      {
+        "id": "usage-renders-metric",
+        "kind": "file_matches",
+        "evaluate_in": "live",
+        "path": "README.md",
+        "pattern": "renderMetric"
+      },
+      {
+        "id": "scope-readme-only",
+        "kind": "changed_paths_within",
+        "evaluate_in": "live",
+        "allow": [
+          "README.md"
+        ]
+      }
+    ]
+  }
+}

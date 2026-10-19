@@ -1,7 +1,7 @@
 // Shared helpers for the Node benchmark CLIs.
 // Node standard library only — no Python, Bash, jq, or external deps.
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 
@@ -301,7 +301,220 @@ export function runSync(cmd, argv, opts = {}) {
   return spawnSync(cmd, argv, { encoding: 'utf-8', ...opts });
 }
 
+// ---------- ADR-0009/0010 structured plugin-state evidence helpers ----------
+// Bench runners must evaluate evidence from the plugin's structured session
+// state (event store) rather than reconstructing success from transcript prose
+// (ADR 0009) or debug-log phrases (ADR 0012: "Debug phrases, aliases, and
+// result prose remain claims, never authoritative dispatch evidence"). These
+// helpers are PURE — the importing runner supplies canonicalize callbacks and
+// reads the state store itself, so this shared module stays dependency-free.
+
+/**
+ * rolesFromPluginState: observed specialist roles carried by plugin state.
+ * Sources inside the state record:
+ *   - state.agents (ADR-0010 agent registry, keyed by stable agent id, roles
+ *     already canonicalized by the runtime's alias map) — entries with a null
+ *     role (foreign/fork/unrecognized) are skipped by canonicalize returning
+ *     null;
+ *   - state.subagents_started (the canonical roles recorded on SubagentStart
+ *     hooks; also real hook data, used when the runtime version predates the
+ *     registry).
+ * Canonicalization happens through the caller's callback so this module stays
+ * pure and the alias contract stays single-sourced. Output is deduped and
+ * sorted so the list is deterministic regardless of registry insert order.
+ * Returns [] for missing/malformed state (callers treat empty as
+ * "no structured role evidence", falling back to the legacy path).
+ */
+export function rolesFromPluginState(state, canonicalize) {
+  if (!state || typeof state !== 'object') return [];
+  const roles = new Set();
+  const add = (raw) => {
+    const alias = canonicalize ? canonicalize(raw) : raw;
+    if (typeof alias === 'string' && alias !== '') roles.add(alias);
+  };
+  const registry = (state.agents && typeof state.agents === 'object' && !Array.isArray(state.agents))
+    ? state.agents : {};
+  // Sorted key iteration keeps the traversal deterministic; the same role from
+  // different agent ids dedupes below.
+  for (const agentId of Object.keys(registry).sort()) {
+    const record = registry[agentId];
+    if (record && typeof record === 'object') add(record.role);
+  }
+  const started = Array.isArray(state.subagents_started) ? state.subagents_started : [];
+  for (const role of started) add(role);
+  return [...roles].sort();
+}
+
+/**
+ * verificationEvidenceFromStateRecords: evaluate ADR-0009 verification[] records
+ * against the CURRENT change revision. A record counts as verification evidence
+ * only when it is a completed check whose started and completed revision both
+ * equal the current revision (a result started before a parallel edit cannot
+ * certify the later state) and — when the record carries a cwd — that cwd is
+ * the evaluated working directory (results from another worktree do not
+ * certify this diff). A record with no recorded cwd (older writer) is accepted
+ * on revision scope alone and reported in `unrecorded_cwd_record_ids`.
+ * Returns a bounded object (record ids, counts) — never record payloads.
+ */
+export function verificationEvidenceFromStateRecords(records, { currentRevision = 0, workdir = '' } = {}) {
+  const list = Array.isArray(records) ? records : [];
+  const target = typeof workdir === 'string' ? workdir : '';
+  const cwdChecked = target !== '';
+  const sameFile = (a, b) => resolve(String(a)) === resolve(String(b));
+  const diagnostics = [];
+  const passedRecordIds = [];
+  let parsedCount = 0;
+  let pendingCount = 0;
+  let failedCount = 0;
+  let staleCount = 0;
+  let foreignCwdCount = 0;
+  let unrecordedCwdCount = 0;
+  for (const rec of list) {
+    if (!rec || typeof rec !== 'object') continue;
+    parsedCount++;
+    const id = (typeof rec.id === 'string' && rec.id !== '') ? rec.id : `index-${parsedCount - 1}`;
+    if (rec.status === 'pending') {
+      pendingCount++;
+      diagnostics.push(`record ${id}: pending`);
+      continue;
+    }
+    if (rec.status === 'failed') {
+      failedCount++;
+      diagnostics.push(`record ${id}: failed`);
+      continue;
+    }
+    if (rec.status !== 'passed') {
+      diagnostics.push(`record ${id}: unknown status ${JSON.stringify(String(rec.status).slice(0, 32))}`);
+      continue;
+    }
+    // ADR-0009: a completed check certifies only the revision it observed end
+    // to end — started and completed must both equal the current revision.
+    const started = Number(rec.startedRevision);
+    const completed = Number(rec.completedRevision);
+    const cur = Number(currentRevision);
+    const revisionScoped = Number.isFinite(started) && Number.isFinite(completed)
+      && Number.isFinite(cur) && started === cur && completed === cur;
+    if (!revisionScoped) {
+      staleCount++;
+      diagnostics.push(`record ${id}: not current-revision (started=${describeRevision(rec.startedRevision)}, completed=${describeRevision(rec.completedRevision)}, current=${describeRevision(currentRevision)})`);
+      continue;
+    }
+    const cwd = typeof rec.cwd === 'string' ? rec.cwd : '';
+    if (cwdChecked && cwd !== '') {
+      if (!sameFile(cwd, target)) {
+        // The result ran in a different working tree — it does not certify
+        // this diff even though its revision matches.
+        foreignCwdCount++;
+        diagnostics.push(`record ${id}: foreign cwd (${truncateCell(cwd, 80)})`);
+        continue;
+      }
+    } else if (cwd === '') {
+      // Older runtime writer predating cwd capture: accept on revision scope
+      // alone, but surface the gap instead of silently crediting it.
+      unrecordedCwdCount++;
+      diagnostics.push(`record ${id}: passed with no recorded cwd (legacy writer)`);
+    }
+    passedRecordIds.push(id);
+  }
+  if (!cwdChecked) diagnostics.push('cwd not checked: no workdir supplied');
+  return {
+    has_records: parsedCount > 0,
+    record_count: parsedCount,
+    passed_record_ids: passedRecordIds.slice(0, 50),
+    passed_record_count: passedRecordIds.length,
+    pending_count: pendingCount,
+    failed_count: failedCount,
+    stale_count: staleCount,
+    foreign_cwd_count: foreignCwdCount,
+    unrecorded_cwd_count: unrecordedCwdCount,
+    current: passedRecordIds.length > 0,
+    cwd_checked: cwdChecked,
+    source: 'plugin_state',
+    diagnostics: diagnostics.slice(0, 40),
+  };
+}
+
+/**
+ * reviewEvidenceFromStateRecords: evaluate ADR-0009 review_results[] records
+ * against the current revision. A review record counts only when the reviewing
+ * role is one of `reviewerRoles` (canonical aliases, e.g. ['cr']) and the
+ * record's revision equals the current revision — a review of an earlier diff
+ * does not certify the final state. Returns a bounded object.
+ */
+export function reviewEvidenceFromStateRecords(records, { currentRevision = 0, reviewerRoles = ['cr'] } = {}) {
+  const list = Array.isArray(records) ? records : [];
+  const roles = Array.isArray(reviewerRoles) ? reviewerRoles.filter((r) => typeof r === 'string' && r !== '') : [];
+  const diagnostics = [];
+  const completedRecordIds = [];
+  let parsedCount = 0;
+  let wrongRoleCount = 0;
+  let staleCount = 0;
+  let unknownStatusCount = 0;
+  for (const rec of list) {
+    if (!rec || typeof rec !== 'object') continue;
+    parsedCount++;
+    const id = (typeof rec.id === 'string' && rec.id !== '') ? rec.id : `index-${parsedCount - 1}`;
+    const role = (typeof rec.role === 'string' && rec.role !== '') ? rec.role : null;
+    if (role === null || !roles.includes(role)) {
+      wrongRoleCount++;
+      diagnostics.push(`record ${id}: role ${role ? `@${truncateCell(role, 24)}` : '(none)'} not a reviewer role`);
+      continue;
+    }
+    const revision = Number(rec.revision);
+    const cur = Number(currentRevision);
+    if (!Number.isFinite(revision) || !Number.isFinite(cur) || revision !== cur) {
+      staleCount++;
+      diagnostics.push(`record ${id}: reviewed revision ${describeRevision(rec.revision)} != current ${describeRevision(currentRevision)}`);
+      continue;
+    }
+    if (rec.status !== 'completed' && rec.status !== 'passed') {
+      unknownStatusCount++;
+      diagnostics.push(`record ${id}: status ${JSON.stringify(String(rec.status).slice(0, 32))}`);
+      continue;
+    }
+    completedRecordIds.push(id);
+  }
+  return {
+    has_records: parsedCount > 0,
+    record_count: parsedCount,
+    completed_record_ids: completedRecordIds.slice(0, 50),
+    completed_record_count: completedRecordIds.length,
+    wrong_role_count: wrongRoleCount,
+    stale_count: staleCount,
+    unknown_status_count: unknownStatusCount,
+    current: completedRecordIds.length > 0,
+    reviewer_roles: roles,
+    source: 'plugin_state',
+    diagnostics: diagnostics.slice(0, 40),
+  };
+}
+
+/** Short description for a revision value in diagnostics. */
+function describeRevision(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? String(n) : JSON.stringify(value == null ? null : String(value).slice(0, 24));
+}
+
 // ---------- benchmark gate-line split ----------
+
+/**
+ * registryRunningRoles (ADR-0010): roles with at least one agent-registry
+ * entry whose status is 'running' — a reviewer recorded as still running is a
+ * diagnostic signal for the review evidence gate. Pure; sorted output.
+ */
+export function registryRunningRoles(state) {
+  const registry = (state && state.agents && typeof state.agents === 'object' && !Array.isArray(state.agents))
+    ? state.agents : {};
+  const running = new Set();
+  for (const record of Object.values(registry)) {
+    if (record && record.status === 'running' && typeof record.role === 'string' && record.role !== '') {
+      running.add(record.role);
+    }
+  }
+  return [...running].sort();
+}
+// ---------- benchmark gate-line split ----------
+
 // Stage 6 of the subagent-dispatch stabilization plan splits the CI result
 // into three explicitly named lines:
 //   - functional         : fix + verification + review/docs/structure correct

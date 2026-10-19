@@ -70,7 +70,7 @@
         "stdin": "test/hooks/fixtures/subagent_start_code_reviewer.json",
         "expect_exit": 0,
         "stdout_jq": ".hookSpecificOutput.hookEventName == \"SubagentStart\" and (.hookSpecificOutput.additionalContext | contains(\"@cr\"))",
-        "state_jq": ".subagent_start_count == 1 and .subagents_started == [\"cr\"]"
+        "state_jq": ".subagent_start_count == 1 and .subagents_started == [\"cr\"] and .agents.cr1.status == \"running\" and .agents.cr1.role == \"cr\""
       },
       {
         "name": "subagent_start_explorer_scope",
@@ -78,7 +78,7 @@
         "stdin": "test/hooks/fixtures/subagent_start_second_explorer_scope.json",
         "expect_exit": 0,
         "stdout_jq": ".hookSpecificOutput.hookEventName == \"SubagentStart\" and (.hookSpecificOutput.additionalContext | contains(\"Parallel same-role handoffs are allowed\"))",
-        "state_jq": ".subagent_start_count == 2 and (.subagents_started | sort) == [\"cr\", \"e\"] and .subagent_instance_count_by_role.cr == 1 and .subagent_instance_count_by_role.e == 1 and (.subagent_events | length) == 2"
+        "state_jq": ".subagent_start_count == 2 and (.subagents_started | sort) == [\"cr\", \"e\"] and .subagent_instance_count_by_role.cr == 1 and .subagent_instance_count_by_role.e == 1 and (.subagent_events | length) == 2 and .agents.cr1.status == \"running\" and .agents.e2.role == \"e\""
       },
       {
         "name": "task_completed_allows_with_verification_and_roles",

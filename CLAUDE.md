@@ -18,6 +18,11 @@ This profile is hook-gated:
 - bugfix work requires successful verification or `@t`, plus `@cr` and one of `@bug|@e|@dbg`
 - refactor work requires successful verification or `@t`, plus `@cr` and one of `@a|@e`
 - review work requires `@cr`; docs work requires `@doc`
+- those are the legacy-profile role gates: completion evidence is the append-only `verification[]` records (pending/passed/failed/unknown, scoped to the current change revision — a launched run is not a pass, and a later edit invalidates earlier verification) plus `review_results[]` and the `agents{}` registry (ADR 0009/0010); transcript text and footer prose are claims, not completion evidence
+- UserPromptSubmit dedupes a re-delivered `prompt_id` and runs explicit task transitions (start/continue/complete), so background returns and sibling handoffs do not erase an open task's required roles or counters (ADR 0010)
+- hook events are classed enforce / guidance / telemetry (ADR 0011): a failed enforce handler blocks with a diagnostic, advisory stays neutral (no blanket allow), telemetry failures are nonblocking; `PermissionDenied` emits the `hookSpecificOutput {hookEventName: 'PermissionDenied', retry}` envelope; every registration carries a timeout and the shared Bash/PowerShell PreToolUse safety registration carries `onFailure: "block"`
+- `StopFailure` is telemetry only: one bounded `stop-failure.jsonl` record (`ts`, `session_id`, `error_name`, `exit_code`, `signal`, `agent_id`) per observed turn failure; API error text is never logged and a failed turn never counts as completion
+- the lean workflow profile is experimental and selected by `userConfig.workflow_profile` (default `legacy`; `AGNTHIVE_WORKFLOW_PROFILE` overrides): it relaxes role quotas, the Manager-idle gate, and footer blocks while keeping current-verification and review gates; the default flips only after the ADR 0012 outcome benchmark gate
 - broad multi-file or workflow review should usually use `@e` before `@cr`, even though only `@cr` is hook-enforced
 - footer and stop-guard formatting are internal protocol details; agents should not expose prefix-matching or footer-repair chatter to the user
 
@@ -39,7 +44,7 @@ See `plugins/agnthive/README.md` for requirements, configuration, and the option
 
 - `/manager`, `/explore`, `/bug`, `/debug`, `/test`, `/design`, `/refactor`, `/review`, `/docs`
 
-Commands `/manager`, `/explore`, `/bug`, `/debug`, `/test`, `/design`, `/refactor`, `/review` and the `/docs` skill invoke specialized agents.
+Commands `/explore`, `/bug`, `/debug`, `/test`, `/design`, `/refactor` and the `/docs` skill are root-session procedures (ADR 0008): they run in the root and delegate to a specialist only when the work earns isolation. `/manager` is the root orchestration procedure and does not spawn a Manager agent. `/review` is the only forked specialist skill — it dispatches the Code Reviewer in a read-only subagent.
 
 ## Agents
 
@@ -52,6 +57,8 @@ Commands `/manager`, `/explore`, `/bug`, `/debug`, `/test`, `/design`, `/refacto
 - `@cr` — Code Reviewer (review)
 - `@doc` — Docwriter (documentation)
 
+Primary specialists per ADR 0008 (implemented 0.4.0): `@e`, `@dbg`, `@cr`. Manager/Architect/Tester/Docwriter/Bugbuster are deprecated compatibility agents kept for explicit legacy workflows, removed after the compatibility window (plan task 16).
+
 Subagent handoffs normalize aliases, names, and subagent-type fields from both snake_case and camelCase payloads before generic runtime types are considered. Generic Task tool types (`general-purpose`, `workflow-subagent`) are filtered from role enforcement since they are tool dispatch types, not agent roles.
 Transcript fallback also recognizes slash-skill loads, agent launch lines like `Code Reviewer(...)`, and `@alias` patterns like `@cr`, `@e`, `@nerd`, `@toxic-senior`, or `@paranoid` when runtimes omit explicit `SubagentStart`.
 
@@ -62,7 +69,7 @@ Transcript fallback also recognizes slash-skill loads, agent launch lines like `
 - `docs/benchmarking.md` — benchmark architecture, slot-gate mechanism, local usage, and required GitHub setup
 - `plugins/agnthive/references/agent-contracts.md` — contract matrix for benchmark/hook layers per agent role
 
-Plugin skills under `plugins/agnthive/skills/` use YAML frontmatter for routing/tool constraints. Agent-backed skills (`bug`, `design`, `docs`, `refactor`, `review`, `test`) carry the full dispatch contract; command skills (`debug`, `explore`, `manager`) are minimal name+description entry points.
+Plugin skills under `plugins/agnthive/skills/` use YAML frontmatter for routing/tool constraints. `/review` is the only agent-backed (forked specialist) skill; the other eight (`manager`, `explore`, `bug`, `debug`, `design`, `test`, `refactor`, `docs`) are root procedures per ADR 0008 — after the compatibility window the five deprecated legacy agents (Manager, Architect, Tester, Docwriter, Bugbuster) are removed.
 
 ## Repository Automation
 

@@ -1,0 +1,102 @@
+{
+  "schema_kind": "outcome-task-v1",
+  "suite": "outcomes",
+  "related_agents": [
+    "t"
+  ],
+  "required_transcript_patterns": [],
+  "required_used_agents": [],
+  "required_used_agent_groups": [],
+  "forbidden_transcript_patterns": [],
+  "forbidden_doc_patterns": [],
+  "id": "outcome-compact-resume",
+  "title": "Add roundTo across a compact/resume cycle",
+  "category": "feature",
+  "fixture": "python-math",
+  "budget_class": "medium",
+  "coverage_tags": [
+    "compact-resume"
+  ],
+  "arms": [
+    "legacy",
+    "lean"
+  ],
+  "verification_required": true,
+  "docs_required": false,
+  "review_required": false,
+  "prompt": "Add roundTo(value, digits) to the seeded calculator: digits may be 0 or positive, and the result is value rounded to that many decimal places (roundTo(2.345, 2) needs to come out close enough that a digits-2 test sees 2.35). Add tests, run the suite, and mid-task you will be compacted and resumed to finish. Work only in the calculator pair.",
+  "success_criteria": [
+    "roundTo(value, digits) is implemented and tested, including roundTo(2.345, 2)",
+    "the full suite passes",
+    "the resumed session restores its task and continues the same work"
+  ],
+  "must_not": [
+    "do not run release or deploy automation (the profile keeps it disabled)",
+    "do not edit files outside the declared task scope",
+    "do not weaken or delete existing tests to make the task pass"
+  ],
+  "scenario": {
+    "type": "compact_resume"
+  },
+  "expected_outcome": {
+    "verification_commands": [
+      "node --test"
+    ],
+    "predicates": [
+      {
+        "id": "initial-calculator-surface",
+        "kind": "initial_file_matches",
+        "evaluate_in": "mock",
+        "where": "fixture",
+        "path": "calculator.mjs",
+        "pattern": "export function"
+      },
+      {
+        "id": "roundto-in-source",
+        "kind": "file_matches",
+        "evaluate_in": "live",
+        "path": "calculator.mjs",
+        "pattern": "export function roundTo"
+      },
+      {
+        "id": "roundto-in-tests",
+        "kind": "file_matches",
+        "evaluate_in": "live",
+        "path": "calculator.test.mjs",
+        "pattern": "roundTo"
+      },
+      {
+        "id": "suite-passes",
+        "kind": "commands_pass",
+        "evaluate_in": "live",
+        "commands": [
+          "node --test"
+        ]
+      },
+      {
+        "id": "task-restore-recorded",
+        "kind": "evidence_flag",
+        "evaluate_in": "live",
+        "field": "restored_task_seq",
+        "op": "gte",
+        "equals": 1
+      },
+      {
+        "id": "verification-current",
+        "kind": "evidence_flag",
+        "evaluate_in": "live",
+        "field": "verification.current",
+        "op": "exists"
+      },
+      {
+        "id": "scope-calculator-only",
+        "kind": "changed_paths_within",
+        "evaluate_in": "live",
+        "allow": [
+          "calculator.mjs",
+          "calculator.test.mjs"
+        ]
+      }
+    ]
+  }
+}

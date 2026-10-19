@@ -80,12 +80,12 @@ All configuration is **environment variables and the plugin-scoped
 `userConfig`**. The plugin never reads or writes `~/.claude/settings.json`, so
 installation is non-destructive and nothing leaks into your global config.
 
-The three tunable knobs (`enforcement_mode`, `log_max_bytes`, `ledger_max_bytes`)
-are each declared as a `userConfig` key in `.claude-plugin/plugin.json` and read
-by the runtime with a fixed three-tier precedence, highest first:
+The four tunable knobs (`workflow_profile`, `enforcement_mode`, `log_max_bytes`,
+`ledger_max_bytes`) are each declared as a `userConfig` key in
+`.claude-plugin/plugin.json` and read by the runtime with a fixed three-tier precedence, highest first:
 
-1. **`AGNTHIVE_*`** — the explicit env var (e.g. `AGNTHIVE_POLICY`).
-2. **`CLAUDE_CREW_*`** — the legacy alias, still honored for existing setups.
+1. **`AGNTHIVE_*`** — the explicit env var (e.g. `AGNTHIVE_POLICY`, `AGNTHIVE_WORKFLOW_PROFILE`).
+2. **`CLAUDE_CREW_*`** — the legacy alias, still honored for existing setups (log/ledger knobs only).
 3. **`CLAUDE_PLUGIN_OPTION_*`** — the userConfig bridge. The runtime exports each
    `userConfig` key as `CLAUDE_PLUGIN_OPTION_<KEY_UPPERCASED>`, so a value set in
    the plugin's `userConfig` flows in here as the lowest-priority fallback.
@@ -96,6 +96,7 @@ legacy `CLAUDE_CREW_*` env var overrides it.
 | Knob | Default | Effect |
 |---|---|---|
 | `AGNTHIVE_BLOCK_STDOUT_JSON` | unset (off) | When set to `1`/`true`/`yes`/`on`, `TaskCompleted`/`TeammateIdle` blocks additionally write a `{"decision":"block","reason":...}` JSON object to stdout (same reason as the stderr message) before the exit-2 block, so hosts that prefer stdout JSON receive the block intent. Off by default — with it unset, stdout stays empty and the block is byte-identical to the legacy exit-2 + stderr behavior, because it is unverified whether a host honors stdout JSON over the exit code for these events. |
+| `AGNTHIVE_VERBOSE_COMPACT_LOG` | unset (off) | When set to `1`/`true`/`yes`/`on`, `post-compact.jsonl` records additionally store the compact summary text, bounded to `AGNTHIVE_LOG_MAX_BYTES` and UTF-8-safe truncated (with a truncation flag). Off by default: the `post-compact.jsonl` record carries presence/size metadata only. **Verbose mode is not secret-safe** — the summary text may contain session content, and field selection is not redaction (ADR 0013). |
 
 ### Command policy mode (`userConfig.enforcement_mode` / `AGNTHIVE_POLICY`)
 
@@ -107,6 +108,16 @@ contract.
 | Knob | Default | Effect |
 |---|---|---|
 | `AGNTHIVE_POLICY` | `advisory` | `advisory` denies known-dangerous commands and allows commands whose real target cannot be statically determined (fail-open on the unknown). `enforce` also denies unparseable indirection with an explanation (fail-closed). A command identified as dangerous is always denied in both modes. Any value other than `enforce` is treated as `advisory` by the runtime. |
+
+### Workflow profile (`userConfig.workflow_profile` / `AGNTHIVE_WORKFLOW_PROFILE`)
+
+The SDLC workflow selector is separate from the command-policy mode: it gates
+workflow shape only, never a permission decision or a failure class
+([ADR 0011](references/agent-contracts.md), [ADR 0012](../../docs/adr/0012-versioned-harness-contracts-and-outcome-benchmarks.md)).
+
+| Knob | Default | Effect |
+|---|---|---|
+| `AGNTHIVE_WORKFLOW_PROFILE` (or the `workflow_profile` userConfig) | `legacy` | `legacy` keeps the full specialist-handoff, Manager-idle, footer, and summary gates. `lean` (**experimental**, ADR 0008/0009) is the root-orchestration profile: no mandatory Manager dispatch, mandatory role quotas relax, footer lines become reporting guidance, and the benchmark dispatch contract applies only in a benchmark test context — while the current-verification and independent-review gates stay. An invalid value falls back to `legacy` with a stderr note. The default stays `legacy` until the ADR 0012 outcome benchmark passes the rollout gate (lean is experimental, default legacy; it flips default only after that gate). |
 
 ### Log rotation and ledger size
 
@@ -170,8 +181,8 @@ The plugin scopes itself and never touches your global config:
   This is the explicit difference from the legacy copied-`~/.claude` profile,
   which mutated `~/.claude` in place (see [Legacy migration](#legacy-migration)).
 - **All runtime configuration is environment variables and the plugin-scoped
-  `userConfig`.** The `userConfig` keys are `enforcement_mode`,
-  `log_max_bytes`, and `ledger_max_bytes`
+  `userConfig`.** The `userConfig` keys are `workflow_profile`,
+  `enforcement_mode`, `log_max_bytes`, and `ledger_max_bytes`
   (see [Configuration](#configuration)). The plugin's own `settings.json`
   supports only the `agent` and `subagentStatusLine` keys — it cannot install
   the profile's global permissions, sandbox, auto-execution, or main status
@@ -196,11 +207,23 @@ The plugin scopes itself and never touches your global config:
 The runtime appends structured JSONL records under `${CLAUDE_PLUGIN_DATA}/logs`
 and rotates each stream at 1 MiB (`AGNTHIVE_LOG_MAX_BYTES`). The streams are:
 
-- `notification.jsonl` — runtime notification events (title, message, subtype, context).
+- `notification.jsonl` — runtime notification events (title, message, context);
+  the record carries the current runtime `notification_type` field (bridging
+  older runtimes whose hook input still supplies the legacy `subtype` alias —
+  `subtype` itself is no longer written) plus `agent_id`/`prompt_id`
+  correlation ids when the hook input carries them.
 - `session-index.jsonl` — session-end index entries (session id, cwd, transcript path, reason, state snapshot).
-- `pre-compact.jsonl` / `post-compact.jsonl` — compaction markers (session id, trigger, state/summary).
+- `pre-compact.jsonl` — compaction markers (session id, trigger, state snapshot).
+- `post-compact.jsonl` — post-compaction bookkeeping (session id, trigger,
+  `compact_summary_present`, `compact_summary_bytes`). The compact summary text
+  is **not** stored unless the explicit `AGNTHIVE_VERBOSE_COMPACT_LOG=1` opt-in
+  is set (bounded, UTF-8-safe, marked truncation; see the knob table above).
 - `config-change.jsonl` — config-change audit records (session id, source, file path).
 - `instructions-loaded.jsonl` — memory/instructions load audit (session id, file path, memory type, load reason).
+- `stop-failure.jsonl` — one bounded record per observed Stop/turn failure:
+  `{ ts, session_id, error_name, exit_code, signal, agent_id }`. API error text
+  is deliberately **never** logged — it is a diagnostic, not a completion
+  summary, and a stopped turn never counts as a completed task (ADR 0013).
 
 Each payload is built from a **fixed field whitelist** and serialized with
 `JSON.stringify`, which escapes quotes, backslashes, and control characters.
@@ -285,7 +308,9 @@ If you relied on the old `statusline.sh`, switch to the plugin's
 - **Progress ledger not surviving compaction.** Check
   `AGNTHIVE_PROGRESS_FILE` and that `<projectDir>/.agnthive/progress.md`
   is writable. The ledger is capped at `AGNTHIVE_LEDGER_MAX_BYTES` (64 KiB
-  default); larger ledgers are UTF-8-safe truncated with a note.
+  default); larger ledgers are UTF-8-safe truncated with a note. Restoration
+  rides the `SessionStart` `compact`/`resume` event (a bounded summary plus
+  the ledger path, ADR 0013); an oversized ledger is diagnosed, not injected.
 
 ## Support & security reporting
 

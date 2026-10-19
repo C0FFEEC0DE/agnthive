@@ -8,7 +8,10 @@ import { join, relative, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isMain, normalizeStringList, frontmatterField } from './bench/lib.mjs';
 
-export const SUITE_DEFAULTS = { subagents_smoke: 'bench/tasks/subagents/smoke/*.json' };
+export const SUITE_DEFAULTS = {
+  subagents_smoke: 'bench/tasks/subagents/smoke/*.json',
+  outcomes: 'bench/tasks/outcomes/tasks/*.json',
+};
 export const PRIORITY_PROFILES = {};
 
 // The legacy claudecfg/ profile was removed when the repo migrated to the

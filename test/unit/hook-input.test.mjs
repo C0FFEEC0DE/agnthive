@@ -119,3 +119,25 @@ test('agent_id / agent_type: null when absent or non-string', () => {
   assert.equal(r.agentId, null);
   assert.equal(r.agentType, null);
 });
+// --- ADR 0010 lifecycle identity fields ------------------------------------
+
+test('parseHookInput surfaces prompt_id and agent_transcript_path (ADR 0010)', () => {
+  const r = parseHookInput(JSON.stringify({
+    hook_event_name: 'UserPromptSubmit',
+    prompt_id: 'corr-42',
+    agent_transcript_path: '/tmp/agent-transcript.jsonl',
+  }));
+  assert.equal(r.ok, true);
+  assert.equal(r.promptId, 'corr-42');
+  assert.equal(r.agentTranscriptPath, '/tmp/agent-transcript.jsonl');
+});
+
+test('parseHookInput leaves promptId and agentTranscriptPath null when absent', () => {
+  const r = parseHookInput(JSON.stringify({ hook_event_name: 'Stop' }));
+  assert.equal(r.promptId, null);
+  assert.equal(r.agentTranscriptPath, null);
+  const empty = parseHookInput('');
+  assert.equal(empty.ok, false);
+  assert.equal(empty.promptId, undefined); // early-return path has no identity fields
+  assert.equal(empty.agentTranscriptPath, undefined); // early-return path has no identity fields
+});

@@ -32,6 +32,7 @@
   "subagent_instance_count_by_role": {
     "t": 1
   },
+  "agents": {"t1": {"role": "t", "scope": "", "taskId": "", "status": "running", "starts": 1, "parent": null, "provenance": "normal", "updatedAt": 1}},
   "required_subagents": [],
   "required_subagent_any_of": [],
   "stop_block_count": 0,

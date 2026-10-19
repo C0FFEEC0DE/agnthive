@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "agnthive",
   "displayName": "agnthive",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Hook-gated multi-agent SDLC profile with a Node.js hook runtime that enforces discover -> design -> implement -> verify -> review -> docs, plus footer, specialist-role, and verification contracts.",
   "author": {
     "name": "C0FFEEC0DE",
@@ -39,6 +39,12 @@
       "title": "Progress ledger byte cap",
       "description": "Byte cap on the durable progress ledger re-injected after context compaction (UTF-8-safe truncation). Default 65536 (64 KiB). The AGNTHIVE_LEDGER_MAX_BYTES env var overrides this if set.",
       "default": 65536
+    },
+    "workflow_profile": {
+      "type": "string",
+      "title": "Workflow profile",
+      "description": "SDLC hook workflow selector. 'legacy' (default) keeps the full specialist-handoff, Manager-idle, footer and summary gates; 'lean' (experimental, ADR 0008/0012) is the root-orchestration profile: the benchmark dispatch contract applies only in a benchmark test context, mandatory role quotas relax, and the @cr and verification-evidence gates stay. Valid values: legacy|lean (an invalid value falls back to legacy with a stderr note). The AGNTHIVE_WORKFLOW_PROFILE env var overrides this if set. The default stays legacy until the ADR 0012 outcome-benchmark rollout gate passes.",
+      "default": "legacy"
     }
   }
 }

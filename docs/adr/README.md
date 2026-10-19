@@ -8,9 +8,12 @@ and its [implementation plan](../plans/2026-10-19-harness-modernization-and-simp
 
 **Accepted** records an architectural decision, not proof of implementation.
 Implementation status is stated separately. Baseline observations refer to
-`2cd40df` / plugin `0.3.0`; ADR 0008–0013 are accepted for the next implementation
-and do not describe shipped behavior. Switching defaults/removing legacy
-components requires the rollout gates in ADR 0012.
+`2cd40df` / plugin `0.3.0`. The 0.4.0 working tree implements ADR 0008–0013
+(evidence model, lifecycle identity, failure policy, ledger restoration,
+outcome suite, lean profile shipped experimental with `legacy` still the
+default); host canaries on the pinned CLI remain pending (plan task 14), and
+removing legacy components requires the rollout gates in ADR 0012 (plan
+task 16, deferred to the compatibility window).
 
 Dated amendments take precedence over historical snippets in the same ADR.
 A later decision replaces only the scope it names; per-agent isolation and
@@ -27,12 +30,12 @@ plugin identity remain in force even when lean removes mandatory role gates.
 | [0005](0005-carry-per-key-loop-block-entry-explicitly.md) | Explicit per-key entries | Amended baseline implementation; retained |
 | [0006](0006-centralize-per-agent-loop-block-key.md) | Central agent key helper | Baseline implementation; retained |
 | [0007](0007-namespace-prefix-is-plugin-identity.md) | Fixed plugin namespace identity | Baseline behavior; retained; rename obligation recorded here |
-| [0008](0008-root-orchestration-and-three-specialists.md) | Root orchestration, three specialists, no mandatory Manager | Pending; plan 10–16 |
-| [0009](0009-completion-evidence-over-role-quotas.md) | Current completion evidence instead of role/footer quotas | Pending; plan 04, 09, 11, 13–16 |
-| [0010](0010-task-and-agent-lifecycle-identity.md) | Task/agent lifecycle and result ownership | Pending; plan 02, 05–06, 09 |
-| [0011](0011-explicit-hook-failure-and-permission-policy.md) | Explicit enforcement/advisory/telemetry failures | Pending; plan 01–03, 08, 14–15 |
-| [0012](0012-versioned-harness-contracts-and-outcome-benchmarks.md) | Versioned contracts, outcome benchmarks, rollout gates | Pending; plan 01–02, 09–10, 13–16 |
-| [0013](0013-ledger-restoration-and-minimal-telemetry.md) | Verified ledger restoration and bounded metadata | Pending host verification/implementation; plan 02, 07, 14–15 |
+| [0008](0008-root-orchestration-and-three-specialists.md) | Root orchestration, three specialists, no mandatory Manager | Implemented in 0.4.0 (plan 10–13); plan 14 canaries + 16 deferred |
+| [0009](0009-completion-evidence-over-role-quotas.md) | Current completion evidence instead of role/footer quotas | Implemented in 0.4.0 (plan 04, 09, 11, 13); 14/16 remain |
+| [0010](0010-task-and-agent-lifecycle-identity.md) | Task/agent lifecycle and result ownership | Implemented in 0.4.0 (plan 02, 05–06, 09); 14 remains |
+| [0011](0011-explicit-hook-failure-and-permission-policy.md) | Explicit enforcement/advisory/telemetry failures | Implemented in 0.4.0 (plan 01–03, 08); 14/15 remain |
+| [0012](0012-versioned-harness-contracts-and-outcome-benchmarks.md) | Versioned contracts, outcome benchmarks, rollout gates | Implemented in 0.4.0 (plan 01–02, 09–10, 13); default switch gated by the outcome benchmark (plan 14), 16 deferred |
+| [0013](0013-ledger-restoration-and-minimal-telemetry.md) | Verified ledger restoration and bounded metadata | Implemented in 0.4.0 (plan 02, 07); host delivery verification (plan 14) remains |
 
 ## Historical correction
 

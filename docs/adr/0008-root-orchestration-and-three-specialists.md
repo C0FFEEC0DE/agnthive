@@ -1,6 +1,6 @@
 # ADR 0008: Root orchestration and three specialist agents
 
-- **Status:** Accepted; implementation pending.
+- **Status:** Accepted; implemented in 0.4.0 (working tree); host canaries pending (plan task 14); legacy removal deferred to the compatibility window (plan task 16).
 - **Date:** 2026-10-19.
 - **Decides:** The main session owns orchestration. The standard specialist set is Code Reviewer, Explorer, and Debugger; there is no mandatory Manager agent.
 - **Basis:** [Harness review and design](../specs/2026-10-19-harness-review-and-simplification-design.md), agent-role assessment and findings F04/F06/F08.

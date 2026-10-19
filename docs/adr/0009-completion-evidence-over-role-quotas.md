@@ -1,6 +1,6 @@
 # ADR 0009: Completion evidence instead of role quotas and footer gates
 
-- **Status:** Accepted; implementation pending.
+- **Status:** Accepted; implemented in 0.4.0 (working tree); host canaries pending (plan task 14); legacy removal deferred to the compatibility window (plan task 16).
 - **Date:** 2026-10-19.
 - **Decides:** Completion depends on current verification and completed review where required, not agent starts, alias mentions, or footer formatting.
 - **Relationship:** Replaces mandatory footer gates from [ADR 0001](0001-scope-subagent-stop-footer-to-agnthive-specialists.md) in lean only; legacy behavior remains during migration. Retains the bounded-loop policy of [ADR 0003](0003-honor-stop-hook-active.md).

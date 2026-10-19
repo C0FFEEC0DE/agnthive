@@ -24,6 +24,19 @@ import { homedir } from 'node:os';
 import { fileURLToPath as _fileURLToPath } from 'node:url';
 import process from 'node:process';
 
+// ADR-0009/0010/0012 structured evidence: the runner reads the plugin's own
+// per-session event store (the same shared reader the runtime uses) instead of
+// reconstructing success from transcript prose or debug-log phrases. Imports
+// resolve relative to this module file, so no env var is needed to find them.
+import { statePaths, readEvents, loadState } from '../plugins/agnthive/modules/state.mjs';
+import { currentRevision } from '../plugins/agnthive/modules/verification.mjs';
+import {
+  rolesFromPluginState,
+  registryRunningRoles,
+  verificationEvidenceFromStateRecords,
+  reviewEvidenceFromStateRecords,
+} from './bench/lib.mjs';
+
 // ---------- env helpers ----------
 function envOrDefault(name, defaultValue) {
   const value = (process.env[name] || '').trim();
@@ -249,6 +262,9 @@ function lcsOpcodes(a, b) {
   // Build LCS table, then emit opcodes: equal / replace / delete / insert.
   const n = a.length;
   const m = b.length;
+  // LOW (c): cap the dp table at ~16MB of cells; oversized diffs are
+  // recorded as truncated instead of risking memory exhaustion (@cr 0.4.0).
+  if ((n + 1) * (m + 1) > 4 * 1024 * 1024) return null;
   const dp = Array.from({ length: n + 1 }, () => new Uint32Array(m + 1));
   for (let i = n - 1; i >= 0; i--) {
     for (let j = m - 1; j >= 0; j--) {
@@ -350,6 +366,9 @@ function splitKeepEnds(text) {
 
 function unifiedDiff(a, b, fromfile, tofile, context) {
   const ops = lcsOpcodes(a, b);
+  if (ops === null) {
+    return [`# diff truncated: files too large for exact diff (memory cap)\n`];
+  }
   if (!ops.length) return [];
   // Group opcodes: split at equal runs longer than 2*context.
   const nn = context * 2;
@@ -618,26 +637,30 @@ export function safeSessionId(raw) {
   return String(raw).replace(/[^A-Za-z0-9._-]/g, '_');
 }
 
-function stateFileForSession(sessionId) {
-  return join(homedir(), '.claude', 'state', `${safeSessionId(sessionId)}.json`);
+function stateFileForSession(sessionId, stateDir = null) {
+  return join(stateDir || join(homedir(), '.claude', 'state'), `${safeSessionId(sessionId)}.json`);
 }
 
-export function resolveTranscriptPath(payload) {
-  if (payload && typeof payload === 'object') {
-    const direct = String(payload.transcript_path || '').trim();
-    if (direct) return direct;
-    const sessionId = String(payload.session_id || '').trim();
-    if (sessionId) {
-      const stateFile = stateFileForSession(sessionId);
-      if (existsSync(stateFile)) {
-        try {
-          const state = JSON.parse(readFileSync(stateFile, 'utf-8'));
-          const transcriptPath = String(state.transcript_path || '').trim();
-          if (transcriptPath) return transcriptPath;
-        } catch {
-          return null;
-        }
-      }
+export function resolveTranscriptPath(payload, { roots = null, legacyStateDir = null } = {}) {
+  if (!payload || typeof payload !== 'object') return null;
+  const direct = String(payload.transcript_path || '').trim();
+  if (direct) return direct;
+  const sessionId = String(payload.session_id || '').trim();
+  if (!sessionId) return null;
+  // ADR-0012: prefer the plugin's own session-keyed event store (the shared
+  // reader used by the runtime) for the transcript path before the legacy
+  // ~/.claude/state probe (marked legacy fallback, plan F03).
+  const pluginState = sessionStateCached(sessionId, roots);
+  const fromState = String((pluginState.state && pluginState.state.transcript_path) || '').trim();
+  if (fromState) return fromState;
+  const stateFile = stateFileForSession(sessionId, legacyStateDir);
+  if (existsSync(stateFile)) {
+    try {
+      const state = JSON.parse(readFileSync(stateFile, 'utf-8'));
+      const transcriptPath = String(state.transcript_path || '').trim();
+      if (transcriptPath) return transcriptPath;
+    } catch {
+      return null;
     }
   }
   return null;
@@ -728,6 +751,531 @@ export function extractResultTextFromTranscript(payload) {
   return bestScore > 0 ? bestText : '';
 }
 
+// ---------- ADR-0009/0010/0012 structured plugin-state evidence ----------
+// The plugin runtime appends per-session events under
+// ${CLDAUDE_PLUGIN_DATA}/<safe-session-id>/ (events/*.json + disposable
+// state.json snapshot). The runner reads those stores through the SAME shared
+// reader the runtime uses (plugins/agnthive/modules/state.mjs), so bench
+// evidence stops being reconstructed from transcript prose (ADR-0009) or from
+// debug-log phrases (ADR-0012: those remain claims). Which directory actually
+// answered is recorded as provenance: ADR-0012 requires confirming the
+// effective data directory inside the host rather than assuming an env
+// override was honored.
+
+/**
+ * Candidate plugin data roots, in provenance precedence order:
+ *   1. bench_isolated — <outputDir>/plugin-data, the per-run evidence index
+ *      runClaude points the child's CLAUDE_PLUGIN_DATA at.
+ *   2. env_list — BENCH_PLUGIN_DATA_ROOTS (newline/; separated), an explicit
+ *   3. data_dir_env — the inherited CLAUDE_PLUGIN_DATA (may be an outer live
+ *      store; the strict session match makes scanning it safe).
+ *   4. home_fallback — the runtime's own resolveDataRoot default.
+ * Deduplicated by resolved path; first kind wins.
+ */
+export function pluginStateCandidateRoots({ outputDir = OUTPUT_DIR, env = process.env, home = homedir() } = {}) {
+  const candidates = [];
+  const push = (kind, raw) => {
+    if (!raw || !String(raw).trim()) return;
+    const resolved = resolve(String(raw).trim());
+    if (candidates.some((c) => c.root === resolved)) return;
+    candidates.push({ kind, root: resolved });
+  };
+  if (outputDir) {
+    push('bench_isolated', join(resolve(outputDir), 'plugin-data'));
+  }
+  for (const part of String(env.BENCH_PLUGIN_DATA_ROOTS || '').split(/[\n;]/)) {
+    push('env_list', part);
+  }
+  push('data_dir_env', env.CLAUDE_PLUGIN_DATA);
+  push('home_fallback', join(home, '.claude', 'plugins', 'data', 'agnthive'));
+  return candidates;
+}
+
+/**
+ * Read one session's plugin state from the candidate roots. Strict session
+ * match (ADR-0012): a root whose replayed state carries a different or empty
+ * session_id is skipped with a diagnostic, so an unrelated or foreign store
+ * can never answer for this session. Corrupt event files are counted (not
+ * parsed) and reported as truncated_events. found:false always carries a
+ * reason — missing evidence stays unknown, never guessed (ADR-0010).
+ */
+export function readSessionPluginState(sessionId, { roots = null } = {}) {
+  const sid = String(sessionId || '').trim();
+  const candidates = roots || pluginStateCandidateRoots();
+  const diagnostics = [];
+  if (!sid || sid === 'no-session') {
+    diagnostics.push('no session_id on the evaluated payload — refusing to guess (ADR-0010)');
+    return { found: false, reason: 'missing-session-id', candidates, state: null, diagnostics };
+  }
+  for (const cand of candidates) {
+    let paths;
+    try {
+      paths = statePaths(cand.root, sid);
+    } catch (err) {
+      diagnostics.push(`root ${cand.kind}: unsafe session id (${err.message})`);
+      continue;
+    }
+    const hasSnapshot = existsSync(paths.snapshot);
+    let rawEventFiles = 0;
+    try {
+      rawEventFiles = readdirSync(paths.eventsDir).filter((f) => f.endsWith('.json')).length;
+    } catch { rawEventFiles = 0; }
+    if (!hasSnapshot && rawEventFiles === 0) continue;
+    let parsedEvents = rawEventFiles;
+    if (rawEventFiles > 0) {
+      try { parsedEvents = readEvents(paths).length; } catch { parsedEvents = 0; }
+    }
+    const truncatedEvents = rawEventFiles - parsedEvents;
+    const state = loadState(paths);
+    const stateSid = String((state && state.session_id) || '').trim();
+    if (stateSid !== sid) {
+      diagnostics.push(`root ${cand.kind}: session mismatch (state=${stateSid || '<none>'} requested=${sid}) — skipped`);
+      continue;
+    }
+    if (truncatedEvents > 0) {
+      diagnostics.push(`root ${cand.kind}: ${truncatedEvents} unparseable event record(s) ignored (truncated)`);
+    }
+    if (hasSnapshot && rawEventFiles === 0) {
+      diagnostics.push(`root ${cand.kind}: state from snapshot only (event log trimmed)`);
+    }
+    return {
+      found: true,
+      reason: 'ok',
+      candidates,
+      root_kind: cand.kind,
+      root: cand.root,
+      state_path: paths.snapshot,
+      state,
+      raw_event_files: rawEventFiles,
+      parsed_events: parsedEvents,
+      truncated_events: truncatedEvents,
+      diagnostics,
+    };
+  }
+  return { found: false, reason: 'no-plugin-state-for-session', candidates, state: null, diagnostics };
+}
+
+// Memoized per-session read for the runner process lifetime. Candidates depend
+// only on env/OUTPUT_DIR/homedir, so the memo key is the session id alone.
+const _sessionStateMemo = new Map();
+function sessionStateCached(sessionId, roots = null) {
+  const sid = String(sessionId || '').trim();
+  if (roots !== null) return readSessionPluginState(sid, { roots });
+  if (!_sessionStateMemo.has(sid)) {
+    _sessionStateMemo.set(sid, readSessionPluginState(sid));
+  }
+  return _sessionStateMemo.get(sid);
+}
+
+/**
+ * Merge structured plugin-state role evidence into the hook/transcript/claimed
+ * tiers (ADR-0009/0010/0012). When plugin state is found its roles are the
+ * authoritative observed tier; the legacy debug-log tier ("Hook
+ * SubagentStart:…", "Recorded subagent handoff: @…" echo lines — ADR-0012:
+ * debug phrases are claims) is demoted to claimed so planted or truncated
+ * debug text can never fabricate dispatch evidence. Without state, observed
+ * stays empty (evidence loss lowers the result) while the transcript/claimed
+ * text tiers keep their legacy credit for standard-mode unions.
+ * Returns used/observed/claimed sorted lists plus per-alias source flags.
+ */
+export function mergePluginStateAgentEvidence(agentEvidence, stateRoles = [], payloadStateFound = false) {
+  const base = agentEvidence || { hook: [], transcript: [], claimed: [], byAlias: {} };
+  const hook = Array.isArray(base.hook) ? base.hook : [];
+  const transcript = Array.isArray(base.transcript) ? base.transcript : [];
+  const claimedSource = Array.isArray(base.claimed) ? base.claimed : [];
+  const found = Boolean(payloadStateFound);
+  const stateRolesList = found && Array.isArray(stateRoles)
+    ? stateRoles.filter((alias) => typeof alias === 'string' && alias !== '')
+    : [];
+  const observedSet = new Set(found ? stateRolesList : []);
+  const usedSeen = new Set();
+  const used = [];
+  const addUsed = (alias) => {
+    if (typeof alias === 'string' && alias && !usedSeen.has(alias)) {
+      usedSeen.add(alias);
+      used.push(alias);
+    }
+  };
+  for (const alias of hook) addUsed(alias);
+  for (const alias of stateRolesList) addUsed(alias);
+  for (const alias of transcript) addUsed(alias);
+  for (const alias of claimedSource) addUsed(alias);
+  const claimedSet = new Set([...transcript, ...claimedSource, ...hook]);
+  for (const alias of observedSet) claimedSet.delete(alias);
+  const byAlias = {};
+  for (const alias of used) {
+    byAlias[alias] = {
+      hook: hook.includes(alias),
+      transcript: transcript.includes(alias),
+      claimed: claimedSource.includes(alias),
+      state: found && stateRolesList.includes(alias),
+    };
+  }
+  return {
+    used: used.sort(),
+    observed: [...observedSet].sort(),
+    claimed: [...claimedSet].sort(),
+    source: found ? 'plugin_state' : 'none',
+    byAlias,
+  };
+}
+
+
+/**
+ * pluginStateFoundSummary: compact, bounded summary of the ADR-0009/0010
+ * structured evidence a bench run produced — counters and record IDs only
+ * (never record payloads or event contents), plus the provenance and trust
+ * note ADR-0012 expects evidence records to carry.
+ */
+export function pluginStateFoundSummary(read, { stateRoles = [], runningReviewerRoles = [], extraDiagnostics = [] } = {}) {
+  const base = read.found ? {
+    found: true,
+    reason: 'ok',
+    root_kind: String(read.root_kind),
+    root: String(read.root),
+    state_path: String(read.state_path),
+    session_id: String((read.state && read.state.session_id) || ''),
+    raw_event_files: Number(read.raw_event_files) || 0,
+    parsed_events: Number(read.parsed_events) || 0,
+    truncated_events: Number(read.truncated_events) || 0,
+    verification_records: Array.isArray(read.state.verification) ? read.state.verification.length : 0,
+    review_records: Array.isArray(read.state.review_results) ? read.state.review_results.length : 0,
+    agent_registry_entries: Object.keys(read.state.agents || {}).length,
+    current_change_revision: currentRevision(read.state),
+    state_agent_roles: stateRoles,
+    running_reviewer_roles: runningReviewerRoles,
+  } : {
+    found: false,
+    reason: String(read.reason || 'not-found'),
+    trust_note: 'no plugin state for the evaluated session — evidence layer not engaged; legacy transcript-path evidence applied',
+  };
+  base.trust_note = read.found
+    ? 'read-only shared-store view via plugins/agnthive/modules/state.mjs; structured records authoritative per ADR-0009/0010'
+    : base.trust_note;
+  base.diagnostics = [...(read.diagnostics || []), ...(extraDiagnostics || [])].slice(0, 20);
+  return base;
+}
+// ---------- outcome suite result wiring (plan task 10 handoff) ----------
+// Deferred after the @cr 0.4.0 review (do not implement in the runner here):
+// 1. executing expected_outcome.verification_commands — the runner instead
+//    uses auto-detection; when adopted it must reuse the BLOCK 3 gate
+//    (allowlist + env scrub + timeout/maxBuffer), never a raw spawn.
+// 2. lifecycle-scenario evidence capture (compact/resume/background-verify
+//    evidence) — schema fields exist; runner capture is follow-up work.
+const _SAFE_COMMAND_CHARS = /^[A-Za-z0-9_./:@%+=,-]+( [A-Za-z0-9_./:@%+=,-]+)*$/;
+// commands_pass execution allowlist (BLOCK 3, @cr 0.4.0 fix-first): the SAME
+// vocabulary as detectVerificationTarget's command set (npm / cargo / go /
+// node), deliberately shared so the two gates cannot drift. Task-declared
+// commands may run these programs and nothing else.
+const _COMMAND_PASS_ALLOWLIST = new Set(['npm', 'cargo', 'go', 'node']);
+const _CHILD_ENV_EXACT_SECRETS = ['ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_API_KEY', 'OLLAMA_API_KEY'];
+const _CHILD_ENV_SECRET_SUFFIX = /(_TOKEN|_API_KEY|_KEY)$/;
+
+/** Spawn env for task-declared commands: provider secrets stripped. */
+export function scrubSpawnEnv(env) {
+  const out = {};
+  for (const key of Object.keys(env || {})) {
+    if (_CHILD_ENV_EXACT_SECRETS.includes(key) || _CHILD_ENV_SECRET_SUFFIX.test(key)) continue;
+    out[key] = env[key];
+  }
+  return out;
+}
+
+export function outcomeLivePredicates(task) {
+  const eo = task && task.expected_outcome;
+  const list = eo && Array.isArray(eo.predicates) ? eo.predicates : [];
+  return list.filter((p) => p && p.evaluate_in === 'live' && typeof p.id === 'string');
+}
+
+function globToRegExp(glob) {
+  let re = '^';
+  for (let i = 0; i < glob.length; i++) {
+    const c = glob[i];
+    if (c === '*') {
+      if (glob[i + 1] === '*') { re += '.*'; i++; continue; }
+      re += '[^/]*';
+      continue;
+    }
+    if (c === '?') { re += '[^/]'; continue; }
+    re += c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+  return new RegExp(re + '$');
+}
+
+const normalizeGlobPath = (p) => String(p || '').split(sep).join('/');
+const globMatches = (glob, p) => globToRegExp(normalizeGlobPath(glob)).test(normalizeGlobPath(p));
+/**
+ * Resolve a dotted evidence field against the plugin state (ADR-0009
+ * vocabulary, mirrored by bench/tasks/outcomes/schema/outcome-schema.mjs).
+ * Unknown fields resolve as not-found; the evaluator turns that into a
+ * predicate FAILURE, never a silent skip.
+ */
+export function resolveEvidenceFlagField(state, field) {
+  const notFound = { found: false, value: undefined };
+  if (!state || typeof state !== 'object') return notFound;
+  switch (field) {
+    case 'verification.latest.status': {
+      const recs = Array.isArray(state.verification) ? state.verification : [];
+      const last = recs[recs.length - 1];
+      if (last && last.status !== undefined) return { found: true, value: last.status };
+      return notFound;
+    }
+    case 'verification.latest.completedRevision': {
+      const recs = Array.isArray(state.verification) ? state.verification : [];
+      const last = recs[recs.length - 1];
+      if (last && last.completedRevision !== undefined) return { found: true, value: last.completedRevision };
+      return notFound;
+    }
+    case 'verification.current': {
+      const recs = Array.isArray(state.verification) ? state.verification : [];
+      const evidence = verificationEvidenceFromStateRecords(recs, {
+        currentRevision: currentRevision(state),
+        workdir: String(state.cwd || ''),
+      });
+      return { found: true, value: Boolean(evidence.current) };
+    }
+    case 'review_results.latest.status': {
+      const recs = Array.isArray(state.review_results) ? state.review_results : [];
+      const last = recs[recs.length - 1];
+      if (last && last.status !== undefined) return { found: true, value: last.status };
+      return notFound;
+    }
+    case 'docs_status':
+    case 'revision':
+    case 'workflow_profile':
+    case 'restored_task_seq':
+      return state[field] !== undefined
+        ? { found: true, value: state[field] }
+        : notFound;
+    default:
+      return notFound;
+  }
+}
+/**
+ * Evaluate an outcome task's live predicates against the run's end state in
+ * the workdir. Honest evaluation: a predicate that cannot be evaluated
+ * (missing inputs, unsupported kind) reports 'unverified' with a detail —
+ * never fabricated as passed. Returns { results, findings_evidence }.
+ */
+export function evaluateOutcomeLivePredicates(task, ctx = {}) {
+  const results = [];
+  const workdir = String(ctx.workdir || '.');
+  const claimText = [ctx.resultText, ctx.transcriptText]
+    .filter((t) => typeof t === 'string' && t.trim() !== '')
+    .join('\n');
+  const predicates = outcomeLivePredicates(task);
+  const [claimedTotal, matchedMaterialIds] = predicates.length > 0
+    ? findingsEvidenceFor(task, claimText)
+    : [null, []];
+  if (predicates.length > 0) {
+    // M4 (@cr 0.4.0): predicate paths must stay inside the workdir — a path
+    // escape is a failed predicate, never a file touch outside the run.
+    const escaped = new Set(predicates
+      .filter((q) => ['file_exists', 'file_matches', 'file_not_matches', 'file_unchanged'].includes(q.kind))
+      .filter((q) => !insideDir(workdir, q.path))
+      .map((q) => q.id));
+    for (const escId of escaped) {
+      results.push({ id: escId, result: 'failed', detail: 'path escape rejected' });
+    }
+    for (const p of predicates) {
+      if (escaped.has(p.id)) continue;
+      const detail = '';
+      switch (p.kind) {
+        case 'file_exists': {
+          const ok = existsSync(join(workdir, p.path));
+          results.push({ id: p.id, result: ok ? 'passed' : 'failed', detail: ok ? 'exists' : 'missing' });
+          break;
+        }
+        case 'file_matches':
+        case 'file_not_matches': {
+          const file = join(workdir, p.path);
+          if (!existsSync(file)) {
+            results.push({ id: p.id, result: 'failed', detail: `missing file: ${p.path}` });
+            break;
+          }
+          const { re, error } = compileOutcomePattern(p.pattern);
+          if (error) { results.push({ id: p.id, result: 'unverified', detail: error }); break; }
+          const text = readFileSync(file, 'utf-8');
+          const matches = [...text.matchAll(re)].length;
+          const ok = p.kind === 'file_matches' ? matches >= 1 : matches === 0;
+          results.push({ id: p.id, result: ok ? 'passed' : 'failed', detail: `${matches} occurrence(s)` });
+          break;
+        }
+        case 'file_unchanged': {
+          const base = outcomeBasePath(task, p, ctx);
+          const end = existsSync(join(workdir, p.path)) ? readFileSync(join(workdir, p.path)) : null;
+          const baseBytes = base && existsSync(base) ? readFileSync(base) : null;
+          if (!end || !baseBytes) {
+            results.push({ id: p.id, result: 'failed', detail: 'missing end-state or base file' });
+            break;
+          }
+          const ok = baseBytes.equals(end);
+          results.push({ id: p.id, result: ok ? 'passed' : 'failed', detail: ok ? 'identical bytes' : 'bytes differ' });
+          break;
+        }
+        case 'commands_pass': {
+          const cmds = Array.isArray(p.commands) ? p.commands : [];
+          const safe = cmds.length > 0 && cmds.every((c) => typeof c === 'string' && _SAFE_COMMAND_CHARS.test(c));
+          if (!safe) { results.push({ id: p.id, result: 'unverified', detail: 'commands contain unsupported characters' }); break; }
+          // BLOCK 3 (@cr 0.4.0 fix-first): task-declared commands run only
+          // allowlisted programs (same vocabulary as detectVerificationTarget
+          // — npm/cargo/go/node) with provider secrets stripped from the env
+          // and bounded runtime/output. Anything else reports unverified.
+          const firsts = cmds.map((c) => c.split(' ').filter(Boolean)[0]);
+          const allowed = firsts.every((t) => _COMMAND_PASS_ALLOWLIST.has(t));
+          if (!allowed) {
+            const first = firsts.find((t) => !_COMMAND_PASS_ALLOWLIST.has(t)) || '<none>';
+            results.push({
+              id: p.id,
+              result: 'unverified',
+              detail: 'command program not in the task-command allowlist (' + [..._COMMAND_PASS_ALLOWLIST].join('|') + '): ' + first,
+            });
+            break;
+          }
+          const spawn = ctx.spawn || _spawnSync;
+          const spawnOpts = {
+            cwd: workdir,
+            encoding: 'utf-8',
+            env: scrubSpawnEnv(process.env),
+            timeout: ctx.spawnTimeoutMs || 5000,
+            maxBuffer: ctx.spawnMaxBufferBytes || 1024 * 1024,
+          };
+          const outcomes = cmds.map((cmd) => {
+            const parts = cmd.split(' ').filter(Boolean);
+            const res = spawn(parts[0], parts.slice(1), spawnOpts);
+            if (res && res.error) return res.error.code || 'spawn-failed';
+            const status = res && typeof res.status === 'number' ? res.status : -1;
+            return status;
+          });
+          const ok = outcomes.every((s) => s === 0);
+          results.push({ id: p.id, result: ok ? 'passed' : 'failed', detail: `exit codes ${outcomes.join(',')}` });
+          break;
+        }
+        case 'changed_paths_within': {
+          const allow = Array.isArray(p.allow) ? p.allow : [];
+          const changed = (ctx.changedFiles || []).map(String);
+          if (allow.length === 0) {
+            results.push({ id: p.id, result: changed.length === 0 ? 'passed' : 'failed', detail: `no changes allowed; run changed ${changed.length}` });
+            break;
+          }
+          const within = changed.length > 0 && changed.every((f) => allow.some((g) => globMatches(g, f)));
+          results.push({ id: p.id, result: within ? 'passed' : 'failed', detail: `changed ${changed.length} path(s)` });
+          break;
+        }
+        case 'findings_cover': {
+          if (p.min_matches !== undefined && !Number.isInteger(p.min_matches)) {
+            results.push({ id: p.id, result: 'unverified', detail: 'min_matches must be a positive integer' });
+            break;
+          }
+          const matched = matchedMaterialIds.length;
+          const min = p.min_matches === undefined ? 1 : p.min_matches;
+          results.push({
+            id: p.id,
+            result: matched >= min ? 'passed' : 'failed',
+            detail: `${matched} material finding(s) covered (min ${min})`,
+          });
+          break;
+        }
+        case 'evidence_flag': {
+          const { found, value } = resolveEvidenceFlagField(ctx.state, p.field);
+          const ok = evaluateEvidenceFlagOp(p, found ? value : undefined, found);
+          results.push({ id: p.id, result: ok ? 'passed' : 'failed', detail: `field ${p.field} op ${p.op}` });
+          break;
+        }
+        default:
+          results.push({ id: p.id, result: 'unverified', detail: `kind ${p.kind} not runner-evaluable` });
+      }
+    }
+  }
+  const findingsEvidence = predicates.length > 0
+    && task.ground_truth
+    && Array.isArray(task.ground_truth.findings)
+    ? { matched_material_ids: matchedMaterialIds, claimed_total: claimedTotal }
+    : null;
+  return { results, findings_evidence: findingsEvidence };
+}
+
+/** Report-pattern evaluation over the claim surface; also drives findings_cover. */
+function findingsEvidenceFor(task, claimText) {
+  const gt = task && task.ground_truth;
+  const findings = gt && Array.isArray(gt.findings) ? gt.findings : [];
+  const matchedMaterialIds = [];
+  let claimedTotal = 0;
+  for (const f of findings) {
+    if (!f || typeof f.id !== 'string') continue;
+    const compiled = compileOutcomePattern(f.report_pattern);
+    if (compiled.error) continue;
+    const matched = claimText.trim() !== '' && compiled.re.test(claimText);
+    if (matched) {
+      claimedTotal += 1;
+      if (f.material === true) matchedMaterialIds.push(f.id);
+    }
+  }
+  return [claimedTotal, matchedMaterialIds];
+}
+
+/** Regex compile tolerant of runtime failure (reports unverified, never throws). */
+function compileOutcomePattern(pattern, flags = 'g') {
+  try {
+    return { re: new RegExp(pattern, flags), error: null };
+  } catch {
+    return { re: null, error: 'pattern failed to compile at evaluation time' };
+  }
+}
+
+/** Base path for file_unchanged: fixture copy or declared suite seed source. */
+/** M4: candidate must stay strictly inside dir once resolved. */
+function insideDir(dir, candidate) {
+  try {
+    const abs = resolve(dir, candidate);
+    return abs.startsWith(resolve(dir) + sep);
+  } catch {
+    return false;
+  }
+}
+function outcomeBasePath(task, p, ctx) {
+  const repoRoot = String(ctx.repoRoot || process.cwd());
+  if (p.base === 'seed') {
+    const list = Array.isArray(task.seed_files) ? task.seed_files : [];
+    const seed = list.find((s) => s && s.path === p.path);
+    if (seed && typeof seed.source === 'string') {
+      // M4: a seed base must stay inside the outcome suite dir.
+      const base = join(repoRoot, 'bench', 'tasks', 'outcomes', seed.source);
+      if (!insideDir(join(repoRoot, 'bench', 'tasks', 'outcomes'), seed.source)) return null;
+      return base;
+    }
+    return null;
+  }
+  if (p.base === 'fixture' && task && typeof task.fixture === 'string') {
+    // M4: a fixture base must stay inside the task fixture dir.
+    const base = join(repoRoot, 'bench', 'fixtures', task.fixture, p.path);
+    if (!insideDir(join(repoRoot, 'bench', 'fixtures', task.fixture), p.path)) return null;
+    return base;
+  }
+  return null;
+}
+
+/** Op evaluation for evidence_flag predicates (equals|exists|absent|gte|lte). */
+function evaluateEvidenceFlagOp(p, value, found) {
+  switch (p.op) {
+    case 'exists':
+      return Boolean(found && value !== null && value !== undefined && value !== '');
+    case 'absent':
+      return Boolean(!found || value === null || value === undefined || value === '');
+    case 'equals':
+      if (!found) return false;
+      return value === p.equals || String(value) === String(p.equals);
+    case 'gte':
+    case 'lte': {
+      if (!found || !Number.isFinite(Number(value))) return false;
+      const n = Number(value);
+      return p.op === 'gte' ? n >= Number(p.equals) : n <= Number(p.equals);
+    }
+    default:
+      return false;
+  }
+}
+
 // ---------- transcript pattern / agent inference ----------
 function isAssistantLikeTranscriptEvent(event) {
   const eventType = String(event.type || '').trim().toLowerCase();
@@ -785,13 +1333,13 @@ export function forbiddenTranscriptPatternHits(task, payload, { resultText = '' 
   const [scanned, entries] = assistantPatternEntries(payload, { resultText });
   if (!scanned) return [false, []];
   const hits = [];
-  for (const [source, text] of entries) {
-    for (const pattern of patterns) {
-      if (typeof pattern !== 'string' || !pattern.trim()) continue;
-      const re = new RegExp(pattern, 'im');
-      if (re.test(text)) hits.push(`${source}: /${pattern}/ -> ${truncate(text, 200)}`);
-    }
-  }
+  // M5 (@cr 0.4.0): precompile once per task and route through
+  // compileOutcomePattern; a malformed task-declared pattern becomes a
+  // reported violation marker instead of throwing mid-run.
+  const compiled = patterns
+    .map((pattern) => (typeof pattern === 'string' && pattern.trim() ? { pattern, ...compileOutcomePattern(pattern, 'im') } : null))
+    .filter(Boolean);
+  for (const [source, text] of entries) { for (const c of compiled) { if (c.error) { hits.push(`${source}: <malformed forbidden pattern>`); continue; } if (c.re.test(text)) hits.push(`${source}: /${c.pattern}/ -> ${truncate(text, 200)}`); } }
   return [true, hits];
 }
 
@@ -803,7 +1351,9 @@ export function requiredTranscriptPatternMisses(task, payload, { resultText = ''
   const misses = [];
   for (const pattern of patterns) {
     if (typeof pattern !== 'string' || !pattern.trim()) continue;
-    if (!entries.some(([, text]) => new RegExp(pattern, 'im').test(text))) misses.push(pattern);
+    const { re, error } = compileOutcomePattern(pattern, 'im');
+    if (error) misses.push(pattern);
+    else if (!entries.some(([, text]) => re.test(text))) misses.push(pattern);
   }
   return [true, misses];
 }
@@ -1261,15 +1811,20 @@ export function forbiddenDocPatternHits(task, after, changedFiles) {
   const patterns = task.forbidden_doc_patterns;
   if (!Array.isArray(patterns)) return [];
   const hits = [];
+  // M5 (@cr 0.4.0): precompile once per task; malformed task-declared
+  // patterns are reported violations, never a throw mid-run.
+  const compiled = patterns.map((pattern) => {
+    if (typeof pattern !== 'string' || !pattern.trim()) return null;
+    return { pattern, ...compileOutcomePattern(pattern, 'im') };
+  }).filter(Boolean);
   for (const path of changedFiles) {
     if (!isDocsPath(path)) continue;
     const entry = after[path] || '';
     const content = entry && typeof entry === 'object' ? entry.text || '' : entry;
     const text = typeof content === 'string' ? content : '';
-    for (const pattern of patterns) {
-      if (typeof pattern !== 'string' || !pattern.trim()) continue;
-      const re = new RegExp(pattern, 'im');
-      if (re.test(text)) hits.push(`${path}: /${pattern}/`);
+    for (const c of compiled) {
+      if (c.error) { hits.push(`${path}: <malformed doc pattern>`); continue; }
+      if (c.re.test(text)) hits.push(`${path}: /${c.pattern}/`);
     }
   }
   return hits;
@@ -1419,6 +1974,13 @@ export function classifyTaskFailures(args) {
   if (args.verificationRequired && !args.testsPassed) failures.push('verification_failed');
   if (args.verificationRequired && !args.verificationSummaryPresent) failures.push('verification_summary_missing');
   if (args.reviewRequired && !args.reviewPresent) failures.push('review_summary_missing');
+  // ADR-0009: when the run produced plugin state with verification[] or
+  // review_results[] records, a revision-scoped valid record is required —
+  // footer text mentions ("Verification status:") are summary formatting, not
+  // evidence. No records at all keeps the legacy fallback (the runner-owned
+  // runVerification rerun) authoritative.
+  if (args.verificationEvidenceMissing) failures.push('verification_evidence_missing');
+  if (args.reviewEvidenceMissing) failures.push('review_evidence_missing');
   if (!args.risksPresent) failures.push('risk_summary_missing');
   if (args.docsRequired && !args.docsUpdated) failures.push('docs_not_updated');
   if (args.category === 'docs' && args.nonDocChangedFiles.length) failures.push('docs_task_changed_non_docs');
@@ -1453,7 +2015,12 @@ export function buildTaskSummary(args) {
     `Required assistant transcript scanned: ${args.requiredTranscriptScanned}`,
     `Required assistant transcript misses: ${args.requiredTranscriptMisses.length ? args.requiredTranscriptMisses.join('; ') : 'none'}`,
     `Used agent aliases: ${args.usedAgentAliases.length ? args.usedAgentAliases.join(', ') : 'none'}`,
-    `Observed agent aliases (hook): ${args.observedAgentAliases && args.observedAgentAliases.length ? args.observedAgentAliases.join(', ') : 'none'}`,
+    `Observed agent aliases (observed): ${args.observedAgentAliases && args.observedAgentAliases.length ? args.observedAgentAliases.join(', ') : 'none'}`,
+    `Evidence source: ${args.evidenceSource || 'legacy_transcript'}`,
+    `Plugin state: ${args.pluginStateLine || 'unavailable (legacy transcript fallback)'}`,
+    `State agent roles: ${args.stateAgentRoles && args.stateAgentRoles.length ? args.stateAgentRoles.join(', ') : 'none'}`,
+    `Verification evidence (plugin state): ${args.verificationEvidenceLine || 'not read (legacy fallback)'}`,
+    `Review evidence (plugin state): ${args.reviewEvidenceLine || 'not read (legacy fallback)'}`,
     `Claimed agent aliases (text): ${args.claimedAgentAliases && args.claimedAgentAliases.length ? args.claimedAgentAliases.join(', ') : 'none'}`,
     `Dispatch mode: ${args.dispatchMode || 'standard'}`,
     `Missing required used agents: ${args.requiredUsedAgentMisses.length ? args.requiredUsedAgentMisses.join(', ') : 'none'}`,
@@ -1533,6 +2100,27 @@ export function buildResult(args) {
     dispatch_mode: args.dispatchMode,
     missing_required_used_agents: args.missingRequiredUsedAgents,
     missing_required_used_agent_groups: args.missingRequiredUsedAgentGroups,
+    evidence_source: args.evidenceSource || 'legacy_transcript',
+    evidence_provenance: args.evidenceProvenance || 'none',
+    plugin_state: args.pluginStateSummary || null,
+    verification_evidence: args.verificationEvidence || null,
+    review_evidence: args.reviewEvidence || null,
+    state_agent_roles: args.stateAgentRoles || [],
+    observed_agent_aliases_source: args.observedAgentAliasesSource || 'none',
+    // Outcome suite (task 10 handoff): honest pass-through keys, null when the
+    // source data does not exist — never fabricated (ADR-0012).
+    rep: Number.isInteger(args.rep) ? args.rep : null,
+    turns: Number.isInteger(args.turns) ? args.turns : null,
+    token_usage: args.tokenUsage && typeof args.tokenUsage === 'object'
+      && !Array.isArray(args.tokenUsage) ? args.tokenUsage : null,
+    cost_usd: Number.isFinite(Number(args.costUsd)) ? Number(args.costUsd) : null,
+    cost_source: typeof args.costSource === 'string' && args.costSource !== ''
+      ? args.costSource : null,
+    predicate_results: args.predicateResults && typeof args.predicateResults === 'object'
+      && !Array.isArray(args.predicateResults) ? args.predicateResults : null,
+    findings_evidence: args.findingsEvidence && typeof args.findingsEvidence === 'object'
+      && Array.isArray(args.findingsEvidence.matched_material_ids) ? args.findingsEvidence : null,
+    dispatch_count: Number.isInteger(args.dispatchCount) ? args.dispatchCount : null,
     fatal_error: args.fatalError,
     failures: args.failures,
   };
@@ -1575,6 +2163,18 @@ export function runClaude(prompt, debugLogPath, stderrLogPath, opts = {}, ctx = 
     'json',
   ];
   const env = { ...process.env };
+  // ADR-0012 per-run evidence index: point the child's CLAUDE_PLUGIN_DATA at a
+  // run-local directory under the output dir, so the session event store this
+  // runner later reads is a per-run artifact (and an inherited outer value,
+  // e.g. a developer's live store, cannot be read as the run's evidence).
+  // Whether the host honored the override is verified at read time — the
+  // candidate-root scan records the provenance kind of the root that answered.
+  const evidenceDataRoot = ctx.pluginDataRoot
+    || (ctx.outputDir ? join(ctx.outputDir, 'plugin-data') : '');
+  if (evidenceDataRoot) {
+    try { mkdirSync(evidenceDataRoot, { recursive: true }); } catch { /* read-only outdir; scanning still proceeds */ }
+    env.CLAUDE_PLUGIN_DATA = evidenceDataRoot;
+  }
   const effectiveMaxOutput = (maxOutputTokens || '').trim();
   if (effectiveMaxOutput) env.CLAUDE_CODE_MAX_OUTPUT_TOKENS = effectiveMaxOutput;
 
@@ -1848,7 +2448,35 @@ export function main() {
   if (!MODEL_NAME) throw new Error('OLLAMA_MODEL must be set');
   mkdirSync(OUTPUT_DIR, { recursive: true });
   const startedAt = monotonicSeconds();
-  const task = JSON.parse(readFileSync(TASK_FILE, 'utf-8'));
+  // LOW (a) (@cr 0.4.0): a malformed task file is a reported violation,
+  // not a stack spill — runner-error.txt + synthesized failed result.json so
+  // the orchestrator can continue with the remaining tasks.
+  let task;
+  try {
+    task = JSON.parse(readFileSync(TASK_FILE, 'utf-8'));
+  } catch (parseErr) {
+    const detail = String((parseErr && parseErr.message) || parseErr);
+    writeText(join(OUTPUT_DIR, 'runner-error.txt'), 'task JSON parse failed: ' + detail + ' (BENCH_TASK_FILE=' + (process.env.BENCH_TASK_FILE || '<unset>') + ')\n');
+    writeText(join(OUTPUT_DIR, 'result.json'), JSON.stringify({
+      task_id: String(process.env.BENCH_TASK_ID || 'unknown'),
+      status: 'failed',
+      notes: 'outcome_task_validation_failed: task JSON could not be parsed: ' + detail,
+      completed: false,
+      verification_required: true,
+      tests_run: 0,
+      tests_passed: 0,
+      review_required: true,
+      review_present: false,
+      docs_required: false,
+      docs_updated: false,
+      policy_violations: 0,
+      tool_failures: 0,
+      runtime_seconds: 0,
+      changed_files: [],
+    }, null, 2) + '\n');
+    process.exitCode = 1;
+    return 1;
+  }
   const before = snapshotFiles(WORKDIR);
   let [, verificationLabel] = detectVerificationTarget(WORKDIR);
   if (verificationLabel === null) verificationLabel = 'verification';
@@ -2075,26 +2703,164 @@ export function main() {
 
   writeText(join(OUTPUT_DIR, 'claude-result.txt'), resultText);
 
+  // ---------- ADR-0009/0010 structured evidence (plan task 09) ----------
+  const payloadSessionId = payloadString(payload, 'session_id');
+  const pluginStateRead = sessionStateCached(payloadSessionId);
+  const stateRoles = pluginStateRead.found
+    ? rolesFromPluginState(pluginStateRead.state, (raw) => canonicalizeSubagentLabel(raw, labelMap))
+    : [];
+  const stateRevision = pluginStateRead.state ? currentRevision(pluginStateRead.state) : null;
+  const verificationEvidence = pluginStateRead.found
+    ? verificationEvidenceFromStateRecords(
+      pluginStateRead.state.verification,
+      { currentRevision: stateRevision, workdir: WORKDIR },
+    )
+    : null;
+  const reviewEvidence = pluginStateRead.found
+    ? reviewEvidenceFromStateRecords(pluginStateRead.state.review_results, { currentRevision: stateRevision })
+    : null;
+  // A running reviewer in the ADR-0010 registry with no current completed
+  // record is a diagnostic signal for the review evidence gate (below).
+  const runningReviewerRoles = pluginStateRead.found
+    ? registryRunningRoles(pluginStateRead.state)
+    : [];
   const docsUpdated = changedFiles.some((p) => isDocsPath(p));
   const nonDocChangedFiles = changedFiles.filter((p) => !isDocsPath(p));
   const docPatternHits = forbiddenDocPatternHits(task, after, changedFiles);
   const [transcriptScanned, transcriptPatternHits] = forbiddenTranscriptPatternHits(task, payload, { resultText });
-  const usedAgentAliases = extractUsedAgentAliases(debugLogText, payload, { resultText }, labelMap);
   const agentEvidence = extractUsedAgentEvidence(debugLogText, payload, { resultText }, labelMap);
-  const observedAgentAliases = agentEvidence.hook;
-  // Claimed = textual claims (transcript launch-text + prose "Handoff evidence:")
-  // MINUS any alias that has a real SubagentStart hook. A real dispatch is
-  // "observed", not "claimed"; removing it keeps observed and claimed a clean
-  // partition (observed ∪ claimed == usedAgentAliases).
-  const claimedSet = new Set([...agentEvidence.transcript, ...agentEvidence.claimed]);
-  for (const alias of agentEvidence.hook) claimedSet.delete(alias);
-  const claimedAgentAliases = Array.from(claimedSet);
-  const agentEvidenceByAlias = agentEvidence.byAlias;
+  const mergedEvidence = mergePluginStateAgentEvidence(
+    agentEvidence,
+    stateRoles,
+    pluginStateRead.found,
+  );
+  const usedAgentAliases = mergedEvidence.used;
+  const observedAgentAliases = mergedEvidence.observed;
+  const claimedAgentAliases = mergedEvidence.claimed;
+  const agentEvidenceByAlias = mergedEvidence.byAlias;
+  const observedAgentAliasesSource = mergedEvidence.source;
   const dispatchMode = resolveDispatchMode(task);
   const enforceUsed = effectiveUsedAliasesForEnforcement(dispatchMode, usedAgentAliases, observedAgentAliases);
   const missingRequiredUsedAgents = requiredUsedAgentMisses(task, enforceUsed, labelMap);
   const missingRequiredUsedAgentGroups = requiredUsedAgentGroupMisses(task, enforceUsed, labelMap);
-
+  // --- evidence summary objects (result.json / task-summary / evidence.json) ---
+  const demotedHookAliases = agentEvidence.hook.filter((alias) => !observedAgentAliases.includes(alias));
+  const pluginStateExtraDiagnostics = [];
+  if (demotedHookAliases.length) {
+    pluginStateExtraDiagnostics.push(
+      `debug-log dispatch evidence demoted to claimed (not in plugin state): ${demotedHookAliases.join(', ')}`,
+    );
+  }
+  const verificationEvidenceMissing = Boolean(
+    verificationRequired
+    && verificationEvidence
+    && verificationEvidence.has_records
+    && !verificationEvidence.current,
+  );
+  const reviewEvidenceMissing = Boolean(
+    reviewRequired
+    && reviewEvidence
+    && !reviewEvidence.current
+    && (reviewEvidence.has_records || runningReviewerRoles.length > 0),
+  );
+  const pluginStateSummary = pluginStateFoundSummary(pluginStateRead, {
+    stateRoles,
+    runningReviewerRoles,
+    extraDiagnostics: pluginStateExtraDiagnostics,
+  });
+  const evidenceSource = pluginStateRead.found ? 'plugin_state' : 'legacy_transcript';
+  const evidenceProvenance = pluginStateRead.found ? String(pluginStateRead.root_kind) : 'none';
+  const pluginStateLine = pluginStateRead.found
+    ? pluginStateRead.root_kind
+    : String(pluginStateRead.reason || 'not found');
+  const verificationEvidenceLine = (function () {
+    if (!verificationEvidence) return 'not read (legacy fallback)';
+    if (verificationEvidence.current) {
+      return `current-revision passed record(s): ${verificationEvidence.passed_record_count}`;
+    }
+    return `no valid record (records=${verificationEvidence.record_count}, stale=${verificationEvidence.stale_count}, pending=${verificationEvidence.pending_count}, failed=${verificationEvidence.failed_count})`;
+  })();
+  const reviewEvidenceLine = (function () {
+    if (!reviewEvidence) return 'not read (legacy fallback)';
+    if (reviewEvidence.current) {
+      return `current-revision completed review record(s): ${reviewEvidence.completed_record_count}`;
+    }
+    return `no valid record (records=${reviewEvidence.record_count}, wrong_role=${reviewEvidence.wrong_role_count}, stale=${reviewEvidence.stale_count})`;
+  })();
+  // --- outcome suite wiring (task 10 handoff): honest pass-through keys ---
+  const repValue = (function () {
+    const raw = String(process.env.BENCH_REP ?? '').trim();
+    return /^\d+$/.test(raw) ? Number(raw) : null;
+  })();
+  const turnsValue = (function () {
+    const n = Number(payload && payload.num_turns);
+    return Number.isInteger(n) && n >= 0 ? n : null;
+  })();
+  const payloadUsage = payload && typeof payload.usage === 'object' && !Array.isArray(payload.usage)
+    ? payload.usage : null;
+  const usageField = (k) => {
+    const n = Number(payloadUsage && payloadUsage[k]);
+    return Number.isFinite(n) ? n : null;
+  };
+  const tokenUsageValue = payloadUsage && [
+    'input_tokens', 'output_tokens', 'cache_read_input_tokens', 'cache_creation_input_tokens',
+  ].some((k) => Number.isFinite(Number(payloadUsage[k]))) ? {
+    input: usageField('input_tokens'),
+    output: usageField('output_tokens'),
+    cache_read: usageField('cache_read_input_tokens'),
+    cache_write: usageField('cache_creation_input_tokens'),
+  } : null;
+  const costUsdValue = payload && Number.isFinite(Number(payload.total_cost_usd))
+    ? Number(payload.total_cost_usd) : null;
+  const costSourceValue = costUsdValue === null ? null : 'provider';
+  const dispatchCountValue = (function () {
+    if (!pluginStateRead.found) return null;
+    const direct = Number(pluginStateRead.state && pluginStateRead.state.subagent_start_count);
+    if (Number.isInteger(direct) && direct >= 0) return direct;
+    const agents = pluginStateRead.state && pluginStateRead.state.agents;
+    if (agents && typeof agents === 'object' && !Array.isArray(agents)) {
+      const starts = Object.values(agents).reduce((s, a) => s + (Number(a && a.starts) || 0), 0);
+      if (Number.isInteger(starts) && starts > 0) return starts;
+    }
+    return null;
+  })();
+  const outcomePredicates = outcomeLivePredicates(task);
+  let predicateResultsValue = null;
+  let findingsEvidenceValue = null;
+  if (outcomePredicates.length > 0) {
+    const [, transcriptEntries] = transcriptTextEntries(payload, { assistantOnly: true });
+    const transcriptText = transcriptEntries.map(([, t]) => t).join('\n');
+    const evaluated = evaluateOutcomeLivePredicates(task, {
+      repoRoot: REPO_ROOT,
+      workdir: WORKDIR,
+      changedFiles,
+      resultText,
+      transcriptText,
+      state: pluginStateRead.found ? pluginStateRead.state : null,
+      spawn: _spawnSync,
+    });
+    const byId = {};
+    for (const r of evaluated.results) byId[String(r.id)] = { result: r.result, detail: r.detail };
+    predicateResultsValue = byId;
+    findingsEvidenceValue = evaluated.findings_evidence;
+  }
+  const evidenceArtifact = {
+    schema: 'agnthive.bench-evidence/1',
+    runner: 'bench_runner_claude_code',
+    task_id: task.id,
+    session_id: payloadSessionId,
+    source: evidenceSource,
+    provenance: evidenceProvenance,
+    plugin_state: pluginStateSummary,
+    state_agent_roles: stateRoles,
+    verification_evidence: verificationEvidence,
+    review_evidence: reviewEvidence,
+    agent_evidence_by_alias: agentEvidenceByAlias,
+    used_agent_aliases: usedAgentAliases,
+    observed_agent_aliases: observedAgentAliases,
+    claimed_agent_aliases: claimedAgentAliases,
+    observed_agent_aliases_source: observedAgentAliasesSource,
+  };
   const recoveryMode = completedTaskRecoveryMode({
     exitCode,
     payloadSubtype,
@@ -2149,6 +2915,8 @@ export function main() {
     missingRequiredUsedAgents,
     missingRequiredUsedAgentGroups,
     payloadHardStop: payloadHardStop,
+    verificationEvidenceMissing,
+    reviewEvidenceMissing,
   });
   if (failures.length) status = 'failed';
 
@@ -2164,6 +2932,17 @@ export function main() {
     `Summary repair attempts: ${summaryRepairAttempts}. ` +
     `Summary repaired by: ${summaryRepairedBy}. ` +
     `Verification command: ${verificationLabel}. ` +
+    `Verification command: ${verificationLabel}. ` +
+    `Evidence source: ${evidenceSource}. ` +
+    `Evidence provenance: ${evidenceProvenance}. ` +
+    `Verification evidence: ${verificationEvidenceLine}. ` +
+    `Review evidence: ${reviewEvidenceLine}. ` +
+    (predicateResultsValue
+      ? `Outcome predicates: ${Object.keys(predicateResultsValue).length} live predicate(s) evaluated. `
+      : '') +
+    (findingsEvidenceValue
+      ? `Findings evidence: ${findingsEvidenceValue.matched_material_ids.length} material finding(s) matched. `
+      : '') +
     `Timeout recovered: ${timeoutRecovered}. ` +
     `Max-turns recovered: ${maxTurnsRecovered}. ` +
     `Claude hard stop: ${payloadHardStop}. ` +
@@ -2219,12 +2998,28 @@ export function main() {
     observedAgentAliases,
     claimedAgentAliases,
     agentEvidenceByAlias,
+    stateAgentRoles: stateRoles,
+    evidenceSource,
+    evidenceProvenance,
+    pluginStateSummary,
+    verificationEvidence,
+    reviewEvidence,
+    observedAgentAliasesSource,
+    rep: repValue,
+    turns: turnsValue,
+    tokenUsage: tokenUsageValue,
+    costUsd: costUsdValue,
+    costSource: costSourceValue,
+    predicateResults: predicateResultsValue,
+    findingsEvidence: findingsEvidenceValue,
+    dispatchCount: dispatchCountValue,
     dispatchMode,
     fatalError,
     failures,
   });
 
   writeText(join(OUTPUT_DIR, 'result.json'), JSON.stringify(result, null, 2) + '\n');
+  writeText(join(OUTPUT_DIR, 'evidence.json'), JSON.stringify(evidenceArtifact, null, 2) + '\n');
   writeText(
     join(OUTPUT_DIR, 'task-summary.txt'),
     buildTaskSummary({
@@ -2255,6 +3050,11 @@ export function main() {
       observedAgentAliases,
       claimedAgentAliases,
       dispatchMode,
+      evidenceSource,
+      stateAgentRoles: stateRoles,
+      pluginStateLine,
+      verificationEvidenceLine,
+      reviewEvidenceLine,
     }),
   );
   if (fatalError) writeText(join(OUTPUT_DIR, 'runner-error.txt'), fatalError + '\n');

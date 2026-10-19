@@ -274,7 +274,7 @@ function applyEvent(state, ev) {
 
 /** Pure reducer: fold event records (in seq order) into a state object. */
 export function reducer(events) {
-  const sorted = [...events].sort((a, b) => (a.seq || 0) - (a.seq || 0));
+  const sorted = [...events].sort((a, b) => (a.seq || 0) - (b.seq || 0));
   const state = structuredClone(DEFAULT_STATE);
   for (const ev of sorted) applyEvent(state, ev);
   return state;
