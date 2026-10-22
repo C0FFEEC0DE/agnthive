@@ -182,12 +182,45 @@ test('pluginStateCandidateRoots: ordering, dedupe, isolation first', () => {
     env: { BENCH_PLUGIN_DATA_ROOTS: '/tmp/r1\n/tmp/r2;/tmp/bench-out/plugin-data', CLAUDE_PLUGIN_DATA: '/tmp/outer' },
     home: '/tmp/home',
   });
-  assert.deepEqual(roots.map((r) => r.kind), ['bench_isolated', 'env_list', 'env_list', 'data_dir_env', 'home_fallback']);
+  // The pre-existing candidates keep their documented precedence order; the
+  // host's real inline data root is appended after them (it is only probed
+  // when the earlier roots hold no store for the requested session).
+  assert.deepEqual(roots.map((r) => r.kind), ['bench_isolated', 'env_list', 'env_list', 'data_dir_env', 'home_fallback', 'home_inline']);
   // /tmp/bench-out/plugin-data listed twice (isolated + env_list) is deduped,
   // keeping the earlier kind. The roots are resolve()d by production code, so
   // win32 adds a drive prefix (build the expectation with the same primitive).
   assert.equal(roots.filter((r) => r.root === join(resolvePath('/tmp/bench-out'), 'plugin-data')).length, 1);
   assert.equal(roots[0].kind, 'bench_isolated');
+  // The runtime's ACTUAL inline data root is probed: the host writes the
+  // session store to ~/.claude/plugins/data/<name>-inline/ even when
+  // CLAUDE_PLUGIN_DATA points elsewhere (measured on CLI 2.1.303).
+  const inlineRoot = roots.find((r) => r.kind === 'home_inline');
+  assert.ok(inlineRoot, 'home_inline candidate present');
+  assert.equal(inlineRoot.root, join(resolvePath('/tmp/home'), '.claude', 'plugins', 'data', 'agnthive-inline'));
+});
+
+test('pluginStateCandidateRoots: the inline root follows the plugin id, not a hardcoded name', () => {
+  // BENCH_PLUGIN_ID overrides the derivation (a host with a different inline
+  // sentinel), and the data root follows it.
+  const roots = pluginStateCandidateRoots({
+    outputDir: '/tmp/bench-out',
+    env: { BENCH_PLUGIN_ID: 'other@inline' },
+    home: '/tmp/home',
+  });
+  const inlineRoot = roots.find((r) => r.kind === 'home_inline');
+  assert.ok(inlineRoot, 'home_inline candidate present');
+  assert.equal(inlineRoot.root, join(resolvePath('/tmp/home'), '.claude', 'plugins', 'data', 'other-inline'));
+});
+
+test('pluginStateCandidateRoots: the plugin cache dir root is probed when the host overrides it', () => {
+  const roots = pluginStateCandidateRoots({
+    outputDir: '/tmp/bench-out',
+    env: { CLAUDE_CODE_PLUGIN_CACHE_DIR: '/tmp/plugin-cache' },
+    home: '/tmp/home',
+  });
+  const cacheRoot = roots.find((r) => r.kind === 'cache_dir_inline');
+  assert.ok(cacheRoot, 'cache_dir_inline candidate present');
+  assert.equal(cacheRoot.root, join(resolvePath('/tmp/plugin-cache'), 'data', 'agnthive-inline'));
 });
 
 test('readSessionPluginState: found in candidate root with strict session match', () => {

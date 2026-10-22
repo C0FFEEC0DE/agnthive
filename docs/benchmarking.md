@@ -431,12 +431,64 @@ Mock run (no model):
     node scripts/run-benchmark.mjs --output-dir /tmp/agnthive-outcomes \
       --task-glob 'bench/tasks/outcomes/tasks/*.json' --mode mock
 
+Arm matrix run: `--arms` selects the arms (a subset of `native|legacy|lean`,
+intersected with the arms each task declares), `--reps` the repetitions per
+(task, arm) cell, and `--arm-profile` the profile of the single default arm.
+The matrix is OPT-IN: without `--arms` each task still runs exactly once, so
+the existing CI invocation and its model spend are unchanged.
+
+    node scripts/run-benchmark.mjs --output-dir /tmp/agnthive-matrix \
+      --task-glob 'bench/tasks/outcomes/tasks/*.json' --mode command \
+      --arms native,legacy,lean --reps 3
+
+Each (task, arm, rep) cell runs in a FRESH work area with its own
+`result.json`; the runner child receives `BENCH_ARM` and `BENCH_REP`, plus
+`BENCH_DISABLE_PLUGIN=1` for the no-plugin `native` arm and
+`AGNTHIVE_WORKFLOW_PROFILE` for the plugin arms. A matrix run writes one
+`summary.json` and `benchmark-report.md` per arm under
+`<output-dir>/arms/<arm>/` — the suite emitter takes ONE arm per run
+directory, so it is pointed at that directory:
+
+    node bench/tasks/outcomes/tools/emit-outcome-metrics.mjs \
+      --run /tmp/agnthive-matrix/arms/lean --arm lean \
+      --out /tmp/agnthive-matrix/lean-metrics.json
+
+A cell that cannot run is recorded as failed or unexecuted, never as a pass.
+
+Runner crash: when the runner process dies (a crash, a signal, or no
+`result.json`), the orchestrator does NOT abandon the rest of the matrix. In a
+matrix run the cell is retried once; if it still cannot run, the cell is
+recorded as a failed cell (`runner_failed`) and the remaining cells keep
+running. The summaries are still written, and the process exit code stays
+non-zero, so an infrastructure failure never looks like a clean run.
+
+Arm-accurate prompt: the prompt describes the session the agent actually
+gets. The `native` arm is told that no plugin is loaded — it is never told to
+use a plugin that is not there — and every arm is told the cell's working
+directory, with an explicit instruction not to search the machine for other
+copies of the task's files. Without that, a task that names its files by role
+("the fixture README.md") makes the agent run a filesystem-wide search, find
+the REAL repository fixture — and the workdirs of sibling arms — and edit
+those instead: that dirties the repository and lets one arm read another's
+work.
+
+Task ids and directory names: a task id comes from a task file, so it is
+untrusted input, and it becomes a directory name under the run output. A safe
+id (plain characters, short) is used verbatim, so the artifact paths above do
+not move. An unsafe id — one carrying path separators, or one long enough to
+exceed the 255-byte filename limit — is rewritten to a readable slug plus a
+digest of the original id, so a task can neither write outside the run
+directory nor abort the whole run with `ENAMETOOLONG`. The digest keeps the
+mapping deterministic and collision-free. The REPORTED id is never rewritten:
+`summary.json` and `result.json` still name the task that actually ran, so
+the emitter and the reports are unaffected.
+
 Metrics document (rollout-gate input, plan tasks 11/15): the suite emitter aggregates one or more run output dirs into a single per-arm document, validated against the metrics contract before it is written:
 
     node bench/tasks/outcomes/tools/emit-outcome-metrics.mjs \
       --run /tmp/agnthive-outcomes --arm lean \
       --out /tmp/agnthive-outcomes/outcome-metrics.json
 
-`--run DIR [--arm NAME]` repeats per run (arm fallback: `BENCH_ARM`); `BENCH_MOCK=1` is refused against live runs. The document contains `schema_kind: "outcome-metrics"`, `schema_version: "1.0"`, `suite: "outcomes"`, the `mode`, a `contracts_revision` digest (over `bench/fixtures/`, the suite seeds and schema code, and `bench/patterns/forbidden-meta-chatter.json`), `run_metadata` (model/provider/effort/token_cap/cli_version), per-arm metric blocks keyed by arm (`outcome_pass_rate`, `false_completions`, `permission_denials`, `material_findings`, token and cost accounting, median turns/runtime/dispatches, and mock vs live predicate tallies), the flattened per-(task, rep) `records`, and `gate_inputs`.
+`--run DIR [--arm NAME]` repeats per run (arm fallback: `BENCH_ARM`); `BENCH_MOCK=1` is refused against live runs. The document contains `schema_kind: "outcome-metrics"`, `schema_version: "1.1"`, `suite: "outcomes"`, the `mode`, a `contracts_revision` digest (over `bench/fixtures/`, the suite seeds and schema code, and `bench/patterns/forbidden-meta-chatter.json`), `run_metadata` (model/provider/effort/token_cap/cli_version), per-arm metric blocks keyed by arm (`outcome_pass_rate`, `false_completions`, `permission_denials`, `material_findings`, token and cost accounting, median turns/runtime/dispatches, and mock vs live predicate tallies), the flattened per-(task, rep) `records`, and `gate_inputs`.
 
-Gate contract (ADR-0012): `gate_inputs` is `available: true` only for live metrics where every involved arm was fully evaluated and findings-evidenced and ran at least 3 reps per task; the gate then reads `gate_inputs.lean.<baseline>.{new_false_completions, permission_denials_delta, lost_material_findings, paired}` for each baseline arm present (`native` and/or `legacy`). Lean may become the profile default only when every baseline shows no new false completions, no permission regressions, and no lost material findings. When evidence is missing, `gate_inputs` reports `available: false` with a reason instead of fabricating numbers.
+Gate contract (ADR-0012): `gate_inputs` is `available: true` only for live metrics where every involved arm was fully evaluated and findings-evidenced and ran at least 3 reps per task; the gate then reads `gate_inputs.lean.<baseline>.{new_false_completions, permission_denials_delta, lost_material_findings, paired}` for each baseline arm present (`native` and/or `legacy`). Every delta is measured on the PAIRED cells — the (task, rep) both arms executed — because the suite lets each task declare its own arm subset and arm totals are therefore not comparable (the `native` control skips the plugin-only lifecycle tasks, so a 7-task total would be compared against a 9-task total). Lean may become the profile default only when every baseline shows no new false completions, no permission regressions, and no lost material findings. When evidence is missing, `gate_inputs` reports `available: false` with a reason instead of fabricating numbers.

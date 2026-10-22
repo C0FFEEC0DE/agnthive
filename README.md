@@ -12,8 +12,10 @@ claude plugin marketplace add C0FFEEC0DE/agnthive && claude plugin install agnth
 
 Claude Code with a software engineering discipline built in — a **hook-gated SDLC
 profile** wraps every prompt in discover → design → implement → verify → review →
-docs, eight specialist agents collaborate with guardrails on, and a benchmark
-suite catches regressions before they ship.
+docs, three primary specialists (Code Reviewer, Explorer, Debugger) work under
+the gates, and a benchmark suite scores end states so regressions surface before
+a release. The gates only run in sessions where the plugin is enabled — it ships
+disabled by default.
 
 ## How it works
 
@@ -33,16 +35,16 @@ Full diagram and the pieces: [`plugins/agnthive/references/architecture.md`](plu
 
 ## Agents
 
-| Alias | Role | Purpose |
-|-------|------|---------|
-| `@m` | Manager | Orchestrates other agents |
-| `@cr` | Code Reviewer | Code review + security |
-| `@t` | Tester | Verification + regression |
-| `@e` | Explorer | Codebase exploration |
-| `@a` | Architect | System design |
-| `@bug` | Bugbuster | Bug hunting |
-| `@dbg` | Debugger | Debugging issues |
-| `@doc` | Docwriter | Documentation |
+| Alias | Role | Purpose | Status (ADR 0008) |
+|-------|------|---------|-------------------|
+| `@m` | Manager | Orchestrates other agents | legacy compatibility — now a root procedure |
+| `@cr` | Code Reviewer | Code review + security | primary specialist |
+| `@t` | Tester | Verification + regression | legacy compatibility |
+| `@e` | Explorer | Codebase exploration | primary specialist |
+| `@a` | Architect | System design | legacy compatibility |
+| `@bug` | Bugbuster | Bug hunting | legacy compatibility |
+| `@dbg` | Debugger | Debugging issues | primary specialist |
+| `@doc` | Docwriter | Documentation | legacy compatibility |
 
 Full names work too: `@code-reviewer`, `@tester`, etc.
 
@@ -92,7 +94,10 @@ quotas and Manager-idle gate while keeping the current-verification and
 independent-review gates; completion evidence is read from the plugin's
 session state (`verification[]` records scoped to the current change revision
 and the agent registry), not from footer text. The default flips only after
-the ADR 0012 outcome benchmark passes.
+the ADR 0012 outcome benchmark passes its rollout gate — that gate has not
+been exercised to completion (no full live arm x repetition matrix run exists),
+so `legacy` is still the
+default and `lean` is still experimental.
 
 ## Install
 
@@ -114,6 +119,16 @@ to turn the hooks on. Restart Claude Code after enabling. See
 `plugins/agnthive/README.md` for requirements, configuration, the optional
 status line, and legacy-migration notes.
 
+### Requirements
+
+- **Claude Code** with plugin support, and **Node.js 22 or newer** on `PATH`
+  (the runtime invokes the hooks as `node …module.mjs`).
+- **No minimum Claude Code version is declared.** The pinned, validated target
+  is `2.1.303`; the version matrix, the evidence class of every row, and what
+  is still unverified live in
+  [`docs/compatibility.md`](docs/compatibility.md). The plugin ships disabled
+  by default, so its hooks only run in sessions where it has been enabled.
+
 ### Update
 
 Updates come straight from the repository — re-run a single command after new
@@ -132,7 +147,7 @@ README.
 All configuration is **environment variables and the plugin-scoped `userConfig`**. The plugin never reads or writes `~/.claude/settings.json`, so installation is non-destructive.
 
 - **Command policy mode:** `userConfig.enforcement_mode` (default `advisory`) or the `AGNTHIVE_POLICY` env var (`advisory` fail-open vs `enforce` fail-closed on unparseable indirection). The legacy `CLAUDE_CREW_POLICY` alias is still honored.
-- **Workflow profile:** `userConfig.workflow_profile` (default `legacy`) or the `AGNTHIVE_WORKFLOW_PROFILE` env var selects the SDLC gate shape. `legacy` keeps the full specialist-handoff and footer gates; `lean` is **experimental** (root orchestration, no mandatory role quotas, verification + review evidence gates stay). The default flips only after the ADR 0012 outcome benchmark passes.
+- **Workflow profile:** `userConfig.workflow_profile` (default `legacy`) or the `AGNTHIVE_WORKFLOW_PROFILE` env var selects the SDLC gate shape. `legacy` keeps the full specialist-handoff and footer gates; `lean` is **experimental** (root orchestration, no mandatory role quotas, verification + review evidence gates stay). The default flips only after the ADR 0012 outcome benchmark passes its rollout gate; the gate has not been exercised to completion (no full live arm x repetition matrix run exists), so the default is still `legacy`.
 - **Log rotation / ledger size:** `userConfig.log_max_bytes` (1 MiB default) and `userConfig.ledger_max_bytes` (64 KiB default), overridable via `AGNTHIVE_LOG_MAX_BYTES` / `AGNTHIVE_LEDGER_MAX_BYTES` (with `CLAUDE_CREW_*` legacy aliases).
 - **Knob precedence:** every tunable knob reads `AGNTHIVE_*` (explicit) > `CLAUDE_CREW_*` (legacy alias) > `CLAUDE_PLUGIN_OPTION_*` (the `userConfig` bridge, lowest priority) — so a `userConfig` value always applies unless an explicit env var overrides it.
 - **Progress ledger:** `AGNTHIVE_PROGRESS_FILE` overrides the location; default `<projectDir>/.agnthive/progress.md` (gitignored).

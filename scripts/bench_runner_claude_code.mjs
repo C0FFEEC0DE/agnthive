@@ -18,9 +18,11 @@ import {
   mkdirSync,
   readdirSync,
   existsSync,
+  rmSync,
+  mkdtempSync,
 } from 'node:fs';
 import { join, resolve, relative, basename, dirname, sep } from 'node:path';
-import { homedir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { fileURLToPath as _fileURLToPath } from 'node:url';
 import process from 'node:process';
 
@@ -36,6 +38,11 @@ import {
   verificationEvidenceFromStateRecords,
   reviewEvidenceFromStateRecords,
 } from './bench/lib.mjs';
+// ADR-0012: the outcome suite declares, PER TASK, the budget the task was
+// written for (bench/tasks/outcomes/schema/outcome-schema.mjs BUDGET_CLASSES:
+// small|medium|large -> {max_turns, timeout_seconds}). The runner reads that
+// contract instead of applying one flat limit to every task.
+import { BUDGET_CLASSES } from '../bench/tasks/outcomes/schema/outcome-schema.mjs';
 
 // ---------- env helpers ----------
 function envOrDefault(name, defaultValue) {
@@ -64,6 +71,51 @@ const CLAUDE_BIN = envOrDefault('CLAUDE_BIN', 'claude');
 const MODEL_NAME = envOrDefault('OLLAMA_MODEL', '');
 const MAX_TURNS = envOrDefault('MAX_TURNS', '16');
 const CLAUDE_TIMEOUT_SECONDS = Number(envOrDefault('CLAUDE_TIMEOUT_SECONDS', '300'));
+
+// A raw env read: "" means the operator did NOT set the variable, which is
+// what lets the task's declared budget class apply. envOrDefault cannot tell
+// "set to 300" from "unset".
+function rawEnv(name) {
+  return String(process.env[name] || '').trim();
+}
+
+/**
+ * The turn and wall-clock budget for one task.
+ *
+ * The outcome suite writes every task with a `budget_class` and the schema
+ * maps that class to the turn/timeout budget the task was designed for. A
+ * FLAT runner limit measures the harness, not the task: a `medium` task
+ * (contract: 24 turns / 400s) was killed at the flat 16 turns / 300s and
+ * recorded as a task failure the model never committed. The task file is the
+ * contract; an explicit MAX_TURNS / CLAUDE_TIMEOUT_SECONDS in the environment
+ * still wins, so a manual or CI run can pin its own limits.
+ *
+ * A task file without a budget class (the non-outcome suites) keeps the flat
+ * defaults.
+ */
+export function taskBudgetLimits(taskFile, options = {}) {
+  const maxTurnsEnv = options.maxTurnsEnv !== undefined ? options.maxTurnsEnv : rawEnv('MAX_TURNS');
+  const timeoutEnv = options.timeoutEnv !== undefined ? options.timeoutEnv : rawEnv('CLAUDE_TIMEOUT_SECONDS');
+  const fallback = { budgetClass: null, maxTurns: null, timeoutSeconds: null, source: 'default' };
+  if (!taskFile) return fallback;
+  let task = null;
+  try {
+    task = JSON.parse(readFileSync(taskFile, 'utf-8'));
+  } catch {
+    return fallback;
+  }
+  const budgetClass = typeof task.budget_class === 'string' ? task.budget_class : null;
+  const spec = budgetClass ? BUDGET_CLASSES[budgetClass] : null;
+  if (!spec) return fallback;
+  const maxTurns = maxTurnsEnv ? Number(maxTurnsEnv) : spec.max_turns;
+  const timeoutSeconds = timeoutEnv ? Number(timeoutEnv) : spec.timeout_seconds;
+  return {
+    budgetClass,
+    maxTurns: Number.isFinite(maxTurns) && maxTurns > 0 ? maxTurns : spec.max_turns,
+    timeoutSeconds: Number.isFinite(timeoutSeconds) && timeoutSeconds > 0 ? timeoutSeconds : spec.timeout_seconds,
+    source: maxTurnsEnv || timeoutEnv ? 'env-override' : 'task-budget-class',
+  };
+}
 const CLAUDE_CODE_MAX_OUTPUT_TOKENS = envOrDefault('CLAUDE_CODE_MAX_OUTPUT_TOKENS', '');
 
 const OUTPUT_TOKEN_BUDGET_RETRIES = 3;
@@ -459,7 +511,16 @@ export function dispatchContractMarker(task) {
 }
 
 // ---------- prompt builder ----------
-export function buildPrompt(task, verificationLabel) {
+export function buildPrompt(task, verificationLabel, options = {}) {
+  // The prompt must describe the session the agent actually gets (ADR-0012).
+  // The native arm runs WITHOUT the plugin, so telling it to use the plugin
+  // would describe a session that does not exist: the agent would look for
+  // plugin commands that are not registered, and the baseline would measure a
+  // confused agent instead of a plugin-free one.
+  const pluginEnabled = options.pluginEnabled !== false;
+  const pluginInstruction = pluginEnabled
+    ? 'Complete the task in the current working directory using the agnthive Claude Code plugin (loaded via --plugin-dir).'
+    : 'Complete the task in the current working directory. No Claude Code plugin is loaded in this session: use the standard tools only.';
   const successCriteria = (task.success_criteria || []).map((i) => `- ${i}`).join('\n');
   const mustNot = (task.must_not || []).map((i) => `- ${i}`).join('\n');
   const category = String(task.category);
@@ -486,6 +547,18 @@ export function buildPrompt(task, verificationLabel) {
     'Modify existing files in place when they already exist. ' +
     'Do not rename, relocate, or duplicate source or test files unless the task explicitly requires it. ' +
     'If the fixture already contains a test file, update that file instead of creating a second copy under a new path.';
+  // The workspace contract (ADR-0012). A task names its files by role ("the
+  // fixture README.md"), and an agent that cannot resolve that name goes
+  // looking for other copies of it on the machine: a filesystem-wide search
+  // finds the REAL repository fixture (and the workdirs of sibling arms) and
+  // edits those instead. That dirties the repository and lets one arm read
+  // another's work. Naming the working directory and forbidding a search
+  // removes the trigger; the note is identical for every arm, so it cannot
+  // bias the comparison.
+  const workdir = String(options.workdir || '').trim();
+  const workspaceNote = workdir
+    ? `Workspace: your working directory is ${workdir}. Every file this task refers to (the fixture, its README, the seeded sources) is in that directory, addressed by its name relative to it. Work only there. Do not search the machine for other copies of these files, and do not read or modify anything outside the working directory.`
+    : 'Workspace: work only in the current working directory. Do not search the machine for other copies of the files this task refers to, and do not read or modify anything outside the working directory.';
   const requiredUsedAgentList = (task.required_used_agents || []).filter(
     (alias) => typeof alias === 'string',
   );
@@ -540,12 +613,13 @@ export function buildPrompt(task, verificationLabel) {
 
   return `You are running in a tiny benchmark repository fixture.
 
-Complete the task in the current working directory using the agnthive Claude Code plugin (loaded via --plugin-dir).
+${pluginInstruction}
 Use tools normally. Make only the changes needed for this task. Do not do release or deploy work.
 If behavior changes, update docs. ${verificationHint}
 Leave the workspace changes in place for artifact collection.
 ${executionDisciplineNote}
 ${fixtureLayoutNote}
+${workspaceNote}
 
 ${workflowOverride}
 ${dispatchContractBlock}
@@ -751,6 +825,115 @@ export function extractResultTextFromTranscript(payload) {
   return bestScore > 0 ? bestText : '';
 }
 
+// ---------- plugin session enablement (ADR-0012) ----------
+// The agnthive plugin manifest ships "defaultEnabled": false (a manifest
+// contract, see docs/compatibility.md and the repo's smoke check 8), so a
+// `claude --plugin-dir <dir>` session LOADS the plugin but does not ENABLE
+// it: the host reads hooks.json, logs "Read hooks.json for plugin agnthive
+// (enabled=true)" and then registers ZERO hooks from it, so the plugin's
+// Node hook runtime never runs and no plugin state is ever written.
+//
+// Measured on CLI 2.1.303 (2026-10-21, real `claude -p` runs against this
+// repo's plugins/agnthive):
+//   * --plugin-dir only ................ "Registered 0 hooks from 3 plugins"
+//   * --plugin-dir + --settings file .. "Registered 23 hooks from 4 plugins"
+//   * --plugin-dir + --settings file with the key "agnthive@local" ..
+//     "Registered 0 hooks from 3 plugins" (the host logs "Plugin
+//     agnthive@local not found in any marketplace, skipping")
+//
+// The correct fix is therefore to ENABLE the plugin for the benchmark
+// session through an explicit --settings file whose enabledPlugins map
+// carries the INLINE plugin id ("<name>@inline" — the --plugin-dir source
+// sentinel; the host derives it from the plugin manifest name). The manifest
+// itself is NOT touched: defaultEnabled stays false.
+//
+// The id is derived, not hardcoded: it is read from the plugin manifest
+// (<pluginDir>/.claude-plugin/plugin.json -> "name") and suffixed with the
+// --plugin-dir sentinel. BENCH_PLUGIN_ID overrides it for a host that uses a
+// different inline sentinel.
+
+/** The --plugin-dir source sentinel the host appends to the plugin name. */
+export const INLINE_PLUGIN_SUFFIX = '@inline';
+
+/**
+ * Derive the inline plugin id the host will look up in `enabledPlugins`.
+ * Reads the plugin manifest name (the source of truth) and appends the
+ * inline sentinel. Falls back to the documented default when the manifest is
+ * unreadable (a missing/renamed manifest must not silently produce a
+ * different id). BENCH_PLUGIN_ID overrides the whole derivation.
+ */
+export function inlinePluginId({ pluginDir = PLUGIN_DIR, env = process.env } = {}) {
+  const override = String((env && env.BENCH_PLUGIN_ID) || '').trim();
+  if (override) return override;
+  let name = '';
+  // Only read a manifest from a real (non-empty) plugin dir: an empty dir
+  // would resolve to a cwd-relative path and could pick up an unrelated file.
+  if (pluginDir) {
+    try {
+      const manifest = JSON.parse(readFileSync(join(pluginDir, '.claude-plugin', 'plugin.json'), 'utf-8'));
+      if (manifest && typeof manifest.name === 'string') name = manifest.name.trim();
+    } catch { /* unreadable manifest -> documented default below */ }
+  }
+  if (!name) name = 'agnthive';
+  return `${name}${INLINE_PLUGIN_SUFFIX}`;
+}
+
+/**
+ * The settings payload that enables the inline plugin for one session.
+ * Shape: {"enabledPlugins": {"<name>@inline": true}} — the key MUST be the
+ * inline id; a marketplace-style key is skipped by the host.
+ */
+export function pluginEnableSettings(pluginId) {
+  return { enabledPlugins: { [pluginId]: true } };
+}
+
+/**
+ * Write the per-run session settings file that enables the plugin.
+ * Created under the run output dir (so it never leaks into the user's home
+ * config) and removed by the caller in a finally block.
+ * Returns the settings file path, or '' when the file could not be written
+ * (the caller then runs without --settings rather than guessing).
+ */
+export function writePluginEnableSettings({ outputDir = '', pluginId = '', fileName = 'bench-plugin-settings.json' } = {}) {
+  const dir = outputDir ? resolve(outputDir) : mkdtempSync(join(tmpdir(), 'agnthive-bench-settings-'));
+  try {
+    mkdirSync(dir, { recursive: true });
+  } catch { /* read-only outdir: fall back to a temp dir */ }
+  const path = join(dir, fileName);
+  try {
+    writeFileSync(path, `${JSON.stringify(pluginEnableSettings(pluginId), null, 2)}\n`, 'utf-8');
+  } catch {
+    return '';
+  }
+  return path;
+}
+
+/**
+ * Remove the per-run settings file. Best-effort: a cleanup failure must never
+ * fail the run. Returns true when a file was removed, false when there was
+ * nothing to remove or the removal failed.
+ */
+export function removePluginEnableSettings(settingsPath) {
+  if (!settingsPath) return false;
+  try {
+    if (!existsSync(settingsPath)) return false;
+    rmSync(settingsPath, { force: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * True when the benchmark runs the no-plugin (native) arm: BENCH_DISABLE_PLUGIN
+ * is set to 1/true. The child then runs with NO --plugin-dir and NO
+ * --settings, so the session is a genuine no-plugin baseline.
+ */
+export function pluginDisabledByEnv(env = process.env) {
+  const raw = String((env && env.BENCH_DISABLE_PLUGIN) || '').trim().toLowerCase();
+  return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
+}
+
 // ---------- ADR-0009/0010/0012 structured plugin-state evidence ----------
 // The plugin runtime appends per-session events under
 // ${CLDAUDE_PLUGIN_DATA}/<safe-session-id>/ (events/*.json + disposable
@@ -770,9 +953,26 @@ export function extractResultTextFromTranscript(payload) {
  *   3. data_dir_env — the inherited CLAUDE_PLUGIN_DATA (may be an outer live
  *      store; the strict session match makes scanning it safe).
  *   4. home_fallback — the runtime's own resolveDataRoot default.
- * Deduplicated by resolved path; first kind wins.
+ *   5. home_inline — the data root the host ACTUALLY uses for a plugin loaded
+ *      via --plugin-dir: ~/.claude/plugins/data/<name>-inline/. Measured on
+ *      CLI 2.1.303: with CLAUDE_PLUGIN_DATA set to a run-local path the host
+ *      still wrote the session store under
+ *      ~/.claude/plugins/data/agnthive-inline/<session-id>/ and nothing
+ *      landed in the env-var path, so without this root the plugin-state
+ *      evidence is never found and the run silently degrades to "not found"
+ *      (ADR-0010: missing evidence stays unknown, never guessed).
+ *      <name> is the plugin's manifest name, so the root follows the plugin
+ *      instead of hardcoding one id; BENCH_PLUGIN_ID overrides it.
+ *   6. cache_dir_inline — the same root under CLAUDE_CODE_PLUGIN_CACHE_DIR,
+ *      which the host uses as the plugin cache root when set (measured: the
+ *      session store then lands under <cacheDir>/data/<name>-inline/).
+ * Deduplicated by resolved path; first kind wins. The inline roots are
+ * appended after the pre-existing candidates so their documented precedence
+ * order is unchanged; a root that holds no store for the requested session
+ * is skipped by the strict session match, so a later candidate can still
+ * answer.
  */
-export function pluginStateCandidateRoots({ outputDir = OUTPUT_DIR, env = process.env, home = homedir() } = {}) {
+export function pluginStateCandidateRoots({ outputDir = OUTPUT_DIR, env = process.env, home = homedir(), pluginDir = PLUGIN_DIR } = {}) {
   const candidates = [];
   const push = (kind, raw) => {
     if (!raw || !String(raw).trim()) return;
@@ -788,6 +988,13 @@ export function pluginStateCandidateRoots({ outputDir = OUTPUT_DIR, env = proces
   }
   push('data_dir_env', env.CLAUDE_PLUGIN_DATA);
   push('home_fallback', join(home, '.claude', 'plugins', 'data', 'agnthive'));
+  // The host's real inline data root: <plugins>/data/<manifest name>-inline.
+  // Derived from the plugin manifest (not hardcoded) so it tracks the plugin.
+  const inlineId = inlinePluginId({ pluginDir, env });
+  const inlineName = inlineId.split('@')[0] || 'agnthive';
+  push('home_inline', join(home, '.claude', 'plugins', 'data', `${inlineName}-inline`));
+  const cacheDir = String(env.CLAUDE_CODE_PLUGIN_CACHE_DIR || '').trim();
+  if (cacheDir) push('cache_dir_inline', join(resolve(cacheDir), 'data', `${inlineName}-inline`));
   return candidates;
 }
 
@@ -2017,6 +2224,7 @@ export function buildTaskSummary(args) {
     `Used agent aliases: ${args.usedAgentAliases.length ? args.usedAgentAliases.join(', ') : 'none'}`,
     `Observed agent aliases (observed): ${args.observedAgentAliases && args.observedAgentAliases.length ? args.observedAgentAliases.join(', ') : 'none'}`,
     `Evidence source: ${args.evidenceSource || 'legacy_transcript'}`,
+    `Plugin session: ${args.pluginSessionLine || 'unknown'}`,
     `Plugin state: ${args.pluginStateLine || 'unavailable (legacy transcript fallback)'}`,
     `State agent roles: ${args.stateAgentRoles && args.stateAgentRoles.length ? args.stateAgentRoles.join(', ') : 'none'}`,
     `Verification evidence (plugin state): ${args.verificationEvidenceLine || 'not read (legacy fallback)'}`,
@@ -2059,6 +2267,10 @@ export function buildResult(args) {
   return {
     task_id: args.taskId,
     task_path: args.taskPath,
+    budget_class: args.budgetClass ?? null,
+    max_turns: args.maxTurns ?? null,
+    timeout_seconds: args.timeoutSeconds ?? null,
+    budget_source: args.budgetSource ?? null,
     status: args.status,
     completed: args.completed,
     verification_required: args.verificationRequired,
@@ -2138,13 +2350,31 @@ class TimeoutExpired extends Error {
 }
 
 export function runClaude(prompt, debugLogPath, stderrLogPath, opts = {}, ctx = {}) {
-  const maxTurns = opts.maxTurns || MAX_TURNS;
+  const maxTurns = opts.maxTurns || ctx.maxTurns || MAX_TURNS;
   const maxOutputTokens = opts.maxOutputTokens || null;
   const claudeBin = ctx.claudeBin || CLAUDE_BIN;
   const modelName = ctx.modelName || MODEL_NAME;
   const pluginDir = ctx.pluginDir || PLUGIN_DIR;
   const workdir = ctx.workdir || WORKDIR;
   const timeoutSeconds = ctx.timeoutSeconds || CLAUDE_TIMEOUT_SECONDS;
+  // BENCH_DISABLE_PLUGIN=1 runs the native (no-plugin) arm: the child gets
+  // NEITHER --plugin-dir NOR --settings, so the session is a genuine
+  // no-plugin baseline rather than a plugin session with the plugin off.
+  const pluginEnabled = ctx.pluginEnabled !== undefined
+    ? Boolean(ctx.pluginEnabled)
+    : !pluginDisabledByEnv(process.env);
+  const pluginId = ctx.pluginId || inlinePluginId({ pluginDir, env: process.env });
+  // The session settings file that ENABLES the inline plugin. The manifest
+  // ships defaultEnabled:false, so without it the host registers zero hooks
+  // from the plugin and the plugin's hook runtime never runs.
+  // When the caller supplies ctx.settingsPath it owns the file's lifecycle
+  // (it is NOT deleted here); otherwise this call creates and removes it.
+  const ownsSettingsFile = ctx.settingsPath === undefined;
+  const settingsPath = pluginEnabled
+    ? (ownsSettingsFile
+      ? writePluginEnableSettings({ outputDir: ctx.outputDir || '', pluginId })
+      : ctx.settingsPath)
+    : '';
   const command = [
     claudeBin,
     '-p',
@@ -2155,14 +2385,25 @@ export function runClaude(prompt, debugLogPath, stderrLogPath, opts = {}, ctx = 
     String(maxTurns),
     '--permission-mode',
     'acceptEdits',
-    '--plugin-dir',
-    String(pluginDir),
-    '--debug-file',
-    String(debugLogPath),
-    '--output-format',
-    'json',
   ];
+  if (pluginEnabled) {
+    command.push('--plugin-dir', String(pluginDir));
+    // The settings file is what ENABLES the plugin for this session: the
+    // manifest's defaultEnabled:false makes the host skip its hooks
+    // otherwise, so the plugin's evidence layer would never be populated.
+    if (settingsPath) command.push('--settings', settingsPath);
+  }
+  command.push('--debug-file', String(debugLogPath), '--output-format', 'json');
   const env = { ...process.env };
+  // Workflow profile passthrough (ADR-0008/0012): the plugin resolves its
+  // profile from AGNTHIVE_WORKFLOW_PROFILE first, then the userConfig bridge
+  // CLAUDE_PLUGIN_OPTION_WORKFLOW_PROFILE, then 'legacy'. The runner inherits
+  // the ambient env already, but the benchmark arm must be able to pin the
+  // profile explicitly, so an explicit value from the runner's own env is
+  // forwarded (and the effective profile is recorded as evidence). The
+  // plugin's own resolution logic is NOT changed here.
+  const workflowProfile = String((ctx.workflowProfile !== undefined ? ctx.workflowProfile : process.env.AGNTHIVE_WORKFLOW_PROFILE) || '').trim();
+  if (workflowProfile) env.AGNTHIVE_WORKFLOW_PROFILE = workflowProfile;
   // ADR-0012 per-run evidence index: point the child's CLAUDE_PLUGIN_DATA at a
   // run-local directory under the output dir, so the session event store this
   // runner later reads is a per-run artifact (and an inherited outer value,
@@ -2179,45 +2420,52 @@ export function runClaude(prompt, debugLogPath, stderrLogPath, opts = {}, ctx = 
   if (effectiveMaxOutput) env.CLAUDE_CODE_MAX_OUTPUT_TOKENS = effectiveMaxOutput;
 
   let completed = { status: 1, stdout: '', stderr: '' };
-  for (let attempt = 1; attempt <= OLLAMA_429_MAX_RETRIES; attempt++) {
-    const res = _spawnSync(command[0], command.slice(1), {
-      cwd: workdir,
-      encoding: 'utf-8',
-      timeout: timeoutSeconds * 1000,
-      env,
-      maxBuffer: 64 * 1024 * 1024,
-    });
-    const stdout = res.stdout || '';
-    const stderr = res.stderr || '';
-    writeText(stderrLogPath, stderr);
-    // spawnSync reports an elapsed `timeout` option by setting res.error with
-    // code 'ETIMEDOUT' (and res.signal, res.status null) — and because res.error
-    // is truthy, a bare `if (res.error) throw res.error` would fire here and raise
-    // the raw Node error verbatim. That is misclassified downstream as an
-    // unrecovered "Claude runner exception: spawnSync claude ETIMEDOUT"
-    // (exitCode stays 0), so completedTaskRecoveryMode returns 'none' and
-    // classifyTaskFailures keeps fatalError — merge-blocking the functional gate
-    // even when the task had already completed and verification passed before
-    // the kill (observed on PR #4's enforced-mode architect task). Detect the
-    // timeout first and raise TimeoutExpired so the existing exitCode=124 ->
-    // recoveryMode='timeout' -> recoveredNonzeroExit -> fatalError-suppressed
-    // machinery treats a mid-run kill as recoverable. The signal-without-status
-    // case (a non-timeout signal kill) is folded in for parity with the prior
-    // explicit check.
-    const timedOut = (res.error && res.error.code === 'ETIMEDOUT') || (res.status === null && res.signal);
-    if (timedOut) throw new TimeoutExpired(timeoutSeconds, stdout, stderr);
-    if (res.error) throw res.error;
-    completed = { status: res.status, stdout, stderr };
-    if (res.status !== 0 && isOllama429(stderr)) {
-      if (attempt < OLLAMA_429_MAX_RETRIES) {
-        const delay = OLLAMA_429_BASE_DELAY * (2 ** (attempt - 1));
-        sleepSync(delay * 1000);
-        continue;
+  try {
+    for (let attempt = 1; attempt <= OLLAMA_429_MAX_RETRIES; attempt++) {
+      const res = _spawnSync(command[0], command.slice(1), {
+        cwd: workdir,
+        encoding: 'utf-8',
+        timeout: timeoutSeconds * 1000,
+        env,
+        maxBuffer: 64 * 1024 * 1024,
+      });
+      const stdout = res.stdout || '';
+      const stderr = res.stderr || '';
+      writeText(stderrLogPath, stderr);
+      // spawnSync reports an elapsed `timeout` option by setting res.error with
+      // code 'ETIMEDOUT' (and res.signal, res.status null) — and because res.error
+      // is truthy, a bare `if (res.error) throw res.error` would fire here and raise
+      // the raw Node error verbatim. That is misclassified downstream as an
+      // unrecovered "Claude runner exception: spawnSync claude ETIMEDOUT"
+      // (exitCode stays 0), so completedTaskRecoveryMode returns 'none' and
+      // classifyTaskFailures keeps fatalError — merge-blocking the functional gate
+      // even when the task had already completed and verification passed before
+      // the kill (observed on PR #4's enforced-mode architect task). Detect the
+      // timeout first and raise TimeoutExpired so the existing exitCode=124 ->
+      // recoveryMode='timeout' -> recoveredNonzeroExit -> fatalError-suppressed
+      // machinery treats a mid-run kill as recoverable. The signal-without-status
+      // case (a non-timeout signal kill) is folded in for parity with the prior
+      // explicit check.
+      const timedOut = (res.error && res.error.code === 'ETIMEDOUT') || (res.status === null && res.signal);
+      if (timedOut) throw new TimeoutExpired(timeoutSeconds, stdout, stderr);
+      if (res.error) throw res.error;
+      completed = { status: res.status, stdout, stderr };
+      if (res.status !== 0 && isOllama429(stderr)) {
+        if (attempt < OLLAMA_429_MAX_RETRIES) {
+          const delay = OLLAMA_429_BASE_DELAY * (2 ** (attempt - 1));
+          sleepSync(delay * 1000);
+          continue;
+        }
       }
+      break;
     }
-    break;
+    return [completed.status, completed.stdout, completed.stderr];
+  } finally {
+    // The per-run settings file is a session artifact, not a durable one: it
+    // must not survive the run (it lives in the run output dir and would
+    // otherwise be mistaken for a checked-in config).
+    if (ownsSettingsFile) removePluginEnableSettings(settingsPath);
   }
-  return [completed.status, completed.stdout, completed.stderr];
 }
 
 function sleepSync(ms) {
@@ -2281,7 +2529,7 @@ export function tryBudgetRetry(args, ctx = {}) {
         retryPayload = extractResultPayload(retryRawStdout);
         retryResultText = extractResultText(retryPayload);
         if (!retryResultText.trim()) retryResultText = extractResultTextFromTranscript(retryPayload);
-        retryError = `Claude timed out after ${CLAUDE_TIMEOUT_SECONDS}s during output-token retry.`;
+        retryError = `Claude timed out after ${timeoutSeconds}s during output-token retry.`;
       } else {
         retryExitCode = 1;
         retryError = `Claude runner exception during output-token retry: ${exc.message || exc}`;
@@ -2378,7 +2626,7 @@ export function tryProviderRetry(args, ctx = {}) {
         retryPayload = extractResultPayload(retryRawStdout);
         retryResultText = extractResultText(retryPayload);
         if (!retryResultText.trim()) retryResultText = extractResultTextFromTranscript(retryPayload);
-        retryError = `Claude timed out after ${CLAUDE_TIMEOUT_SECONDS}s during provider retry.`;
+        retryError = `Claude timed out after ${timeoutSeconds}s during provider retry.`;
       } else {
         retryExitCode = 1;
         retryError = `Claude runner exception during provider retry: ${exc.message || exc}`;
@@ -2446,6 +2694,15 @@ export function tryProviderRetry(args, ctx = {}) {
 // ---------- main ----------
 export function main() {
   if (!MODEL_NAME) throw new Error('OLLAMA_MODEL must be set');
+  // The Claude Code CLI keeps a background daemon in the session's process
+  // group; when that daemon hits the filesystem race on the shared
+  // ~/.claude/state lock file it aborts, and the abort signal reaches the
+  // whole group. A Node process never raises SIGABRT on its own, so a SIGABRT
+  // here comes from the child side: catching it lets this runner survive and
+  // report the cell as a failure instead of vanishing with the group.
+  process.on('SIGABRT', () => {
+    process.stderr.write('bench_runner: SIGABRT received (a child crashed) - the cell is reported as failed\n');
+  });
   mkdirSync(OUTPUT_DIR, { recursive: true });
   const startedAt = monotonicSeconds();
   // LOW (a) (@cr 0.4.0): a malformed task file is a reported violation,
@@ -2481,10 +2738,40 @@ export function main() {
   let [, verificationLabel] = detectVerificationTarget(WORKDIR);
   if (verificationLabel === null) verificationLabel = 'verification';
 
-  const ctx = { outputDir: OUTPUT_DIR, workdir: WORKDIR, claudeBin: CLAUDE_BIN, modelName: MODEL_NAME, pluginDir: PLUGIN_DIR, timeoutSeconds: CLAUDE_TIMEOUT_SECONDS };
+  const budgetLimits = taskBudgetLimits(TASK_FILE);
+  const ctx = {
+    outputDir: OUTPUT_DIR,
+    workdir: WORKDIR,
+    claudeBin: CLAUDE_BIN,
+    modelName: MODEL_NAME,
+    pluginDir: PLUGIN_DIR,
+    timeoutSeconds: budgetLimits.timeoutSeconds || CLAUDE_TIMEOUT_SECONDS,
+    maxTurns: budgetLimits.maxTurns || undefined,
+  };
   const labelMap = getLabelMap();
 
-  const prompt = buildPrompt(task, verificationLabel);
+  // Plugin session facts (ADR-0012): what the child was actually given, so the
+  // evidence artifact records HOW the plugin was enabled (or that it was not)
+  // instead of leaving the reader to guess from a missing plugin_state.
+  const pluginEnabled = !pluginDisabledByEnv(process.env);
+  const pluginId = inlinePluginId({ pluginDir: PLUGIN_DIR, env: process.env });
+  const pluginSessionFacts = {
+    plugin_enabled: pluginEnabled,
+    plugin_id: pluginEnabled ? pluginId : null,
+    enable_mechanism: pluginEnabled ? 'settings-file:enabledPlugins' : 'disabled:BENCH_DISABLE_PLUGIN',
+    default_enabled_manifest: false,
+    workflow_profile: String(process.env.AGNTHIVE_WORKFLOW_PROFILE || '').trim() || 'legacy',
+    bench_arm: String(process.env.BENCH_ARM || '').trim() || null,
+    bench_rep: /^\d+$/.test(String(process.env.BENCH_REP ?? '').trim())
+      ? Number(String(process.env.BENCH_REP).trim())
+      : null,
+  };
+
+  // The prompt follows the arm: the native (no-plugin) session must not be
+  // told to use a plugin it does not have (ADR-0012 baseline integrity), and
+  // it must name the cell's working directory so the agent cannot wander
+  // into the real repository or a sibling arm's workdir.
+  const prompt = buildPrompt(task, verificationLabel, { pluginEnabled, workdir: WORKDIR });
   let exitCode = 0;
   let rawStdout = '';
   let rawStderr = '';
@@ -2519,7 +2806,7 @@ export function main() {
       payload = extractResultPayload(rawStdout);
       resultText = extractResultText(payload);
       if (!resultText.trim()) resultText = extractResultTextFromTranscript(payload);
-      fatalError = `Claude timed out after ${CLAUDE_TIMEOUT_SECONDS}s.`;
+      fatalError = `Claude timed out after ${ctx.timeoutSeconds}s.`;
     } else {
       fatalError = `Claude runner exception: ${exc.message || exc}`;
     }
@@ -2625,7 +2912,7 @@ export function main() {
       } catch (exc) {
         if (exc instanceof TimeoutExpired) {
           repairExitCode = 124;
-          repairError = `Claude timed out after ${CLAUDE_TIMEOUT_SECONDS}s during summary repair.`;
+          repairError = `Claude timed out after ${ctx.timeoutSeconds}s during summary repair.`;
         } else {
           repairExitCode = 1;
           repairError = `Claude runner exception during summary repair: ${exc.message || exc}`;
@@ -2773,6 +3060,11 @@ export function main() {
   const pluginStateLine = pluginStateRead.found
     ? pluginStateRead.root_kind
     : String(pluginStateRead.reason || 'not found');
+  // One-line, human-readable record of how the plugin was enabled for this
+  // session (ADR-0012: the effective configuration is reported, not assumed).
+  const pluginSessionLine = pluginEnabled
+    ? `enabled via settings file (id=${pluginId}, profile=${pluginSessionFacts.workflow_profile})`
+    : 'disabled (BENCH_DISABLE_PLUGIN)';
   const verificationEvidenceLine = (function () {
     if (!verificationEvidence) return 'not read (legacy fallback)';
     if (verificationEvidence.current) {
@@ -2851,6 +3143,7 @@ export function main() {
     session_id: payloadSessionId,
     source: evidenceSource,
     provenance: evidenceProvenance,
+    plugin_session: pluginSessionFacts,
     plugin_state: pluginStateSummary,
     state_agent_roles: stateRoles,
     verification_evidence: verificationEvidence,
@@ -2935,6 +3228,7 @@ export function main() {
     `Verification command: ${verificationLabel}. ` +
     `Evidence source: ${evidenceSource}. ` +
     `Evidence provenance: ${evidenceProvenance}. ` +
+    `Plugin session: ${pluginSessionLine}. ` +
     `Verification evidence: ${verificationEvidenceLine}. ` +
     `Review evidence: ${reviewEvidenceLine}. ` +
     (predicateResultsValue
@@ -2960,6 +3254,10 @@ export function main() {
   const result = buildResult({
     taskId: task.id,
     taskPath: TASK_PATH,
+    budgetClass: budgetLimits.budgetClass,
+    maxTurns: ctx.maxTurns || null,
+    timeoutSeconds: ctx.timeoutSeconds,
+    budgetSource: budgetLimits.source,
     status,
     completed,
     verificationRequired,
@@ -3052,6 +3350,7 @@ export function main() {
       dispatchMode,
       evidenceSource,
       stateAgentRoles: stateRoles,
+      pluginSessionLine,
       pluginStateLine,
       verificationEvidenceLine,
       reviewEvidenceLine,

@@ -2,18 +2,41 @@
 
 Architectural decisions for `agnthive`. Updated 2026-10-19 from the
 [harness/workflow review](../specs/2026-10-19-harness-review-and-simplification-design.md)
-and its [implementation plan](../plans/2026-10-19-harness-modernization-and-simplification.md).
+and its [implementation plan](../plans/2026-10-19-harness-modernization-and-simplification.md);
+implementation status refreshed 2026-10-21.
 
 ## Status and precedence
 
 **Accepted** records an architectural decision, not proof of implementation.
 Implementation status is stated separately. Baseline observations refer to
-`2cd40df` / plugin `0.3.0`. The 0.4.0 working tree implements ADR 0008–0013
-(evidence model, lifecycle identity, failure policy, ledger restoration,
-outcome suite, lean profile shipped experimental with `legacy` still the
-default); host canaries on the pinned CLI remain pending (plan task 14), and
-removing legacy components requires the rollout gates in ADR 0012 (plan
-task 16, deferred to the compatibility window).
+`2cd40df` / plugin `0.3.0`. The 0.4.0 tree (commit `efabe5a`) implements
+ADR 0008–0013 and the 2026-10-19 plan tasks 01–15 (evidence model, lifecycle
+identity, failure policy, ledger restoration, outcome suite, lean profile
+shipped experimental with `legacy` still the default); host canaries on the
+pinned CLI remain pending (plan task 14), and removing legacy components
+requires the rollout gates in ADR 0012 (plan task 16, deferred to the
+compatibility window — the eight agent definitions still ship in
+`plugins/agnthive/agents/`).
+
+The lean **default** flip has **not** happened. ADR 0012 gates it on a live
+outcome-benchmark run, and the gate has not been exercised to completion:
+`gate_inputs` can only be reported as `available: true` for a live run that
+executed every involved arm (`native` / `legacy` / `lean`) with at least
+`MIN_LIVE_REPS` repetitions per task. The arm × repetition execution loop
+that produces those per-(arm, task, rep) records now exists
+(`scripts/run-benchmark.mjs --arms/--reps`, one summary per arm under
+`<output-dir>/arms/<arm>/`), and a live two-arm run on the pinned CLI
+confirms the path end to end — the `native` arm registers no plugin hooks and
+finds no plugin state, the `legacy` arm reads `evidence_source:
+plugin_state`, and the suite emitter reports `reps=1` with a real
+`outcome_pass_rate`. A full three-arm, three-repetition live matrix has not
+been run, so the gate still reports `available: false` with its reasons
+(`no lean-arm run present`, findings evidence missing). Lean therefore stays
+experimental and `legacy` stays the default. See
+[`docs/benchmarking.md`](../benchmarking.md) ("Outcome Suite") and the
+[plan's execution status](../plans/2026-10-19-harness-modernization-and-simplification.md);
+the current cycle's work is tracked in the local progress ledger
+`.agnthive/progress.md` (a gitignored scratch file, not part of the checkout).
 
 Dated amendments take precedence over historical snippets in the same ADR.
 A later decision replaces only the scope it names; per-agent isolation and
@@ -30,12 +53,12 @@ plugin identity remain in force even when lean removes mandatory role gates.
 | [0005](0005-carry-per-key-loop-block-entry-explicitly.md) | Explicit per-key entries | Amended baseline implementation; retained |
 | [0006](0006-centralize-per-agent-loop-block-key.md) | Central agent key helper | Baseline implementation; retained |
 | [0007](0007-namespace-prefix-is-plugin-identity.md) | Fixed plugin namespace identity | Baseline behavior; retained; rename obligation recorded here |
-| [0008](0008-root-orchestration-and-three-specialists.md) | Root orchestration, three specialists, no mandatory Manager | Implemented in 0.4.0 (plan 10–13); plan 14 canaries + 16 deferred |
-| [0009](0009-completion-evidence-over-role-quotas.md) | Current completion evidence instead of role/footer quotas | Implemented in 0.4.0 (plan 04, 09, 11, 13); 14/16 remain |
-| [0010](0010-task-and-agent-lifecycle-identity.md) | Task/agent lifecycle and result ownership | Implemented in 0.4.0 (plan 02, 05–06, 09); 14 remains |
-| [0011](0011-explicit-hook-failure-and-permission-policy.md) | Explicit enforcement/advisory/telemetry failures | Implemented in 0.4.0 (plan 01–03, 08); 14/15 remain |
-| [0012](0012-versioned-harness-contracts-and-outcome-benchmarks.md) | Versioned contracts, outcome benchmarks, rollout gates | Implemented in 0.4.0 (plan 01–02, 09–10, 13); default switch gated by the outcome benchmark (plan 14), 16 deferred |
-| [0013](0013-ledger-restoration-and-minimal-telemetry.md) | Verified ledger restoration and bounded metadata | Implemented in 0.4.0 (plan 02, 07); host delivery verification (plan 14) remains |
+| [0008](0008-root-orchestration-and-three-specialists.md) | Root orchestration, three specialists, no mandatory Manager | Implemented in 0.4.0 (plan 10–13); host canaries (plan 14) pending; plan 16 deferred |
+| [0009](0009-completion-evidence-over-role-quotas.md) | Current completion evidence instead of role/footer quotas | Implemented in 0.4.0 (plan 04, 09, 11, 13); host canaries (plan 14) pending; plan 16 deferred |
+| [0010](0010-task-and-agent-lifecycle-identity.md) | Task/agent lifecycle and result ownership | Implemented in 0.4.0 (plan 02, 05–06, 09); host canaries (plan 14) pending |
+| [0011](0011-explicit-hook-failure-and-permission-policy.md) | Explicit enforcement/advisory/telemetry failures | Implemented in 0.4.0 (plan 01–03, 08); host canaries (plan 14) pending |
+| [0012](0012-versioned-harness-contracts-and-outcome-benchmarks.md) | Versioned contracts, outcome benchmarks, rollout gates | Implemented in 0.4.0 (plan 01–02, 09–10, 13); the lean default flip is gated and has NOT happened (the outcome gate is unexercised — no live outcome run); plan 16 deferred |
+| [0013](0013-ledger-restoration-and-minimal-telemetry.md) | Verified ledger restoration and bounded metadata | Implemented in 0.4.0 (plan 02, 07); host canaries (plan 14) pending |
 
 ## Historical correction
 

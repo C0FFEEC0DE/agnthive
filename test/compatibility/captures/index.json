@@ -1,0 +1,44 @@
+[
+  {
+    "name": "stop_active_work",
+    "stdin": "captures/stop_active_work.stdin.json",
+    "runtime_answer": "captures/stop_active_work.runtime-answer.json",
+    "note": "Stop #1 of a session with outstanding verification: the live runtime answer was the block envelope {decision:\"block\", reason, errorDetails, hardStop:false}."
+  },
+  {
+    "name": "stop_after_own_block",
+    "stdin": "captures/stop_after_own_block.stdin.json",
+    "runtime_answer": "captures/stop_after_own_block.runtime-answer.json",
+    "note": "Stop #2, the re-invocation after the plugin blocked: stop_hook_active=true and the live runtime answer was {} (the bounded one-cycle yield of ADR 0003)."
+  },
+  {
+    "name": "session_start_compact",
+    "stdin": "captures/session_start_compact.stdin.json",
+    "runtime_answer": "captures/session_start_compact.runtime-answer.json",
+    "note": "SessionStart(source=compact) after a real /compact: the live runtime answer was the ledger-restore envelope (additionalContext \"[AgntHive] Context restored after compaction...\")."
+  },
+  {
+    "name": "session_start_resume",
+    "stdin": "captures/session_start_resume.stdin.json",
+    "runtime_answer": "captures/session_start_resume.runtime-answer.json",
+    "note": "SessionStart(source=resume) after a real `claude --resume`: the live runtime answer was the ledger-restore envelope."
+  },
+  {
+    "name": "subagent_resumed_stop",
+    "stdin": "captures/subagent_resumed_stop.stdin.json",
+    "runtime_answer": "captures/subagent_resumed_stop.runtime-answer.json",
+    "note": "The SECOND SubagentStop of the same agent_id (stop_hook_active=true): on 2.1.303 a resumed background agent re-fires SubagentStop, never SubagentStart."
+  },
+  {
+    "name": "user_prompt_background_return",
+    "stdin": "captures/user_prompt_background_return.stdin.json",
+    "runtime_answer": "captures/user_prompt_background_return.runtime-answer.json",
+    "note": "The background SUBAGENT completion surfaced as UserPromptSubmit (<task-notification> body, new prompt_id)."
+  },
+  {
+    "name": "permission_denied",
+    "stdin": "captures/permission_denied.stdin.json",
+    "runtime_answer": "captures/permission_denied.runtime-answer.json",
+    "note": "PermissionDenied emitted by the host auto-mode classifier; the live runtime answer was {\"hookSpecificOutput\":{\"hookEventName\":\"PermissionDenied\",\"retry\":true}}."
+  }
+]

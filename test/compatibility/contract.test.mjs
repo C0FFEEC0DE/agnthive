@@ -285,10 +285,25 @@ test('compat manifest: capture hygiene — nothing synthetic is labeled captured
       assert.ok(e.active_reason.length > 10, `${e.id}: active_reason must be a rationale, not a flag`);
     }
   }
-  // Baseline snapshot: no capture has happened yet (this is the honest state of
-  // task 02 — every scenario the plan lists for capture is still pending).
+  // Capture baseline (plan task 14 host canary, 2026-10-21, CLI 2.1.303): the
+  // entries below hold payloads observed in a live `claude -p` session on the
+  // pinned CLI. This list is the honesty gate: a payload that was not
+  // observed must never appear here, and an observed payload must never be
+  // missing from it. Adding an id here without a real capture under
+  // test/compatibility/payloads/ is the one edit this repository forbids.
   const captured = entries.filter((e) => e.source === 'captured');
-  assert.deepEqual(captured.map((e) => e.id), [], 'no real captures exist yet; flip source/status only with an actual target-CLI canary');
+  assert.deepEqual(captured.map((e) => e.id), [
+    'compat_user_prompt_submit_normal',
+    'compat_user_prompt_submit_background_return',
+    'compat_user_prompt_submit_other_classified',
+    'compat_user_prompt_submit_namespace_slash',
+    'compat_post_tool_use_foreground_bash',
+    'compat_post_tool_use_background_bash',
+    'compat_subagent_stop_return',
+    'compat_subagent_start_dispatch',
+    'compat_permission_denied_current_envelope',
+    'compat_permission_denied_capture',
+  ], 'the captured set must match the live canary exactly — flip source/status only with an actual target-CLI canary');
 });
 
 test('compat manifest: pending_capture entries carry a one-line capture instruction', () => {

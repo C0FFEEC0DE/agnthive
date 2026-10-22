@@ -1,6 +1,6 @@
 # План агенту: актуализация harness и упрощение orchestration
 
-Дата: 2026-10-19. Статус: **готов к реализации; реализация не начата**.
+Дата: 2026-10-19. Статус: **реализовано (задачи 01–15); задача 16 — DEFERRED**.
 
 Основание всех задач: [ревью и дизайн](../specs/2026-10-19-harness-review-and-simplification-design.md), baseline `2cd40df`, plugin `0.3.0`.
 
@@ -8,6 +8,48 @@
 что runtime уже изменён. Нормативные контракты: orchestration — 0008, evidence —
 0009, lifecycle — 0010, failure policy — 0011, compatibility/rollout — 0012,
 ledger/telemetry — 0013. Исторические ADR сохраняются с указанными поправками.
+
+## Статус исполнения (обновлено 2026-10-21)
+
+Задачи 01–15 выполнены, задача 16 отложена. Источник истины — локальный ledger
+`.agnthive/progress.md` (gitignored, в checkout не входит): там реестр задач и
+журнал с командами и их реальными результатами.
+
+| Задача | Статус | Артефакт |
+|---|---|---|
+| 01 Контракт поддерживаемого harness | DONE | `docs/compatibility.md` (пин CLI `2.1.303`); коммит `4eeb6cc` |
+| 02 Runtime contract fixtures | DONE | `test/compatibility/manifest.json`; коммит `448c33f` |
+| 03 PermissionDenied + shell parity | DONE | `plugins/agnthive/modules/hook-output.mjs`, `plugins/agnthive/hooks/hooks.json`; коммит `448c33f` |
+| 04 Verification semantics | DONE | `plugins/agnthive/modules/verification.mjs`; коммит `448c33f` |
+| 05 Task identity + slash routing | DONE | `plugins/agnthive/modules/{workflow,hook-dispatcher}.mjs`; релиз `efabe5a` |
+| 06 Lifecycle + agent identity | DONE | `plugins/agnthive/modules/agents.mjs`; релиз `efabe5a` |
+| 07 Ledger + telemetry | DONE | `plugins/agnthive/modules/{ledger,notifications}.mjs`; коммит `448c33f` |
+| 08 Failure policy | DONE | `plugins/agnthive/modules/hook-dispatcher.mjs`, `plugins/agnthive/hooks/hooks.json`; коммит `448c33f` |
+| 09 Структурированные доказательства benchmark | DONE | `scripts/bench_runner_claude_code.mjs`, `bench/schema/summary.schema.json`; релиз `efabe5a` |
+| 10 Outcome-набор benchmark | DONE | `bench/tasks/outcomes/`; релиз `efabe5a` |
+| 11 Lean policy | DONE (экспериментально) | `plugins/agnthive/modules/plugin-config.mjs`; релиз `efabe5a` |
+| 12 Manager → root skill | DONE | `plugins/agnthive/skills/manager/SKILL.md`, `plugins/agnthive/agents/`; релиз `efabe5a` |
+| 13 Валидаторы | DONE | `scripts/validate.mjs`; релиз `efabe5a` |
+| 14 Совместимость и качество | DONE, host canary — pending | `.agnthive/progress.md`; host canary на pinned CLI не выполнен |
+| 15 Документация + переключение default | DONE, default не переключён | `docs/`, `plugins/agnthive/CHANGELOG.md`; полное live-сравнение outcome-матрицы из задачи 14 не выполнялось |
+| 16 Удаление compatibility debt | DEFERRED | compatibility-окно не прошло; 8 определений агентов по-прежнему в `plugins/agnthive/agents/` |
+
+Релиз: `efabe5a` «feat(plugin): v0.4.0 — task identity, lean profile, outcome
+benchmarks, validators»; `c2a9c42` «fix(bench): platform-neutral task id
+fallback and win32-safe bench tests».
+
+**Переключение lean-профиля на default НЕ произошло.** Пункт 3 задачи 15
+требует результата сравнения из задачи 14. Живой outcome-прогон не выполнялся,
+поэтому gate ADR 0012 не был активирован: arm×rep цикл в `scripts/run-benchmark.mjs`
+реализован и проверен живым двухarm-прогоном (native arm — 0 хуков плагина,
+legacy arm — `evidence_source: plugin_state`, эмиттер — `reps=1`,
+`outcome_pass_rate=1.000`), но полный live-прогон матрицы (3 arm × 3 rep) не
+выполнялся, поэтому `gate_inputs.available` остаётся `false`. Lean остаётся
+экспериментальным профилем, `legacy` — default. Основания: `docs/adr/README.md`,
+`docs/compatibility.md`, `plugins/agnthive/CHANGELOG.md` (раздел 0.4.0).
+
+Не закрыто: host canary на pinned CLI (задача 14) — pending; тела задач ниже
+сохранены как исторический план и не переписываются.
 
 ## Результат, который нужно получить
 

@@ -10,6 +10,121 @@ profile history; entries here begin with the plugin.
 
 ## [Unreleased]
 
+Work in progress after 0.4.0 (2026-10-19). **Nothing in this section has
+shipped**: the items below are in the working tree or still in progress, and
+no release has been cut from them. The `lean` profile is still
+**experimental** and `legacy` is still the default — the ADR 0012 outcome
+gate has not been exercised to completion (no full live matrix run exists),
+so the default flip did not happen.
+
+### Added
+
+- **Benchmark arm × repetition execution loops (ADR 0012) — landed in the
+  working tree.** The outcome suite declares the arms `native` (no plugin),
+  `legacy` and `lean` and a floor of `MIN_LIVE_REPS` (3) paired repetitions
+  per task, and the ADR 0012 rollout gate consumes exactly those
+  per-(arm, task, rep) records. `scripts/run-benchmark.mjs` now executes that
+  matrix: `--arms native|legacy|lean`, `--reps N` and
+  `--arm-profile legacy|lean`; every (task, arm, rep) cell runs in a fresh
+  work area; the runner child receives `BENCH_ARM` and `BENCH_REP`, plus
+  `BENCH_DISABLE_PLUGIN=1` for the no-plugin `native` baseline and
+  `AGNTHIVE_WORKFLOW_PROFILE` for the plugin arms; a matrix run writes one
+  summary per arm (`<output-dir>/arms/<arm>/summary.json`) for the suite
+  emitter, which takes one arm per run directory. The matrix is opt-in: a run
+  without `--arms` still executes each task once, so the existing CI
+  invocation and its model spend are unchanged. Verified live on CLI 2.1.303:
+  the `native` arm registers 0 plugin hooks and finds no plugin state (a
+  genuine no-plugin baseline), the `legacy` arm reads `evidence_source:
+  plugin_state` from the host's inline data root, and the suite emitter
+  reports `reps=1` with `outcome_pass_rate=1.000`. The gate still reports
+  `available: false` — a full matrix run (all three arms, three repetitions
+  each, live) has not been executed, so the lean default flip stays blocked.
+  Covered by `test/bench/run-benchmark-arms.test.mjs`.
+
+### Fixed
+
+- **Plugin enablement and plugin data root in the benchmark runner — in the
+  working tree, not yet released.** Measured on CLI 2.1.303: with the plugin
+  loaded via `--plugin-dir` and `defaultEnabled: false`, the host registered
+  **0 hooks** (`Registered 0 hooks from 3 plugins`), so the plugin's own hooks
+  never ran in benchmark sessions and every evidence layer silently degraded;
+  the same session registers 23 hooks once the plugin is enabled. The runner
+  now writes a temporary `--settings` file whose `enabledPlugins` map enables
+  the inline plugin id (derived from the plugin name with the host's
+  `@inline` sentinel — `agnthive@inline` — overridable with
+  `BENCH_PLUGIN_ID`) and removes the file afterwards, and it probes the host's
+  actual inline data root (`~/.claude/plugins/data/agnthive-inline`, plus a
+  cache-dir variant) next to the roots it already searched, so the plugin's
+  session state is found and read through the shared state reader.
+  `BENCH_DISABLE_PLUGIN=1` runs the child without the plugin (no
+  `--plugin-dir`, no `--settings`) for the `native` baseline arm. Covered by
+  `test/bench/bench_runner_plugin_enablement.test.mjs` and
+  `test/bench/bench_runner_plugin_evidence.test.mjs`.
+
+- **Benchmark task id used as a directory name — in the working tree, not yet
+  released.** A task id comes from a task file and becomes a directory name
+  under the run output, and two hazards followed, both silent. An id carrying
+  path separators (for example `../../elsewhere`) made the artifacts land
+  OUTSIDE the run directory, so a task could write into an arbitrary
+  location. An id longer than the 255-byte filename limit made `mkdir`/`unlink`
+  throw `ENAMETOOLONG` and abort the WHOLE run — including the tasks that were
+  fine — although the orchestrator promises that a task which cannot run is
+  reported as failed, never as a crash. `scripts/run-benchmark.mjs` now derives
+  the directory name from the id instead of using it verbatim: a safe id keeps
+  its historical path (the CI artifact layout does not move), and an unsafe id
+  becomes a readable slug plus a digest of the original id, which keeps the
+  mapping deterministic and collision-free. The REPORTED id is never rewritten
+  — `summary.json` and `result.json` still name the task that actually ran.
+  Covered by `test/bench/run-benchmark-arms.test.mjs`.
+
+- **Benchmark runner ignored the task's declared budget class — in the working
+  tree, not yet released.** The outcome suite writes every task with a
+  `budget_class` and the suite schema maps that class to the turn and
+  wall-clock budget the task was designed for (`small` 12 turns / 240s,
+  `medium` 24 turns / 400s, `large` 40 turns / 800s), but the runner applied
+  one flat limit (16 turns / 300s) to every task. A flat limit measures the
+  HARNESS, not the task: in the first full live matrix run a `medium` task was
+  killed at 300s and recorded as a task failure the model never committed, and
+  another cell was cut at the flat 16 turns although its declared budget was
+  24. `scripts/bench_runner_claude_code.mjs` now reads the budget class from
+  the task file and applies that task's own limits; an explicit `MAX_TURNS` /
+  `CLAUDE_TIMEOUT_SECONDS` in the environment still wins, so a manual or CI run
+  can pin its own. The cell's effective budget (`budget_class`, `max_turns`,
+  `timeout_seconds`, `budget_source`) is recorded in `result.json`, so a
+  measurement can be read back with the budget it ran under. Covered by
+  `test/bench/bench_runner_claude_code.test.mjs`.
+
+- **The ADR-0012 rollout gate measured the wrong thing — in the working tree, not
+  yet released.** The gate is the only thing that authorizes the lean default
+  flip, and the first full live matrix run showed it reporting deltas the
+  suite's own contract does not define. Two defects, both invisible to the
+  existing (symmetric) fixtures: (1) `new_false_completions` and
+  `permission_denials_delta` were ARM TOTALS, so a task only one arm runs — the
+  `native` control skips the plugin-only lifecycle tasks — was counted as a
+  quality difference: the first matrix read `+5 new false completions` for lean
+  against native when, on the 21 cells both arms actually ran, lean had ONE
+  FEWER; every gate delta is now measured on the PAIRED cells, the (task, rep)
+  both arms executed, which is what ADR-0012 asks for. (2)
+  `lost_material_findings` subtracted in the wrong direction, so findings the
+  BASELINE missed were reported as findings LEAN lost (the first matrix read
+  `3 lost` against native, whose own run had found fewer findings); it now
+  follows the documented rule — the worst paired-rep drop of
+  baseline-matched minus lean-matched material findings, floored at 0, summed
+  per task. The per-arm `false_completions` metric is unchanged: it is an
+  arm-level number, not a comparison. A baseline that shares no cell with lean
+  now makes the gate report `available: false` instead of a vacuous "no
+  regression". The metrics document version is bumped to `1.1` — the gate
+  semantics changed. Covered by `test/validators/outcome-suite.test.mjs`.
+
+### Pending verification
+
+- **Live host canary captures — in progress.** Real hook stdin payloads are
+  being captured on the pinned CLI (2.1.303) to replace the
+  `pending_capture` entries in `test/compatibility/manifest.json`. No entry
+  has been flipped to `captured` yet, so the compatibility rows stay
+  `implemented` / `unverified` and no host behavior may be asserted from
+  them (see `docs/compatibility.md`).
+
 ## [0.4.0] - 2026-10-19
 
 Feature set from the 2026-10-19 harness modernization plan (ADR 0008–0013).

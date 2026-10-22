@@ -262,6 +262,105 @@ test('a fully wired live run yields gate-ready metrics', () => {
     }
 });
 
+// The gate deltas are measured on the (task, rep) cells BOTH arms executed.
+// Two defects made the first full live matrix read wrong, and both were
+// invisible to the symmetric fixture above:
+//   1. the deltas were arm TOTALS, so a task only one arm runs (the native
+//      control skips the plugin-only lifecycle tasks) showed up as a quality
+//      difference;
+//   2. lost_material_findings subtracted in the wrong direction, so findings
+//      the BASELINE missed were reported as findings LEAN lost.
+function emitTwoArms(resultsByArm) {
+  const dirs = {};
+  for (const arm of Object.keys(resultsByArm)) {
+    dirs[arm] = freshRunDir(arm, {
+      schema_version: '1.0', mode: 'live', runner: 'synthetic', generated_at: '2026-10-19T00:00:00Z', source_ref: 'test', source_sha: 'test', tasks: resultsByArm[arm],
+    });
+  }
+  try {
+    const emitted = emitOutcomeMetrics({
+      runs: Object.keys(dirs).map((arm) => ({ dir: dirs[arm], arm })),
+      out: join(dirs.lean, 'outcome-metrics.json'),
+    });
+    assert.equal(emitted.violations, undefined, JSON.stringify(emitted.violations || []));
+    return emitted.doc;
+  } finally {
+    for (const dir of Object.values(dirs)) rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test('the gate compares paired cells: a task only one arm runs is not a regression', () => {
+  const loaded = loadSuite();
+  const unitTask = loaded.tasks.find((t) => t.task.id === 'outcome-minor-change-optunit').task;
+  const reviewTask = loaded.tasks.find((t) => t.task.id === 'outcome-review-flawed-ingest').task;
+  const pluginOnlyTask = loaded.tasks.find((t) => t.task.id === 'outcome-background-verification').task;
+  const liveIds = (t) => t.expected_outcome.predicates.filter((p) => p.evaluate_in === 'live').map((p) => p.id);
+  const materialIds = reviewTask.ground_truth.findings.filter((f) => f.material).map((f) => f.id);
+  const resultsByArm = { lean: [], native: [] };
+  for (let rep = 0; rep < MIN_LIVE_REPS; rep++) {
+    for (const arm of Object.keys(resultsByArm)) {
+      resultsByArm[arm].push(syntheticResult(
+        { id: unitTask.id, verification_required: unitTask.verification_required, changed_files: ['reporter.mjs'], livePredicateIds: liveIds(unitTask) },
+        rep,
+      ));
+      resultsByArm[arm].push(syntheticResult(
+        { id: reviewTask.id, verification_required: reviewTask.verification_required, changed_files: [], livePredicateIds: liveIds(reviewTask) },
+        rep,
+        { verification_required: false, tests_run: false, tests_passed: false, findings_evidence: { matched_material_ids: materialIds, claimed_total: 3 } },
+      ));
+    }
+    // The plugin-only task: lean runs it and FALSE-COMPLETES (it reports
+    // completion while a live predicate fails). The native arm does not run it
+    // at all, so these cells are not paired and must not count as a delta.
+    const failing = Object.fromEntries(liveIds(pluginOnlyTask).map((id, i) => [id, i === 0 ? 'failed' : 'passed']));
+    resultsByArm.lean.push(syntheticResult(
+      { id: pluginOnlyTask.id, verification_required: pluginOnlyTask.verification_required, changed_files: [], livePredicateIds: liveIds(pluginOnlyTask) },
+      rep,
+      { predicate_results: failing },
+    ));
+  }
+  const doc = emitTwoArms(resultsByArm);
+  const gate = doc.gate_inputs;
+  assert.equal(gate.available, true, gate.reason || '');
+  // The arm totals do differ (lean 3 false completions, native 0) ...
+  assert.equal(doc.per_arm.lean.false_completions, 3);
+  assert.equal(doc.per_arm.native.false_completions, 0);
+  // ... but the gate compares the PAIRED cells only, where both arms pass.
+  assert.equal(gate.lean.native.new_false_completions, 0);
+  assert.equal(gate.lean.native.paired, MIN_LIVE_REPS * 2);
+});
+
+test('lost_material_findings counts the findings LEAN lost, not the ones the baseline lost', () => {
+  const loaded = loadSuite();
+  const unitTask = loaded.tasks.find((t) => t.task.id === 'outcome-minor-change-optunit').task;
+  const reviewTask = loaded.tasks.find((t) => t.task.id === 'outcome-review-flawed-ingest').task;
+  const liveIds = (t) => t.expected_outcome.predicates.filter((p) => p.evaluate_in === 'live').map((p) => p.id);
+  const materialIds = reviewTask.ground_truth.findings.filter((f) => f.material).map((f) => f.id);
+  const build = (matchedIds) => {
+    const resultsByArm = { lean: [], native: [] };
+    for (const arm of Object.keys(resultsByArm)) {
+      for (let rep = 0; rep < MIN_LIVE_REPS; rep++) {
+        resultsByArm[arm].push(syntheticResult(
+          { id: unitTask.id, verification_required: unitTask.verification_required, changed_files: ['reporter.mjs'], livePredicateIds: liveIds(unitTask) },
+          rep,
+        ));
+        resultsByArm[arm].push(syntheticResult(
+          { id: reviewTask.id, verification_required: reviewTask.verification_required, changed_files: [], livePredicateIds: liveIds(reviewTask) },
+          rep,
+          { verification_required: false, tests_run: false, tests_passed: false, findings_evidence: { matched_material_ids: matchedIds[arm], claimed_total: matchedIds[arm].length } },
+        ));
+      }
+    }
+    const doc = emitTwoArms(resultsByArm);
+    assert.equal(doc.gate_inputs.available, true, doc.gate_inputs.reason || '');
+    return doc.gate_inputs.lean.native.lost_material_findings;
+  };
+  // lean found nothing, the baseline found all three -> lean lost 3.
+  assert.equal(build({ lean: [], native: materialIds }), 3);
+  // lean found all three, the baseline found nothing -> lean lost 0.
+  assert.equal(build({ lean: materialIds, native: [] }), 0);
+});
+
 test('an unwired live runner stays honestly unverified', () => {
   const loaded = loadSuite();
   const unitTask = loaded.tasks.find((t) => t.task.id === 'outcome-minor-change-optunit').task;

@@ -1,15 +1,27 @@
 {
-  "hook_event_name": "PostToolUse",
-  "session_id": "compat-session-bg-command",
-  "transcript_path": "/tmp/compat-capture/background-command-transcript.jsonl",
+  "session_id": "compat-capture-session-0001",
+  "transcript_path": "/tmp/compat-capture/transcript.jsonl",
   "cwd": "/tmp/compat-capture/project",
-  "tool_use_id": "compat-tooluse-bg-001",
+  "prompt_id": "compat-capture-prompt-0001",
+  "permission_mode": "acceptEdits",
+  "effort": {
+    "level": "high"
+  },
+  "hook_event_name": "PostToolUse",
   "tool_name": "Bash",
   "tool_input": {
-    "command": "npm test",
+    "command": "sleep 45 && echo background-done",
+    "description": "Run sleep then echo after 45 seconds",
     "run_in_background": true
   },
   "tool_response": {
-    "backgroundTaskId": "compat-bg-task-001"
-  }
+    "stdout": "",
+    "stderr": "",
+    "interrupted": false,
+    "isImage": false,
+    "noOutputExpected": false,
+    "backgroundTaskId": "compat-capture-bg-task-0001"
+  },
+  "tool_use_id": "compat-capture-tooluse-0001",
+  "duration_ms": 257
 }

@@ -20,7 +20,7 @@ import { fileURLToPath } from 'node:url';
 export const SUITE_ID = 'outcomes';
 export const SCHEMA_KIND_TASK = 'outcome-task-v1';
 export const METRICS_SCHEMA_KIND = 'outcome-metrics';
-export const METRICS_SCHEMA_VERSION = '1.0';
+export const METRICS_SCHEMA_VERSION = '1.1';
 export const EMITTER_VERSION = '1.0';
 
 // Arm matrix (ADR-0012): at most three comparable arms. The suite declares the

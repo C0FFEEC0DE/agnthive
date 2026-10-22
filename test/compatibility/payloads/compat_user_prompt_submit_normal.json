@@ -1,8 +1,9 @@
 {
-  "hook_event_name": "UserPromptSubmit",
-  "session_id": "compat-session-user-prompt-normal",
-  "transcript_path": "/tmp/compat-capture/user-prompt-transcript.jsonl",
+  "session_id": "compat-capture-session-0001",
+  "transcript_path": "/tmp/compat-capture/transcript.jsonl",
   "cwd": "/tmp/compat-capture/project",
-  "prompt_id": "compat-prompt-001",
+  "prompt_id": "compat-capture-prompt-0001",
+  "permission_mode": "acceptEdits",
+  "hook_event_name": "UserPromptSubmit",
   "prompt": "Add support for provider failover and integrate OpenRouter."
 }

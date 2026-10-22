@@ -49,6 +49,12 @@ import {
   completedTaskRecoveryMode,
   classifyTaskFailures,
   mergePluginStateAgentEvidence,
+  inlinePluginId,
+  pluginEnableSettings,
+  pluginDisabledByEnv,
+  writePluginEnableSettings,
+  removePluginEnableSettings,
+  taskBudgetLimits,
 } from '../../scripts/bench_runner_claude_code.mjs';
 import { taskFunctionalFailures } from '../../scripts/bench/lib.mjs';
 
@@ -89,6 +95,27 @@ test('buildPrompt includes task prompt + plugin context + footer template', () =
   assert.ok(prompt.includes('Remaining risks: <one sentence or "none">'));
   assert.ok(prompt.includes('workflow_category: feature'));
   assert.ok(prompt.includes('If verification is required, run the relevant tests locally (npm run test).'));
+});
+
+test('buildPrompt follows the arm: the no-plugin session is not told to use a plugin', () => {
+  // The native (plugin-free) baseline must describe the session it actually
+  // gets: telling it to use a plugin that is not loaded would measure a
+  // confused agent instead of a plugin-free one (ADR-0012).
+  const native = buildPrompt(baseTask({ verification_required: true }), 'npm run test', { pluginEnabled: false, workdir: '/tmp/cell/workdir' });
+  assert.ok(!native.includes('agnthive Claude Code plugin'), 'the native prompt must not mention the plugin');
+  assert.ok(!native.includes('--plugin-dir'), 'the native prompt must not mention --plugin-dir');
+  assert.ok(native.includes('No Claude Code plugin is loaded in this session'));
+  // The workspace contract: the cell's working directory is named and a
+  // machine-wide search for other copies of the task's files is forbidden.
+  assert.ok(native.includes('your working directory is /tmp/cell/workdir'));
+  assert.ok(native.includes('Do not search the machine for other copies of these files'));
+  // The task itself is still delivered in full.
+  assert.ok(native.includes('Add a hello function'), 'prompt contains task prompt');
+  assert.ok(native.includes('Verification status: <passed|failed|not run|not required>'));
+  // A plugin arm keeps the plugin instruction (default: plugin enabled).
+  const plugin = buildPrompt(baseTask({ verification_required: true }), 'npm run test');
+  assert.ok(plugin.includes('agnthive Claude Code plugin'));
+  assert.ok(plugin.includes('--plugin-dir'));
 });
 
 test('buildPrompt emits required specialist handoff block for required agents', () => {
@@ -579,7 +606,8 @@ test('buildResult replicates the full result.json schema with correct types', ()
   }
   // Full schema field set (matches Python result dict).
   const expectedKeys = [
-    'task_id', 'task_path', 'status', 'completed', 'verification_required',
+    'task_id', 'task_path', 'budget_class', 'max_turns', 'timeout_seconds',
+    'budget_source', 'status', 'completed', 'verification_required',
     'tests_run', 'tests_passed', 'review_required', 'review_present',
     'docs_required', 'docs_updated', 'policy_violations', 'tool_failures',
     'runtime_seconds', 'notes', 'category', 'changed_files',
@@ -859,4 +887,70 @@ test('a verified-but-failing task with exitCode 0 + fatalError is NOT recovered'
   const failures = classifyTaskFailures({ ...args, recoveredNonzeroExit: false });
   assert.ok(failures.includes(args.fatalError));
   assert.ok(failures.includes('verification_failed'));
+});
+
+// ---------- task budget class (ADR-0012) ----------
+// A flat runner limit measures the harness, not the task: a 'medium' task
+// (contract: 24 turns / 400s) was killed at the flat 16 turns / 300s and
+// recorded as a task failure the model never committed. The task's declared
+// budget_class must drive the limits.
+test('taskBudgetLimits reads the budget class the task declares', () => {
+  const d = mkdtempSync(join(tmpdir(), 'budget-'));
+  try {
+    const file = join(d, 'task.json');
+    writeFileSync(file, JSON.stringify({ id: 't', budget_class: 'medium' }));
+    const limits = taskBudgetLimits(file, { maxTurnsEnv: '', timeoutEnv: '' });
+    assert.equal(limits.budgetClass, 'medium');
+    assert.equal(limits.maxTurns, 24);
+    assert.equal(limits.timeoutSeconds, 400);
+    assert.equal(limits.source, 'task-budget-class');
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test('taskBudgetLimits honours an explicit env override over the task budget', () => {
+  const d = mkdtempSync(join(tmpdir(), 'budget-'));
+  try {
+    const file = join(d, 'task.json');
+    writeFileSync(file, JSON.stringify({ id: 't', budget_class: 'large' }));
+    const limits = taskBudgetLimits(file, { maxTurnsEnv: '16', timeoutEnv: '300' });
+    assert.equal(limits.budgetClass, 'large');
+    assert.equal(limits.maxTurns, 16);
+    assert.equal(limits.timeoutSeconds, 300);
+    assert.equal(limits.source, 'env-override');
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test('taskBudgetLimits keeps the flat defaults for a task without a budget class', () => {
+  const d = mkdtempSync(join(tmpdir(), 'budget-'));
+  try {
+    const file = join(d, 'task.json');
+    writeFileSync(file, JSON.stringify({ id: 't' }));
+    const limits = taskBudgetLimits(file, { maxTurnsEnv: '', timeoutEnv: '' });
+    assert.equal(limits.budgetClass, null);
+    assert.equal(limits.maxTurns, null);
+    assert.equal(limits.timeoutSeconds, null);
+    assert.equal(limits.source, 'default');
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
+});
+
+test('taskBudgetLimits degrades safely on an unreadable task file', () => {
+  const limits = taskBudgetLimits('/nonexistent/task.json', { maxTurnsEnv: '', timeoutEnv: '' });
+  assert.equal(limits.budgetClass, null);
+  assert.equal(limits.source, 'default');
+  const noFile = taskBudgetLimits('', { maxTurnsEnv: '', timeoutEnv: '' });
+  assert.equal(noFile.source, 'default');
+});
+
+test('result.json records the budget the cell actually ran under', () => {
+  const result = buildResult({ taskId: 't', taskPath: 'bench/tasks/t.json', budgetClass: 'medium', maxTurns: 24, timeoutSeconds: 400, budgetSource: 'task-budget-class' });
+  assert.equal(result.budget_class, 'medium');
+  assert.equal(result.max_turns, 24);
+  assert.equal(result.timeout_seconds, 400);
+  assert.equal(result.budget_source, 'task-budget-class');
 });

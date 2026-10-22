@@ -1,9 +1,18 @@
 {
+  "session_id": "compat-capture-session-0001",
+  "transcript_path": "/tmp/compat-capture/transcript.jsonl",
+  "cwd": "/tmp/compat-capture/project",
+  "prompt_id": "compat-capture-prompt-0001",
+  "permission_mode": "acceptEdits",
+  "agent_id": "compat-capture-agent-0001",
+  "agent_type": "agnthive:Explorer",
+  "effort": {
+    "level": "low"
+  },
   "hook_event_name": "SubagentStop",
-  "session_id": "compat-session-subagent-return",
-  "transcript_path": "/tmp/compat-capture/parent-transcript.jsonl",
-  "agent_transcript_path": "/tmp/compat-capture/child-transcript.jsonl",
-  "agent_id": "compat-agent-reviewer-1",
-  "agent_alias": "cr",
-  "last_assistant_message": "Outcome: review completed on the current diff.\nChanged files: No files changed.\nVerification status: not run (read-only review).\nRemaining risks: none."
+  "stop_hook_active": false,
+  "agent_transcript_path": "/tmp/compat-capture/subagents/agent-compat-capture-agent-0001.jsonl",
+  "last_assistant_message": "Inventory complete for `/tmp/compat-capture/project`.\n\n## Findings\n\nThe directory `/tmp/compat-capture/project` exists and is a directory (confirmed: `Read` returned `EISDIR`), but it contains no files.\n\nEvidence:\n- `Glob` with pattern `**/*` (recursive, all files) -> \"No files found\"\n- `Glob` with pattern `*` (top-level entries) -> \"No files found\"\n- `Glob` with pattern `**/.*` (hidden files, recursive) -> \"No files found\"\n\nSo there are zero files at the top level and zero files in any subdirectory. The `work` directory is effectively empty of files.\n\nCaveat: my available tools (`Read`, `Glob`, `Grep`) are file-oriented and cannot directly enumerate empty directories. Glob recursively matches files, so any subdirectory present would necessarily be empty (no files anywhere beneath `work`). I cannot confirm or rule out the existence of empty subdirectories with these tools alone. To fully verify empty-directory presence, a directory-listing tool (e.g. `ls -la` via Bash) would be needed — that tool is not available to me in this session.\n\nNote: I could not inspect the parent `/tmp/compat-capture/project` because read access there has not been granted (permission prompt was raised, not approved).\n\n```text\nTask: Explore — full inventory of /tmp/compat-capture/project\nStatus: completed\nLocations: /tmp/compat-capture/project (directory, exists, no files)\nControl flow: Glob recursive scans (regular + hidden) all returned no matches; Read confirmed path is a directory\nConfig/env: none\nOutcome: work contains no files; any subdirectories, if present, are empty (cannot enumerate empty dirs with file-only tools)\nChanged files: No files changed: read-only exploration\nVerification status: passed - Glob **/*, *, and **/.* all returned \"No files found\"; Read returned EISDIR confirming directory exists\nRemaining risks: empty subdirectories cannot be detected/rule-outed without a directory-listing tool (e.g. Bash ls); parent dir access not granted\nNext step: if empty-subdirectory detection matters, run `ls -la /tmp/compat-capture/project` from a shell-capable session\n```",
+  "background_tasks": [],
+  "session_crons": []
 }

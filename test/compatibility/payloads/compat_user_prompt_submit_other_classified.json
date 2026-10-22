@@ -1,0 +1,9 @@
+{
+  "session_id": "compat-capture-session-0001",
+  "transcript_path": "/tmp/compat-capture/transcript.jsonl",
+  "cwd": "/tmp/compat-capture/project",
+  "prompt_id": "compat-capture-prompt-0001",
+  "permission_mode": "acceptEdits",
+  "hook_event_name": "UserPromptSubmit",
+  "prompt": "Add a helper function parseDuration to the project that converts a duration string like 5m into milliseconds, then verify it by running the existing test command."
+}

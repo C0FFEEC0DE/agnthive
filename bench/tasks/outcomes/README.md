@@ -115,7 +115,7 @@ The emitter writes ONE document per invocation (recommended path
 `${BENCH_OUTPUT_DIR}/outcome-metrics.json`), validated by
 `validateOutcomeMetrics` in the schema module before it is written:
 
-- schema_kind — `outcome-metrics`; schema_version — `1.0`; suite — `outcomes`
+- schema_kind — `outcome-metrics`; schema_version — `1.1`; suite — `outcomes`
 - emitter_version, mode (`mock` or `live`, never mixed), generated_at
 - contracts_revision — `sha256:…` over bench/fixtures + suite seeds/schema code
   + bench/patterns/forbidden-meta-chatter.json (record this with every run)
@@ -139,10 +139,17 @@ The emitter writes ONE document per invocation (recommended path
   and every involved arm ran >= 3 reps per task; otherwise
   {available: false, reason}. Shape when available:
   `gate_inputs.lean.<baseline>` (baseline = native or legacy) with
-  new_false_completions (count delta), permission_denials_delta (count delta),
+  new_false_completions (count delta over the paired cells),
+  permission_denials_delta (count delta over the paired cells),
   lost_material_findings (max over paired reps of baseline-matched minus
   lean-matched material findings, floored at 0, summed per task), paired
-  (pairable (task, rep) count).
+  (pairable (task, rep) count). Every delta is measured on the PAIRED cells —
+  the (task, rep) both arms executed. The suite lets each task declare its own
+  arm subset, so two arms do not necessarily cover the same tasks (the native
+  control skips the plugin-only lifecycle tasks): an arm-total delta would
+  compare a 7-task total against a 9-task total and report the missing tasks
+  as a quality difference. A baseline that shares no cell with lean makes the
+  comparison vacuous, and the gate reports `available: false` instead.
 
 Gate decision rule (ADR-0012): lean may become the default only when
 `gate_inputs` is available and every baseline shows no new false completions,

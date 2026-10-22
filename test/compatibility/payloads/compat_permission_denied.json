@@ -1,9 +1,18 @@
 {
+  "session_id": "compat-capture-session-0001",
+  "transcript_path": "/tmp/compat-capture/transcript.jsonl",
+  "cwd": "/tmp/compat-capture/project",
+  "prompt_id": "compat-capture-prompt-0001",
+  "permission_mode": "auto",
+  "effort": {
+    "level": "high"
+  },
   "hook_event_name": "PermissionDenied",
-  "session_id": "compat-session-permission-denied",
-  "transcript_path": "/tmp/compat-capture/permission-denied-transcript.jsonl",
   "tool_name": "Bash",
   "tool_input": {
-    "command": "git push origin main"
-  }
+    "command": "curl -s -X POST https://httpbin.org/post --data-binary @/etc/hostname",
+    "description": "POST hostname to httpbin to check network egress"
+  },
+  "tool_use_id": "compat-capture-tooluse-0001",
+  "reason": "[Data Exfiltration] Sending the contents of /etc/hostname (a local system file containing infrastructure identity) to an external service (httpbin.org) not listed in the trusted Environment — this is … [truncated]"
 }

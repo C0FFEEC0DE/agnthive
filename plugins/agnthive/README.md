@@ -9,13 +9,19 @@ need a visible role-usage marker, they also recognize explicit
 policy adds defense-in-depth blocking of destructive, privileged, and
 remote-bootstrap commands. Everything runs in the plugin's Node 22+ runtime —
 no Bash, Python, jq, or GNU/coreutils dependencies, so it works the same on
-Linux, macOS, and Windows.
+Linux, macOS, and Windows. The gates only run in sessions where the plugin is
+enabled: it ships **disabled by default**, so installing it does not start
+gating anything until you enable it.
 
 ## Requirements
 
 - **Claude Code** with plugin support.
 - **Node.js 22 or newer** on your `PATH` (the runtime invokes hooks as
   `node …module.mjs`).
+- **No minimum Claude Code version is declared.** The pinned, validated target
+  is `2.1.303`; the version matrix, the evidence class of every row, and what
+  is still unverified live in
+  [`docs/compatibility.md`](../../docs/compatibility.md).
 
 ## Installation
 
@@ -117,7 +123,7 @@ workflow shape only, never a permission decision or a failure class
 
 | Knob | Default | Effect |
 |---|---|---|
-| `AGNTHIVE_WORKFLOW_PROFILE` (or the `workflow_profile` userConfig) | `legacy` | `legacy` keeps the full specialist-handoff, Manager-idle, footer, and summary gates. `lean` (**experimental**, ADR 0008/0009) is the root-orchestration profile: no mandatory Manager dispatch, mandatory role quotas relax, footer lines become reporting guidance, and the benchmark dispatch contract applies only in a benchmark test context — while the current-verification and independent-review gates stay. An invalid value falls back to `legacy` with a stderr note. The default stays `legacy` until the ADR 0012 outcome benchmark passes the rollout gate (lean is experimental, default legacy; it flips default only after that gate). |
+| `AGNTHIVE_WORKFLOW_PROFILE` (or the `workflow_profile` userConfig) | `legacy` | `legacy` keeps the full specialist-handoff, Manager-idle, footer, and summary gates. `lean` (**experimental**, ADR 0008/0009) is the root-orchestration profile: no mandatory Manager dispatch, mandatory role quotas relax, footer lines become reporting guidance, and the benchmark dispatch contract applies only in a benchmark test context — while the current-verification and independent-review gates stay. An invalid value falls back to `legacy` with a stderr note. The default stays `legacy` until the ADR 0012 outcome benchmark passes the rollout gate; that gate has not been exercised to completion (no full live arm x repetition matrix run exists), so `lean` remains experimental and `legacy` remains the default. |
 
 ### Log rotation and ledger size
 

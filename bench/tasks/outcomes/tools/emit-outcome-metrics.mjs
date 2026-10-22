@@ -356,11 +356,17 @@ function computeGateInputs(perArm, records, mode) {
   if (reasons.length > 0) return { available: false, reason: reasons.join('; ') };
   const comparisons = {};
   for (const base of bases) {
+    const paired = pairedCount('lean', base, records);
+    // A comparison over zero shared (task, rep) cells is vacuous: it would
+    // report "no regression" without ever comparing anything.
+    if (paired === 0) {
+      return { available: false, reason: 'lean and ' + base + ' share no (task, rep) cells to compare' };
+    }
     comparisons[base] = {
-      new_false_completions: (perArm.lean.false_completions || 0) - (perArm[base].false_completions || 0),
-      permission_denials_delta: perArm.lean.permission_denials - perArm[base].permission_denials,
-      lost_material_findings: lostMaterialFindings("lean", base, records).value,
-      paired: pairedCount('lean', base, records),
+      new_false_completions: pairedFalseCompletionDelta('lean', base, records),
+      permission_denials_delta: pairedPermissionDenialDelta('lean', base, records),
+      lost_material_findings: lostMaterialFindings('lean', base, records).value,
+      paired,
     };
   }
   return { available: true, lean: comparisons };
@@ -379,34 +385,74 @@ function perTaskRepFloorOk(involved, records) {
 }
 
 /**
- * Pairable (task, rep) pairs across two arms: reps both arms executed for the
- * same task. Pairing by rep NUMBER is what makes the comparison paired rather
- * than pooled (ADR-0012).
+ * The (task, rep) cells BOTH arms executed — the unit every gate delta is
+ * measured on.
+ *
+ * The suite lets each task declare its own arm subset, so two arms do not
+ * necessarily cover the same tasks: the `native` (no-plugin) control skips the
+ * plugin-only lifecycle tasks. An arm-TOTAL delta would then compare a 7-task
+ * total against a 9-task total and report the missing tasks as if they were a
+ * quality difference. Every gate delta is therefore computed on the paired
+ * cells only — the same (task, rep) in both arms — which is what ADR-0012
+ * asks for ("at least three paired repetitions per task/arm").
  */
-function pairedCount(armA, armB, records) {
-  const perArm = new Map();
+function pairedCells(armA, armB, records) {
+  const byArm = new Map();
   for (const r of records) {
     if (r.ignored || (r.arm !== armA && r.arm !== armB)) continue;
-    const tasks = perArm.get(r.arm) || new Map();
-    const reps = tasks.get(r.task_id) || new Set();
-    reps.add(r.rep);
-    tasks.set(r.task_id, reps);
-    perArm.set(r.arm, tasks);
-  }
-  return perTaskPairCount(perArm.get(armA), perArm.get(armB));
-}
-
-function perTaskPairCount(a, b) {
-  if (!a || !b) return 0;
-  let pairs = 0;
-  for (const [taskId, reps] of a) {
-    const other = b.get(taskId);
-    if (!other) continue;
-    for (const rep of reps) {
-      if (other.has(rep)) pairs++;
+    let cells = byArm.get(r.arm);
+    if (!cells) {
+      cells = new Map();
+      byArm.set(r.arm, cells);
     }
+    cells.set(r.task_id + '|' + r.rep, r);
+  }
+  const a = byArm.get(armA);
+  const b = byArm.get(armB);
+  if (!a || !b) return [];
+  const pairs = [];
+  for (const [key, recA] of a) {
+    const recB = b.get(key);
+    if (!recB) continue;
+    pairs.push({ key, task_id: recA.task_id, rep: recA.rep, a: recA, b: recB });
   }
   return pairs;
+}
+
+/** How many (task, rep) cells both arms executed. */
+function pairedCount(armA, armB, records) {
+  return pairedCells(armA, armB, records).length;
+}
+
+/**
+ * False completions on the paired cells: lean minus baseline.
+ *
+ * A false completion is a cell that reported completion while a live predicate
+ * failed — the agent claimed the end state was good and it was not. A POSITIVE
+ * delta is a regression, which is what the ADR-0012 gate forbids.
+ */
+function pairedFalseCompletionDelta(leanArm, baseArm, records) {
+  let leanCount = 0;
+  let baseCount = 0;
+  for (const cell of pairedCells(leanArm, baseArm, records)) {
+    if (cell.a.completed === true && cell.a.outcome === 'failed') leanCount++;
+    if (cell.b.completed === true && cell.b.outcome === 'failed') baseCount++;
+  }
+  return leanCount - baseCount;
+}
+
+/**
+ * Permission denials on the paired cells: lean minus baseline. A POSITIVE
+ * delta is a regression.
+ */
+function pairedPermissionDenialDelta(leanArm, baseArm, records) {
+  let leanSum = 0;
+  let baseSum = 0;
+  for (const cell of pairedCells(leanArm, baseArm, records)) {
+    leanSum += cell.a.permission_denials_count || 0;
+    baseSum += cell.b.permission_denials_count || 0;
+  }
+  return leanSum - baseSum;
 }
 
 /**
@@ -416,29 +462,27 @@ function perTaskPairCount(a, b) {
  * (checked by the availability gate); a missing count here cannot silently
  * become a zero loss.
  */
-function lostMaterialFindings(armA, armB, records) {
-  const perArmTask = new Map();
-  for (const r of records) {
-    if (r.ignored || (r.arm !== armA && r.arm !== armB)) continue;
-    if (r.findings.ground_truth_material === 0) continue; // no findings expected on this task
-    if (r.findings.matched === null) return { value: null, paired: 0, undermeasured: true };
-    const tasks = perArmTask.get(r.arm) || new Map();
-    const key = r.task_id + '|' + r.rep;
-    tasks.set(key, r.findings.matched);
-    perArmTask.set(r.arm, tasks);
+function lostMaterialFindings(leanArm, baseArm, records) {
+  // Per task: the WORST paired-rep drop (baseline minus lean, floored at 0);
+  // then summed across tasks. Taking the worst rep keeps the metric
+  // independent of how many repetitions a task was run with — summing every
+  // rep would make the number grow with the rep count instead of with the
+  // review quality that was lost.
+  const worstPerTask = new Map();
+  for (const cell of pairedCells(leanArm, baseArm, records)) {
+    const leanFindings = cell.a.findings;
+    const baseFindings = cell.b.findings;
+    if (leanFindings.ground_truth_material === 0) continue; // no findings expected on this task
+    if (leanFindings.matched === null || baseFindings.matched === null) {
+      return { value: null, paired: 0, undermeasured: true };
+    }
+    const drop = Math.max(0, baseFindings.matched - leanFindings.matched);
+    const worst = worstPerTask.get(cell.task_id);
+    worstPerTask.set(cell.task_id, worst === undefined ? drop : Math.max(worst, drop));
   }
-  return { value: lostFromPerArmTask(perArmTask.get(armA), perArmTask.get(armB)), paired: 0 };
-}
-
-function lostFromPerArmTask(a, b) {
-  if (!a || !b) return 0;
   let lost = 0;
-  for (const [key, baseMatched] of a) {
-    const leanMatched = b.get(key);
-    if (leanMatched === undefined) continue;
-    lost += Math.max(0, baseMatched - leanMatched);
-  }
-  return lost;
+  for (const drop of worstPerTask.values()) lost += drop;
+  return { value: lost, paired: 0 };
 }
 
 /** True when involved-arm ground-truth records all carry matched counts. */

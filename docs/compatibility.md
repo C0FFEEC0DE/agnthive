@@ -48,12 +48,12 @@ changelog table used by the harness review and are **docs**-class evidence,
 never captured version-boundary tests. "Plugin use" names the module that
 currently consumes the capability. Fixtures under `test/hooks/fixtures/` are
 synthetic unless marked otherwise. Plan task 02 added the runtime contract
-layer `test/compatibility/` (16 manifest entries: 4 `active` — the dispatcher
-is spawned and the output class asserted today — and 12 `pending_capture`,
-which pin only the documented input shape until a live canary replaces them).
-Nothing here is *host-captured* on the pinned CLI beyond the rows labelled
-captured; "implemented" rows carry regression tests but no host canary
-(plan task 14 closes those).
+layer `test/compatibility/` (18 manifest entries: 13 `active` — the
+dispatcher is spawned and the output class asserted today, 10 of them holding
+a payload observed in a live host canary on 2.1.303 — and 5
+`pending_capture`, which pin only the documented input shape until a live
+canary replaces them). The host canary of 2026-10-21 is described in
+*Host canary 2026-10-21* below; the rows labelled captured are backed by it.
 
 | # | Event / field | Known floor | Status | Plugin use | Fixture | Fallback when unsupported |
 |---|---|---|---|---|---|---|
@@ -62,20 +62,20 @@ captured; "implemented" rows carry regression tests but no host canary
 | H03 | Manifest `defaultEnabled: false` (plugin ships disabled) | plugin-format baseline | **captured** — strict pass on 2.1.303; asserted by smoke check 8 | manifest contract | `test/unit/plugin-install-smoke.test.mjs` | none |
 | H04 | Manifest `userConfig` (`enforcement_mode`, `log_max_bytes`, `ledger_max_bytes`, `workflow_profile`) | plugin-format baseline | **captured** — strict pass on 2.1.303; contract keys asserted by smoke check 10 (smoke requires the first three; `workflow_profile` is type/default-validated by the repo validator and allowed as an extra key there) | runtime reads config values with env-var overrides | `test/unit/plugin-install-smoke.test.mjs`, `test/validators/hook-manifest-contract.test.mjs` | absent/mis-typed userConfig fails the smoke |
 | H05 | No `requirements` manifest key (invented minimum-version field is forbidden) | n/a | **captured** — strict pass without it; smoke check 9 forbids reintroduction | docs-level policy only | `test/unit/plugin-install-smoke.test.mjs` | minimum-version policy lives in this document (below) |
-| H06 | `PermissionDenied` event-specific envelope `hookSpecificOutput: {hookEventName:"PermissionDenied", retry:<bool>}` | docs (hooks reference) | **implemented (0.4.0)** — the dispatcher emits the corrected envelope (`modules/hook-output.mjs` `permissionDeniedResult`); host capture on the pinned CLI is still pending | `handlePermissionDenied` (`hook-dispatcher.mjs`), plan task 03 / ADR 0011 closed the bare-`{retry}` shorthand | `test/hooks/fixtures/permission_denied_*.json`, `test/compatibility/` (1 active + 1 pending_capture PermissionDenied entry) | the legacy bare `{ retry }` shorthand is historically accepted by hosts but is not the documented contract — it is no longer emitted; a host canary still needs to confirm the envelope lands |
+| H06 | `PermissionDenied` event-specific envelope `hookSpecificOutput: {hookEventName:"PermissionDenied", retry:<bool>}` | 2.1.303 (host canary) | **captured** — 2026-10-21: the runtime answered exactly `{"hookSpecificOutput":{"hookEventName":"PermissionDenied","retry":true}}` and the host enforced the denial; the legacy bare `{retry}` shorthand was not emitted | `handlePermissionDenied` (`hook-dispatcher.mjs`), `permissionDeniedResult` (`hook-output.mjs`) | `test/compatibility/payloads/compat_permission_denied.json` (captured 2026-10-21), `test/compatibility/captures/permission_denied.*` | the legacy bare `{ retry }` shorthand is not emitted; the host emits the event only for **auto-mode classifier** denials — a settings deny rule, an unanswered prompt and a PreToolUse deny do NOT emit it (see *Host canary 2026-10-21*) |
 | H07 | Hook config field `onFailure` (host failure behavior) | ≥ 2.1.295 (changelog — docs) | **implemented (0.4.0)** — the shared Bash and PowerShell PreToolUse shell-policy registrations carry `onFailure: "block"` (`hooks.json`); the docs-class floor (a hook that cannot start, times out, or exits non-zero/2 blocks the tool call) is still **unverified on host** | `enforce`-class safety registration (ADR 0011) — a handler that never runs cannot decide advisory vs enforce | `test/validators/hook-manifest-contract.test.mjs` (onFailure:"block" only on PreToolUse shell rows) | without it, host-level launcher failures are invisible to the plugin; advisory rows deliberately omit it (working advisory handlers keep the native permission flow) and async telemetry gets none |
 | H08 | Hook config field `timeout` (bounded host wait) | unknown locally | **implemented (0.4.0)** — every registration declares `timeout` (`10s` sync, `30s` async), validator-enforced; host-side enforcement of the value is **unverified** | all hook registrations (`hooks.json`) | `test/validators/hook-manifest-contract.test.mjs` | undefined host hang; dispatcher cannot detect a hung host. Note (docs): `timeout` on `async: true` hooks is declarative only |
-| H09 | `UserPromptSubmit` fires when background work returns (not only on user input) | docs (hooks reference) | **unverified** (payload provenance) — the *handling* is implemented (0.4.0): ADR 0010 task transitions + `prompt_id` dedupe mean a re-delivery cannot erase an open task's contract or sibling counters | `handleUserPromptSubmit` (task identity, `taskTransition`, duplicate-submission dedupe) | `test/compatibility/` `compat_user_prompt_submit_background_return` (pending_capture — the prompt body of a background return is the unknown) | treat any delivery as a possible background return; a duplicate `prompt_id` skips the reset and the transition; unproven provenance never resets sibling counters |
-| H10 | User slash command arrives before prompt/skill expansion (2.1.299, changelog) | 2.1.299 (docs) | **implemented (0.4.0)** — `parseSlashedCommand` normalizes `/agnthive:<command>` and the plain legacy forms into one procedure; foreign plugin namespaces are ignored (negative fixtures) | `workflow.mjs` typed-command classification (F06 closed) | `user_prompt_manager_feature.json`, `user_prompt_manager_plan_only.json` (synthetic; real pre-expansion capture pending) | naive text matching; foreign plugin namespaces must not trigger local roles |
-| H11 | `Stop` payload carries background-task information | docs (hooks reference) | **implemented (0.4.0)** — Stop/TaskCompleted/TeammateIdle read the `agents{}` / `background_tasks{}` registries; an explicit empty registry is authoritative over stale transcript text, and the transcript heuristic is a bounded fallback | task registry (task 06 / ADR 0010) — payload shape still unverified | `test/hooks/fixtures/transcripts/manager_backgrounded_review.jsonl` (synthetic) | current task registry empty ⇒ no background wait; stale transcript matches must not hold the session open |
-| H12 | `prompt_id` correlation between deliveries | docs (hooks reference) | **implemented (0.4.0)** — `prompt_seq`/`last_prompt_id` dedupe duplicate deliveries; never origin proof | `state.mjs` stores `last_prompt_id` for duplicate-detection only (ADR 0010); `hook-input.mjs` does not read the field as provenance | none | never treated as message-origin proof (F02) |
-| H13 | `PostCompact` is **not** a documented synchronous context-injection channel | docs (hooks reference) | **implemented (0.4.0)** — ledger restoration moved to `SessionStart` `compact`/`resume` (`additionalContext` from `buildSessionStartRestore`); PostCompact is bounded metadata-only bookkeeping (text only behind `AGNTHIVE_VERBOSE_COMPACT_LOG=1`). Delivery of the `SessionStart` message on the pinned CLI is still **unverified** | `handleSessionStartRestore` / `handlePostCompact` (`hook-dispatcher.mjs`, `ledger.mjs`) | `post_compact_minimal.json`, `post_compact_manual.json` | if capture disproves the session-start delivery path, amend ADR 0013 with evidence before choosing another channel; never claim restoration from emitted JSON alone |
+| H09 | `UserPromptSubmit` fires when background work returns (not only on user input) | 2.1.303 (host canary) | **captured** — 2026-10-21: a background **subagent** completion is delivered as UserPromptSubmit with a `<task-notification>` body (task-id, tool-use-id, output-file, status, summary, note, result, usage) and a **new** `prompt_id`, so the delivery is distinguishable from the user turn that launched the agent (F02) | `handleUserPromptSubmit` (task identity, `taskTransition`, duplicate-submission dedupe) | `test/compatibility/payloads/compat_user_prompt_submit_background_return.json` (captured 2026-10-21) | the delivery classifies as task type `other` and the runtime answers with a passthrough (no additionalContext) — a background return must never be treated as a new user task |
+| H10 | User slash command arrives before prompt/skill expansion (2.1.299, changelog) | 2.1.303 (host canary) | **captured** — 2026-10-21: the raw text `/agnthive:manager hello` reached the UserPromptSubmit hook **unexpanded** (F06 closed on the host) | `workflow.mjs` typed-command classification (F06) | `test/compatibility/payloads/compat_user_prompt_submit_namespace_slash.json` (captured 2026-10-21) | the delivery routes the session into manager mode but classifies as task type `other`, so the runtime answers with a passthrough; foreign plugin namespaces must not trigger local roles |
+| H11 | `Stop` payload carries background-task information | 2.1.303 (host canary) | **captured** — 2026-10-21: the real Stop payload carries `background_tasks: []` and `session_crons: []` — an explicit empty registry, not a missing field | task registry (task 06 / ADR 0010) | `test/compatibility/captures/stop_active_work.stdin.json` (captured 2026-10-21) | current task registry empty ⇒ no background wait; stale transcript matches must not hold the session open |
+| H12 | `prompt_id` correlation between deliveries | 2.1.303 (host canary) | **captured** (field) / **implemented (0.4.0)** (dedupe) — the field is present in every UserPromptSubmit/PostToolUse/Stop delivery observed on 2026-10-21, and a background return carries a **new** prompt_id; `prompt_seq`/`last_prompt_id` dedupe is plugin-side | `state.mjs` stores `last_prompt_id` for duplicate-detection only (ADR 0010); `hook-input.mjs` does not read the field as provenance | `test/compatibility/payloads/compat_user_prompt_submit_*.json` (captured 2026-10-21) | never treated as message-origin proof (F02) |
+| H13 | `PostCompact` is **not** a documented synchronous context-injection channel | 2.1.303 (host canary) | **captured** — 2026-10-21: the host DOES register and run the PostCompact hook, but the async hook is **cancelled at session end** (`Hook PostCompact:manual (PostCompact) cancelled:`) and its output never reaches the model — the F07 claim is confirmed. The restoration channel is `SessionStart` `source=compact`, whose ledger-restore envelope WAS observed live | `handleSessionStartRestore` / `handlePostCompact` (`hook-dispatcher.mjs`, `ledger.mjs`) | `test/compatibility/captures/session_start_compact.*` (captured 2026-10-21); the PostCompact **stdin** was never observable (async hook cancelled) | if capture disproves the session-start delivery path, amend ADR 0013 with evidence before choosing another channel; never claim restoration from emitted JSON alone |
 | H14 | `Notification` payload field `notification_type` | docs (hooks reference) | **implemented (0.4.0)** — `notificationPayload` writes `notification_type` (bridging the legacy `subtype` alias on read); the field's arrival on the pinned CLI is still **unverified** | `notifications.mjs` bridges `notification_type ?? subtype` | `notification_*.json` (synthetic) | the bridge keeps old runtimes working; never read either field as message content |
-| H15 | `SubagentStart`/`SubagentStop` with separate parent `transcript_path` vs subagent transcript (`agent_transcript_path`) | nested subagents ≥ 2.1.219 (changelog — docs) | **docs** floor; per-agent counters verified locally by dispatcher tests, and ADR-0010 result ownership is implemented (0.4.0): `resolveSubagentReport` checks the delivered handback report, parent/child transcript fallbacks are separated, and missing data yields unknown | ADR 0010 identity model; ADR 0002/0005/0006 per-agent map ops; `transcripts.mjs` fallback | `subagent_start_*.json`, `subagent_stop_*.json`, `test/hooks/fixtures/transcripts/*.jsonl` (synthetic) | missing transcript data yields unknown, not another agent's result |
+| H15 | `SubagentStart`/`SubagentStop` with separate parent `transcript_path` vs subagent transcript (`agent_transcript_path`) | 2.1.303 (host canary) | **captured** — 2026-10-21: the real SubagentStop payload carries BOTH `transcript_path` (parent) and `agent_transcript_path` (the subagent transcript, a different file), plus `agent_id`, `agent_type` and the `background_tasks` registry | ADR 0010 identity model; `transcripts.mjs` fallback | `test/compatibility/payloads/compat_subagent_stop_return.json`, `test/compatibility/payloads/compat_subagent_start_dispatch.json` (captured 2026-10-21) | missing transcript data yields unknown, not another agent's result |
 | H16 | `fork` agent type in headless runs (2.1.302, changelog) | 2.1.302 (docs) | **implemented (0.4.0)** — `isForeignOrForkType` exempts fork/foreign-namespace types from the footer contract before the missing-aliases safe floor (`agents.mjs`, ADR 0010); end-to-end host behavior still unverified | `shouldEnforceSubagentFooter` exempts generic + foreign/fork types (plan 06.5) | `subagent_stop_generic_type_passthrough.json` (covers `general-purpose`; fork-specific negative fixtures pending capture) | unknown/fork labels get passthrough, no footer contract |
 | H17 | Native `PowerShell` tool parity | unknown locally | **implemented (0.4.0)** — `hooks.json` registers a native `PowerShell` matcher for the shared PreToolUse safety policy (`onFailure: "block"`) and PostToolUse verification routing on top of the existing `command-policy.mjs` patterns (shared `shellFamily` predicate); host canary still pending | PreToolUse + PostToolUse PowerShell rows (`hooks.json`); `PermissionRequest`/`PermissionDenied` remain Bash-only | `test/validators/hook-manifest-contract.test.mjs` (PowerShell parity), security corpus PowerShell cases | without a matcher a PowerShell tool call bypasses the policy — the parity check now fails registry drift; actual host dispatch is unverified until task 14 |
-| H18 | Background command responses (`run_in_background`): real completion/error shapes | unknown locally | **implemented (0.4.0)** — `resultFromBashPayload` normalizes foreground/background/failed payloads into `verification[]` records scoped to the change revision; an unknown or launched-but-not-finished result is never `passed`, and a background launch without a completion signal requires a foreground rerun to close the gate. Real payload shapes remain **unverified** (F01's `backgroundTaskId` was synthetic) | `modules/verification.mjs` + PostToolUse/PostToolUseFailure routing | `post_bash_*.json` (synthetic; `test/compatibility/` background entries pending_capture) | unknown response is never treated as passed; conservative fallback (`fs_revision_hint`) bumps the revision for file-mutating shell commands the Edit/Write counters cannot see |
-| H19 | `stop_hook_active` semantics (continue-after-block marker) | plugin-format baseline | plugin-side only; host cross-check **unverified** | `hook-input.mjs` reads `data.stop_hook_active` (ADR 0003 bounded retry) | fixtures in `test/hooks/` covering the flag | bounded one-cycle yield; never converts failed checks to passed |
+| H18 | Background command responses (`run_in_background`): real completion/error shapes | 2.1.303 (host canary) | **captured** — 2026-10-21: a background launch delivers `tool_input.run_in_background: true` and a `tool_response` of `{stdout:"", stderr:"", interrupted:false, isImage:false, noOutputExpected:false, backgroundTaskId:"<id>"}`; the **completion arrives as a UserPromptSubmit `<task-notification>`**, not as a second PostToolUse. The host sends **no exit code** in `tool_response`, so an undeterminable outcome is recorded as `status: "unknown"` — never `passed` (F01) | `modules/verification.mjs` + PostToolUse/PostToolUseFailure routing | `test/compatibility/payloads/compat_post_tool_use_background_bash.json`, `test/compatibility/payloads/compat_user_prompt_submit_background_return.json` (captured 2026-10-21) | unknown response is never treated as passed; a background launch without a completion signal requires a foreground rerun to close the gate |
+| H19 | `stop_hook_active` semantics (continue-after-block marker) | 2.1.303 (host canary) | **captured** — 2026-10-21: after the plugin blocked a Stop, the host re-fired Stop with `stop_hook_active: true` and the runtime answered `{}` — the bounded one-cycle yield (ADR 0003) | `hook-input.mjs` reads `data.stop_hook_active` (ADR 0003 bounded retry) | `test/compatibility/captures/stop_active_work.*`, `test/compatibility/captures/stop_after_own_block.*` (captured 2026-10-21) | bounded one-cycle yield; never converts failed checks to passed |
 | H21 | `StopFailure` telemetry event (turn/Stop failure record) | unknown locally | **implemented (0.4.0)** — async registration (`hooks.json`, `timeout: 30`, no `onFailure`: async telemetry has no blocking semantics per docs); writes one bounded `stop-failure.jsonl` record (`ts, session_id, error_name, exit_code, signal, agent_id`), API error text never logged. Arrival of the payload shape on the pinned CLI is **unverified** | `handleStopFailure` (`hook-dispatcher.mjs`) + `stopFailurePayload` (`notifications.mjs`) | `test/hooks/` StopFailure cases (synthetic) | failure of this telemetry write is nonblocking (ADR 0011 telemetry class) |
 | H22 | `workflow_profile` selector: `userConfig.workflow_profile` + `AGNTHIVE_WORKFLOW_PROFILE` env override | plugin-format baseline | **implemented (0.4.0)** — resolver precedence env > `CLAUDE_PLUGIN_OPTION_WORKFLOW_PROFILE` > `legacy`, invalid value falls back to `legacy` with a stderr note; `legacy` is **byte-stable**, `lean` is experimental | `modules/plugin-config.mjs`; `UserPromptSubmit` persists `workflow_profile`, Stop/TaskCompleted/TeammateIdle/SubagentStop consume the lean gate projection (`leanProfileGates`) | `test/unit/workflow-profile.test.mjs`, dispatcher/workflow unit tests | unknown/misconfigured value = legacy, never a silent behavior change |
 | H23 | Hooks manifest contract in the validator: event vocabulary incl. the new `StopFailure` event, `timeout`/`onFailure` rules, PowerShell matcher parity | plugin-format baseline | **implemented (0.4.0)** — `scripts/validate.mjs` + `test/validators/hook-manifest-contract.test.mjs` enforce it (`PostToolUseFailure` predates 0.4.0; `StopFailure` is the 0.4.0 registration) | `hooks.json` + the repo validator | the validator manifest checks | unknown events stay passthrough; a registration missing its timeout or carrying `onFailure` outside PreToolUse shell rows fails validation |
@@ -83,15 +83,94 @@ captured; "implemented" rows carry regression tests but no host canary
 
 ## Unverified rows that block further claims
 
-After the 0.4.0 implementation wave, rows H06–H18 are **implemented** in the
-plugin runtime with regression tests, but they are not host-captured: no host
-canary on the pinned CLI has exercised them (plan task 14), and the
-`test/compatibility/` capture entries for the runtime payloads are still
-`pending_capture`, so nothing in README/ADR text may assert host behavior
-beyond the captured rows (H01–H05, H20). What remains genuinely unimplemented
-is plan task 16 (legacy compatibility-agent removal, deferred to the
-compatibility window) and the lean **default** flip, which is gated by the
-ADR 0012 outcome benchmark, not by these rows.
+The host canary of 2026-10-21 exercised rows H06 and H09–H19 on the pinned
+CLI and turned them into **captured** rows; the redacted evidence is under
+`test/compatibility/captures/` and the payloads that could be asserted
+end-to-end are under `test/compatibility/payloads/` with
+`source: "captured"`.
+
+What is still **not** host-verified:
+
+- **H07** (`onFailure`) and **H08** (`timeout`) — the canary never produced a
+  hook that failed to start or timed out, so the host-side failure behaviour of
+  both fields stays docs/implemented-class only.
+- **H14** (`notification_type`) — the canary produced no Notification event,
+  so the field was never observed on the host.
+- **H16** (fork agent type) — a compaction fork did emit a SubagentStop with an
+  empty `agent_type`, but no fork-typed *agent* dispatch was observed.
+- **H17** (native PowerShell tool parity) — the canary ran on Linux with the
+  Bash tool only; the PowerShell matcher was not exercised.
+- The PostCompact **stdin** — the host cancels that async hook at session end,
+  so the payload itself is still unobserved (the event's *existence* and the
+  cancellation are observed, see H13).
+
+What remains genuinely unimplemented is plan task 16 (legacy
+compatibility-agent removal, deferred to the compatibility window) and the lean
+**default** flip, which is gated by the ADR 0012 outcome benchmark, not by
+these rows.
+
+## Host canary 2026-10-21 (CLI 2.1.303)
+
+**Method.** Real `claude -p` sessions against the pinned CLI
+(`2.1.303 (Claude Code)`, `node --version` → `v22.22.2`) with the local
+ollama provider (`ANTHROPIC_BASE_URL=http://127.0.0.1:11434`, model
+`glm-5.2:cloud`). The plugin was loaded from an instrumented **copy** in
+`/tmp` whose `hooks/hooks.json` registers a wrapper that tees the raw hook
+stdin to a file and then re-runs the unmodified dispatcher — the repository
+tree `plugins/agnthive/` was never modified, and `defaultEnabled` stayed
+`false`. The session was enabled with `--plugin-dir <copy> --settings <file>`
+and `{"enabledPlugins": {"agnthive@inline": true}}`; without that settings
+file the host registers **zero** hooks from the plugin and there is nothing
+to capture.
+
+**What the host actually sends** (redacted, `test/compatibility/captures/`):
+
+- `UserPromptSubmit`: `session_id, transcript_path, cwd, prompt_id,
+  permission_mode, hook_event_name, prompt`.
+- `PostToolUse` (Bash): the same header plus `effort`, `tool_name`,
+  `tool_input`, `tool_response`, `tool_use_id`, `duration_ms`. The
+  `tool_response` is `{stdout, stderr, interrupted, isImage,
+  noOutputExpected}` — **no exit code**; a background launch adds
+  `backgroundTaskId`.
+- `SubagentStart`: `agent_id` + `agent_type` (host-assigned, e.g. `Explore`),
+  no `agent_alias`.
+- `SubagentStop`: the above plus `agent_transcript_path` (a different file
+  from the parent `transcript_path`), `stop_hook_active`,
+  `last_assistant_message`, `background_tasks`, `session_crons`.
+- `Stop`: `stop_hook_active`, `last_assistant_message`, `background_tasks`,
+  `session_crons`.
+- `SessionStart`: `source` = `startup` | `resume` | `compact`; the `resume`
+  delivery adds `seconds_since_last_response`, `context_tokens`,
+  `prompt_cache_likely_expired`, `estimated_cache_write_usd`; the `compact`
+  delivery adds `prompt_id` and `model`.
+- `PermissionDenied`: `tool_name`, `tool_input`, `tool_use_id` and a `reason`
+  string (the classifier verdict).
+
+**Behaviours the canary pinned** (all reproduced in the contract test, see
+`test/compatibility/manifest.json`):
+
+1. The feature classification is **text driven**: `Add support for provider
+   failover and integrate OpenRouter.` classifies as a feature workflow
+   (envelope + `task_type=feature`, `required_subagents=[t, cr]`), while
+   `Add a helper function parseDuration ...` classifies as `other` and the
+   runtime answers with a **passthrough** (no additionalContext). Both are real
+   captures (`compat_user_prompt_submit_normal`,
+   `compat_user_prompt_submit_other_classified`).
+2. A background **subagent** completion is delivered as UserPromptSubmit with a
+   `<task-notification>` body and a new `prompt_id`.
+3. A resumed background agent re-fires **SubagentStop** (with
+   `stop_hook_active=true` for the same `agent_id`) and does **not** re-fire
+   SubagentStart — the repeated-SubagentStart marker does not exist on 2.1.303.
+4. The host emits **PermissionDenied** only for auto-mode *classifier* denials.
+   A settings deny rule, an unanswered permission prompt and a PreToolUse deny
+   were all measured and did **not** emit the event. With the plugin as shipped
+   every policy-hard-denied command is blocked at PreToolUse before the
+   permission stage, so the `retry:false` (hard-denied) variant of the event
+   was not observed; the captured variant answered `retry:true`.
+5. The `PostCompact` hook is registered and run, then **cancelled** at session
+   end — its stdin could not be observed, and its output never reaches the
+   model. The restoration channel is `SessionStart` `source=compact`, whose
+   ledger-restore envelope was observed live.
 
 ## Manifest shape contract (statically asserted)
 
