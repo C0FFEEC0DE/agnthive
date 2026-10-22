@@ -75,6 +75,12 @@ Common fields, all required unless noted:
 - prompt — role-free and footer-free (no `@alias` dispatch, no handoff footers)
 - verification_required / docs_required / review_required booleans (docs tasks
   are verification-free)
+- expect_changes — optional boolean: does the task expect the agent to modify
+  files? A read-only task (a scope predicate with an empty allow list) MUST
+  set `expect_changes: false`, because the runner's task-level heuristic is
+  "a task that changed nothing did not complete" — for a read-only review
+  task, changing nothing is the correct outcome, and without the declaration
+  a correct run is recorded as a failed cell
 - related_agents — diagnostic metadata only, never scored
 - success_criteria, must_not — non-empty string arrays
 - ground_truth — optional: findings [{id, material, report_pattern}] for

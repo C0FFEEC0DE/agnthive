@@ -13,6 +13,7 @@
   "title": "Security review of the seeded ingest module",
   "category": "review",
   "fixture": "text-report",
+  "expect_changes": false,
   "budget_class": "medium",
   "coverage_tags": [
     "security-review"

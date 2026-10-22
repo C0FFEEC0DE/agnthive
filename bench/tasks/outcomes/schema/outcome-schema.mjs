@@ -276,6 +276,23 @@ export function validateOutcomeTask(task, opts = {}) {
   }
   if (mockCount === 0) err(errors, `${label}: at least one mock predicate is required`);
   if (liveCount === 0) err(errors, `${label}: at least one live predicate is required`);
+
+  // expect_changes: does the task expect the agent to modify files? The
+  // runner's task-level heuristic is "a task that changed nothing did not
+  // complete" — which is WRONG for a read-only task: a review task whose
+  // scope predicate allows no path must change nothing, and reporting that
+  // as a failure turns a correct run into a red cell. Such a task therefore
+  // declares expect_changes=false, and the runner honours it.
+  if (task.expect_changes !== undefined && !isBoolean(task.expect_changes)) {
+    err(errors, `${label}: expect_changes must be a boolean when present`);
+  }
+  const readOnly = eo.predicates.some((p) => isPlainObject(p)
+    && p.kind === 'changed_paths_within'
+    && Array.isArray(p.allow)
+    && p.allow.length === 0);
+  if (readOnly && task.expect_changes !== false) {
+    err(errors, `${label}: a read-only task (scope predicate with an empty allow list) must set expect_changes=false`);
+  }
   if (evidenceFlagIds.length > 0 && Array.isArray(task.arms) && task.arms.includes('native')) {
     err(errors, `${label}: evidence_flag predicates cannot be evaluated on the native arm (no plugin state)`);
   }

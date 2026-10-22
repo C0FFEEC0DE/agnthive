@@ -116,7 +116,49 @@ so the default flip did not happen.
   regression". The metrics document version is bumped to `1.1` — the gate
   semantics changed. Covered by `test/validators/outcome-suite.test.mjs`.
 
+- **A read-only outcome task was graded as a failure — in the working tree, not
+  yet released.** The runner's task-level heuristic is "a task that changed
+  nothing did not complete", which is wrong for a task that must NOT change
+  anything: `outcome-review-flawed-ingest` allows no path (its scope
+  predicate has an empty allow list) and its success criteria say "no file is
+  modified (read-only review)", so the read-only run — which named all three
+  material findings and touched nothing — was recorded as a failed cell in
+  every arm of the first live matrix (9 of 9 cells). The runner already
+  honours a task's `expect_changes` flag; the SUITE now declares it: a
+  read-only task must set `expect_changes: false`, and the suite schema
+  rejects a read-only task that does not. Covered by
+  `test/validators/outcome-suite.test.mjs`.
+
 ### Pending verification
+
+- **The plugin's verification evidence layer never sees `node --test` — found
+  by the ADR-0012 outcome matrix, not yet fixed.** `commandClass` in
+  `modules/verification.mjs` recognizes `npm test`, `pytest`, `cargo test`,
+  `go test`, `make test` — but not `node --test`, so a Node test run is
+  classified `other` and `resultFromBashPayload` returns null: no
+  `verification[]` record is appended and no verification flag is synced. The
+  outcome suite declares `node --test` as the verification command of its
+  tasks, and the live matrix confirmed the consequence: the plugin's session
+  state carried `verification: []` after a run whose tests passed, and the
+  `verification.latest.status == passed` predicate failed in EVERY plugin arm
+  (the same cells, so the arm comparison is unaffected). A second, independent
+  cause sits behind the same predicate: a BACKGROUND launch is recorded as
+  `pending` by design (ADR-0013: a launch is not a completion), never as
+  `passed`. Not fixed here on purpose — teaching the plugin to recognize a
+  command changes the verification gate's runtime behavior for every user, so
+  it needs its own change with its own risk assessment, and the ADR-0012 gate
+  does not require it.
+
+- **Two outcome-suite tasks are red in every arm for suite reasons, not model
+  reasons.** `outcome-compact-resume` expects a mid-task compaction
+  (`scenario: compact_resume`, predicate `restored_task_seq >= 1`) and
+  `outcome-background-verification` expects a background verification to be
+  recorded as passed; the live runner drives a single-shot `claude -p` session
+  and never produces a compaction event, so these predicates cannot be
+  satisfied by any arm. The grading was left intact on purpose (the ADR
+  forbids weakening it to move a number) — the consequence is that the ABSOLUTE
+  outcome pass rate of the matrix understates both arms, while the arm
+  comparison the gate actually uses (paired cells) is unaffected.
 
 - **Live host canary captures — in progress.** Real hook stdin payloads are
   being captured on the pinned CLI (2.1.303) to replace the

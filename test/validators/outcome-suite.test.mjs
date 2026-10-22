@@ -21,6 +21,7 @@ import {
   evaluateMockPredicates,
   loadOutcomeSuiteTasks,
   validateOutcomeMetrics,
+  validateOutcomeTask,
 } from '../../bench/tasks/outcomes/schema/outcome-schema.mjs';
 import { emitOutcomeMetrics } from '../../bench/tasks/outcomes/tools/emit-outcome-metrics.mjs';
 
@@ -69,6 +70,25 @@ test('role-scoring arrays stay empty on outcome tasks', () => {
     assert.deepEqual(task.required_used_agents, [], path);
     assert.deepEqual(task.required_used_agent_groups, [], path);
   }
+});
+
+test('a read-only task declares expect_changes=false', () => {
+  // The runner's task-level heuristic is "a task that changed nothing did not
+  // complete". For a review task whose scope predicate allows NO path, not
+  // changing anything is the correct outcome — without expect_changes=false
+  // the runner records a correct read-only run as a failed cell.
+  const loaded = loadSuite();
+  const readOnly = loaded.tasks.filter(({ task }) => (task.expected_outcome.predicates || [])
+    .some((p) => p.kind === 'changed_paths_within' && Array.isArray(p.allow) && p.allow.length === 0));
+  assert.ok(readOnly.length > 0, 'the suite has a read-only task');
+  for (const { task, path } of readOnly) {
+    assert.equal(task.expect_changes, false, path + ' must declare expect_changes=false');
+  }
+  // A read-only task WITHOUT the declaration is a contract violation.
+  const broken = JSON.parse(JSON.stringify(readOnly[0].task));
+  delete broken.expect_changes;
+  const errors = validateOutcomeTask(broken, { ...paths, label: 'read-only-task' });
+  assert.ok(errors.errors.some((e) => e.includes('expect_changes=false')), JSON.stringify(errors.errors));
 });
 
 test('arms, budget classes, and fixture dirs are declared consistently', () => {
