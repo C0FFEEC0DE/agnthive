@@ -38,6 +38,10 @@ import { spawnFailureReason, __runnerInternals } from '../../scripts/test-hooks.
 // through it validates "the stdin shape the dispatcher accepts" with the exact
 // normalization the runtime uses. It VALIDATES fixtures; it never derives them.
 import { parseHookInput } from '../../plugins/agnthive/modules/hook-input.mjs';
+// The plugin's own state writer: a captured payload is replayed against the
+// state the live session had (manifest `state_seed`), so the probe reproduces
+// the captured verdict instead of a fresh-root verdict.
+import { statePaths, appendEvent } from '../../plugins/agnthive/modules/state.mjs';
 
 const manifest = JSON.parse(readFileSync(join(here, 'manifest.json'), 'utf8'));
 const entries = manifest.entries;
@@ -300,6 +304,10 @@ test('compat manifest: capture hygiene — nothing synthetic is labeled captured
     'compat_post_tool_use_foreground_bash',
     'compat_post_tool_use_background_bash',
     'compat_subagent_stop_return',
+    'compat_stop_active_work',
+    'compat_stop_already_finished',
+    'compat_session_start_compact',
+    'compat_session_start_resume',
     'compat_subagent_start_dispatch',
     'compat_permission_denied_current_envelope',
     'compat_permission_denied_capture',
@@ -455,6 +463,17 @@ function probeEnv(tmpDir) {
 function runProbe(entry, stdinText) {
   const tmp = mkdtempSync(join(tmpdir(), 'compat-probe-'));
   const { env, dir } = probeEnv(tmp);
+  const dataRoot = env.CLAUDE_PLUGIN_DATA;
+  // A captured payload carries the STATE the live session had, not only its
+  // stdin: the Stop verdict depends on the prior block, the SessionStart
+  // restore verdict on the open task. The manifest declares that prior state
+  // per entry (state_seed), so the probe reproduces the LIVE verdict instead of
+  // a fresh-root verdict the capture never claimed.
+  if (entry.state_seed) {
+    const payload = JSON.parse(stdinText);
+    const sessionId = String(payload.session_id || '');
+    if (sessionId) appendEvent(statePaths(dataRoot, sessionId), 'set_many', { fields: entry.state_seed });
+  }
   const res = runDispatcher({
     event: entry.event,
     matcher: entry.spawn_matcher ?? null,
@@ -464,7 +483,7 @@ function runProbe(entry, stdinText) {
   });
   // Cleanup is the caller's job: tests that read session state back from the
   // probe's data root need it to survive until the read-back is done.
-  return { res, env, dataRoot: env.CLAUDE_PLUGIN_DATA, cleanup: () => rmSync(tmp, { recursive: true, force: true }) };
+  return { res, env, dataRoot, cleanup: () => rmSync(tmp, { recursive: true, force: true }) };
 }
 
 // Assert one output class against a probe result. Each case enumerates the

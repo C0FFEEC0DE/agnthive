@@ -1,7 +1,15 @@
 {
+  "session_id": "compat-capture-session-0001",
+  "transcript_path": "/tmp/compat-capture/transcript.jsonl",
+  "cwd": "/tmp/compat-capture/project",
+  "prompt_id": "compat-capture-prompt-0001",
+  "permission_mode": "acceptEdits",
+  "effort": {
+    "level": "high"
+  },
   "hook_event_name": "Stop",
-  "session_id": "compat-session-stop-active",
-  "transcript_path": "/tmp/compat-capture/stop-active-transcript.jsonl",
   "stop_hook_active": false,
-  "last_assistant_message": "Implementation summary placeholder for a session whose verification is still outstanding."
+  "last_assistant_message": "Created `src/feature.js` exporting `add(a, b)` which returns `a + b`.\n\nPer your instruction, I did not run any test command. (Note: the session workflow normally expects verification before completion… [truncated]",
+  "background_tasks": [],
+  "session_crons": []
 }

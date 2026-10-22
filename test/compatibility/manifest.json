@@ -144,8 +144,15 @@
       "id": "compat_stop_active_work",
       "event": "Stop",
       "cli_version_target": "2.1.303",
-      "source": "synthetic",
-      "status": "pending_capture",
+      "source": "captured",
+      "state_seed": {
+        "code_changed": true,
+        "edited": true,
+        "detected_test_command": "npm test",
+        "tests_ok": false,
+        "tests_failed": false
+      },
+      "status": "active",
       "plan_item": "02.2 Stop with active work",
       "description": "Stop while verification is still outstanding. Captured live on 2.1.303: the payload carries session_id, transcript_path, cwd, prompt_id, permission_mode, effort, stop_hook_active=false, last_assistant_message, background_tasks and session_crons; the runtime answered with the block envelope {decision:\"block\", reason, errorDetails, hardStop:false}.",
       "payload_path": "payloads/compat_stop_active_work.json",
@@ -153,29 +160,39 @@
       "capture_instructions": "Manual canary on target CLI: let a real session re-enter Stop with outstanding verification and dump the Stop stdin JSON (including any background task fields); redact message text.",
       "captured_at": "2026-10-21",
       "capture_method": "Live `claude -p` session on CLI 2.1.303 (local ollama provider, model glm-5.2:cloud). The plugin was loaded from an instrumented COPY in /tmp whose hook registration tees the raw hook stdin to a file; the plugin runtime modules were not modified. The payload is the observed stdin, redacted (ids and paths replaced by synthetic placeholders, free text truncated).",
-      "capture_note": "The live block reason was the verification gate (\"code or config changed, and this repo has a detected test command, but no successful test command was recorded in this session\").",
-      "capture_blocked_reason": "The live canary DID observe this scenario on 2.1.303: the Stop delivery carries session_id, transcript_path, cwd, prompt_id, permission_mode, effort, stop_hook_active=false, last_assistant_message, background_tasks and session_crons, and the runtime answered with the block envelope {decision:\"block\", reason, errorDetails, hardStop:false} (verification gate: a detected test command was never run successfully). The redacted capture is kept as evidence under test/compatibility/captures/ (stop_active_work.*). The entry stays pending_capture because the contract test probes a FRESH data root, where the same payload produces NO block (the block needs the session state that recorded the code change) — the documented class therefore cannot be asserted from the payload alone.",
+      "capture_note": "The live block reason was the verification gate (\"code or config changed, and this repo has a detected test command, but no successful test command was recorded in this session\"). The contract test reproduces the live verdict by seeding the prior state the live session had (state_seed).",
       "captured_input_evidence": "captures/stop_active_work.stdin.json"
     },
     {
       "id": "compat_stop_already_finished",
       "event": "Stop",
       "cli_version_target": "2.1.303",
-      "source": "synthetic",
-      "status": "pending_capture",
+      "source": "captured",
+      "state_seed": {
+        "stop_block_count": 1,
+        "stop_block_reason": "verification gate (seeded prior block)"
+      },
+      "status": "active",
       "plan_item": "02.2 Stop already-finished work",
       "description": "Stop re-invoked after our own block (stop_hook_active=true) with completed work: must yield without re-blocking (ADR 0003), and a second Stop on finished work must stay clean.",
       "payload_path": "payloads/compat_stop_already_finished.json",
       "expected_class": "stop_passthrough_pending",
       "capture_instructions": "Manual canary on target CLI: trigger our own Stop block once, then capture the runtime's re-invocation (stop_hook_active=true) and the next clean Stop stdin JSON; redact message content.",
-      "capture_blocked_reason": "The re-invocation WAS observed live on 2.1.303 (the second Stop of a blocked session carries stop_hook_active=true and the runtime answered {} — the bounded one-cycle yield of ADR 0003), but the entry cannot become an active fixture: that passthrough verdict depends on the PRIOR-BLOCK state seed, and the contract test always probes a fresh data root, where the same payload blocks on the summary checklist instead. The redacted live capture is kept as evidence under test/compatibility/captures/ and is reported in docs/compatibility.md (row H19)."
+      "capture_note": "The contract test reproduces the live verdict by seeding the prior state the live session had (state_seed)."
     },
     {
       "id": "compat_session_start_compact",
       "event": "SessionStart",
       "cli_version_target": "2.1.303",
-      "source": "synthetic",
-      "status": "pending_capture",
+      "source": "captured",
+      "state_seed": {
+        "active_task": {
+          "id": "task-1",
+          "kind": "other",
+          "status": "open"
+        }
+      },
+      "status": "active",
       "plan_item": "02.2 compact/resume",
       "description": "SessionStart with source=compact after a real compaction. Captured live on 2.1.303: the host re-fires SessionStart with source=\"compact\" plus prompt_id and model. The event order observed was PreCompact -> (compact API request) -> SubagentStop of the forked compaction agent -> SessionStart(source=compact).",
       "payload_path": "payloads/compat_session_start_compact.json",
@@ -183,16 +200,22 @@
       "capture_instructions": "Manual canary on target CLI: compact a live session (manual and automatic) and dump the SessionStart(stdin) JSON; verify the source field value and record event order around PostCompact.",
       "captured_at": "2026-10-21",
       "capture_method": "Live `claude -p` session on CLI 2.1.303 (local ollama provider, model glm-5.2:cloud). The plugin was loaded from an instrumented COPY in /tmp whose hook registration tees the raw hook stdin to a file; the plugin runtime modules were not modified. The payload is the observed stdin, redacted (ids and paths replaced by synthetic placeholders, free text truncated).",
-      "capture_note": "The ledger restoration channel rides this delivery (ADR 0013); the host delivered it as additionalContext on this SessionStart.",
-      "capture_blocked_reason": "The live canary DID observe this scenario on 2.1.303: the host re-fires SessionStart with source=\"compact\" plus prompt_id and model, and the runtime answered with the ledger-restore envelope (additionalContext \"[AgntHive] Context restored after compaction...\"). The event order was PreCompact -> compact API request -> SubagentStop of the forked compaction agent -> SessionStart(source=compact). The redacted capture is kept as evidence under test/compatibility/captures/ (session_start_compact.*). The entry stays pending_capture because the restore envelope needs the PRIOR session state (an open task); the contract test probes a fresh data root, where the same payload legitimately answers with a passthrough.",
+      "capture_note": "The ledger restoration channel rides this delivery (ADR 0013); the host delivered it as additionalContext on this SessionStart. The contract test reproduces the live verdict by seeding the prior state the live session had (state_seed).",
       "captured_input_evidence": "captures/session_start_compact.stdin.json"
     },
     {
       "id": "compat_session_start_resume",
       "event": "SessionStart",
       "cli_version_target": "2.1.303",
-      "source": "synthetic",
-      "status": "pending_capture",
+      "source": "captured",
+      "state_seed": {
+        "active_task": {
+          "id": "task-1",
+          "kind": "other",
+          "status": "open"
+        }
+      },
+      "status": "active",
       "plan_item": "02.2 compact/resume",
       "description": "SessionStart with source=resume after a real `claude --resume` of a previous session. Captured live on 2.1.303: the host sends source=\"resume\" plus seconds_since_last_response, context_tokens, prompt_cache_likely_expired and estimated_cache_write_usd.",
       "payload_path": "payloads/compat_session_start_resume.json",
@@ -200,8 +223,7 @@
       "capture_instructions": "Manual canary on target CLI: resume a previous live session (claude --resume) and dump the SessionStart stdin JSON; verify the source field value.",
       "captured_at": "2026-10-21",
       "capture_method": "Live `claude -p` session on CLI 2.1.303 (local ollama provider, model glm-5.2:cloud). The plugin was loaded from an instrumented COPY in /tmp whose hook registration tees the raw hook stdin to a file; the plugin runtime modules were not modified. The payload is the observed stdin, redacted (ids and paths replaced by synthetic placeholders, free text truncated).",
-      "capture_note": "The resume delivery carries no prompt_id (only the compact delivery does), so the two sources are distinguishable by field set as well as by the source value.",
-      "capture_blocked_reason": "The live canary DID observe this scenario on 2.1.303: `claude --resume` re-fires SessionStart with source=\"resume\" plus seconds_since_last_response, context_tokens, prompt_cache_likely_expired and estimated_cache_write_usd, and the runtime answered with the ledger-restore envelope. The redacted capture is kept as evidence under test/compatibility/captures/ (session_start_resume.*). The entry stays pending_capture because the restore envelope needs the PRIOR session state; the contract test probes a fresh data root, where the same payload legitimately answers with a passthrough.",
+      "capture_note": "The resume delivery carries no prompt_id (only the compact delivery does), so the two sources are distinguishable by field set as well as by the source value. The contract test reproduces the live verdict by seeding the prior state the live session had (state_seed).",
       "captured_input_evidence": "captures/session_start_resume.stdin.json"
     },
     {

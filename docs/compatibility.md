@@ -48,12 +48,23 @@ changelog table used by the harness review and are **docs**-class evidence,
 never captured version-boundary tests. "Plugin use" names the module that
 currently consumes the capability. Fixtures under `test/hooks/fixtures/` are
 synthetic unless marked otherwise. Plan task 02 added the runtime contract
-layer `test/compatibility/` (18 manifest entries: 13 `active` — the
-dispatcher is spawned and the output class asserted today, 10 of them holding
-a payload observed in a live host canary on 2.1.303 — and 5
-`pending_capture`, which pin only the documented input shape until a live
-canary replaces them). The host canary of 2026-10-21 is described in
+layer `test/compatibility/` (18 manifest entries: 16 `active` — the
+dispatcher is spawned and the output class asserted today, 14 of them holding
+a payload observed in a live host canary on 2.1.303 — and 2
+`pending_capture`). The host canary of 2026-10-21 is described in
 *Host canary 2026-10-21* below; the rows labelled captured are backed by it.
+
+**The two entries that stay `pending_capture`** are not missing captures: the
+host does not expose the scenario at all, so no payload can be recorded.
+
+- `compat_post_compact` — the host DOES run the PostCompact hook (debug log:
+  "Registering async hook … (PostCompact:manual)"), but the async hook is
+  **cancelled at session end** before its stdin can be read, and its output is
+  never delivered to the model (which is the F07 claim itself).
+- `compat_subagent_start_resume` — on 2.1.303 a resumed agent re-fires
+  **SubagentStop** (with `stop_hook_active: true`) and does **not** re-fire
+  SubagentStart, so the repeated-SubagentStart marker does not exist on this
+  host. The real dispatch payload is captured as `compat_subagent_start_dispatch`.
 
 | # | Event / field | Known floor | Status | Plugin use | Fixture | Fallback when unsupported |
 |---|---|---|---|---|---|---|
@@ -74,12 +85,13 @@ canary replaces them). The host canary of 2026-10-21 is described in
 | H15 | `SubagentStart`/`SubagentStop` with separate parent `transcript_path` vs subagent transcript (`agent_transcript_path`) | 2.1.303 (host canary) | **captured** — 2026-10-21: the real SubagentStop payload carries BOTH `transcript_path` (parent) and `agent_transcript_path` (the subagent transcript, a different file), plus `agent_id`, `agent_type` and the `background_tasks` registry | ADR 0010 identity model; `transcripts.mjs` fallback | `test/compatibility/payloads/compat_subagent_stop_return.json`, `test/compatibility/payloads/compat_subagent_start_dispatch.json` (captured 2026-10-21) | missing transcript data yields unknown, not another agent's result |
 | H16 | `fork` agent type in headless runs (2.1.302, changelog) | 2.1.302 (docs) | **implemented (0.4.0)** — `isForeignOrForkType` exempts fork/foreign-namespace types from the footer contract before the missing-aliases safe floor (`agents.mjs`, ADR 0010); end-to-end host behavior still unverified | `shouldEnforceSubagentFooter` exempts generic + foreign/fork types (plan 06.5) | `subagent_stop_generic_type_passthrough.json` (covers `general-purpose`; fork-specific negative fixtures pending capture) | unknown/fork labels get passthrough, no footer contract |
 | H17 | Native `PowerShell` tool parity | unknown locally | **implemented (0.4.0)** — `hooks.json` registers a native `PowerShell` matcher for the shared PreToolUse safety policy (`onFailure: "block"`) and PostToolUse verification routing on top of the existing `command-policy.mjs` patterns (shared `shellFamily` predicate); host canary still pending | PreToolUse + PostToolUse PowerShell rows (`hooks.json`); `PermissionRequest`/`PermissionDenied` remain Bash-only | `test/validators/hook-manifest-contract.test.mjs` (PowerShell parity), security corpus PowerShell cases | without a matcher a PowerShell tool call bypasses the policy — the parity check now fails registry drift; actual host dispatch is unverified until task 14 |
-| H18 | Background command responses (`run_in_background`): real completion/error shapes | 2.1.303 (host canary) | **captured** — 2026-10-21: a background launch delivers `tool_input.run_in_background: true` and a `tool_response` of `{stdout:"", stderr:"", interrupted:false, isImage:false, noOutputExpected:false, backgroundTaskId:"<id>"}`; the **completion arrives as a UserPromptSubmit `<task-notification>`**, not as a second PostToolUse. The host sends **no exit code** in `tool_response`, so an undeterminable outcome is recorded as `status: "unknown"` — never `passed` (F01) | `modules/verification.mjs` + PostToolUse/PostToolUseFailure routing | `test/compatibility/payloads/compat_post_tool_use_background_bash.json`, `test/compatibility/payloads/compat_user_prompt_submit_background_return.json` (captured 2026-10-21) | unknown response is never treated as passed; a background launch without a completion signal requires a foreground rerun to close the gate |
+| H18 | Background command responses (`run_in_background`): real completion/error shapes | 2.1.303 (host canary) | **captured** — 2026-10-21: a background launch delivers `tool_input.run_in_background: true` and a `tool_response` of `{stdout:"", stderr:"", interrupted:false, isImage:false, noOutputExpected:false, backgroundTaskId:"<id>"}`; the **completion arrives as a UserPromptSubmit `<task-notification>`**, not as a second PostToolUse. The host sends **no exit code** in `tool_response`, so an undeterminable outcome is recorded as `status: "unknown"` — never `passed` (F01). Re-measured 2026-10-22 in the ADR-0012 matrix: the completion envelope carries the original `<tool-use-id>` and the summary carries the exit code (`Background command "…" completed (exit code 0)`), and when the turn is still running the host **absorbs the notification mid-turn** (it is enqueued and then removed with reason `absorbed_mid_turn`, so no UserPromptSubmit fires) | `modules/verification.mjs` + PostToolUse/PostToolUseFailure routing; the completion is completed from the `<task-notification>` prompt | `test/compatibility/payloads/compat_post_tool_use_background_bash.json`, `test/compatibility/payloads/compat_user_prompt_submit_background_return.json` (captured 2026-10-21) | unknown response is never treated as passed; a background launch without a completion signal (or one absorbed mid-turn) requires a foreground rerun to close the gate |
 | H19 | `stop_hook_active` semantics (continue-after-block marker) | 2.1.303 (host canary) | **captured** — 2026-10-21: after the plugin blocked a Stop, the host re-fired Stop with `stop_hook_active: true` and the runtime answered `{}` — the bounded one-cycle yield (ADR 0003) | `hook-input.mjs` reads `data.stop_hook_active` (ADR 0003 bounded retry) | `test/compatibility/captures/stop_active_work.*`, `test/compatibility/captures/stop_after_own_block.*` (captured 2026-10-21) | bounded one-cycle yield; never converts failed checks to passed |
 | H21 | `StopFailure` telemetry event (turn/Stop failure record) | unknown locally | **implemented (0.4.0)** — async registration (`hooks.json`, `timeout: 30`, no `onFailure`: async telemetry has no blocking semantics per docs); writes one bounded `stop-failure.jsonl` record (`ts, session_id, error_name, exit_code, signal, agent_id`), API error text never logged. Arrival of the payload shape on the pinned CLI is **unverified** | `handleStopFailure` (`hook-dispatcher.mjs`) + `stopFailurePayload` (`notifications.mjs`) | `test/hooks/` StopFailure cases (synthetic) | failure of this telemetry write is nonblocking (ADR 0011 telemetry class) |
 | H22 | `workflow_profile` selector: `userConfig.workflow_profile` + `AGNTHIVE_WORKFLOW_PROFILE` env override | plugin-format baseline | **implemented (0.4.0)** — resolver precedence env > `CLAUDE_PLUGIN_OPTION_WORKFLOW_PROFILE` > `lean` (the default since the ADR 0012 rollout gate passed), invalid value falls back to `legacy` — the stricter profile — with a stderr note; `legacy` is **byte-stable** and stays selectable for one transition release | `modules/plugin-config.mjs`; `UserPromptSubmit` persists `workflow_profile`, Stop/TaskCompleted/TeammateIdle/SubagentStop consume the lean gate projection (`leanProfileGates`) | `test/unit/workflow-profile.test.mjs`, dispatcher/workflow unit tests | unknown/misconfigured value = legacy, never a silent behavior change |
 | H23 | Hooks manifest contract in the validator: event vocabulary incl. the new `StopFailure` event, `timeout`/`onFailure` rules, PowerShell matcher parity | plugin-format baseline | **implemented (0.4.0)** — `scripts/validate.mjs` + `test/validators/hook-manifest-contract.test.mjs` enforce it (`PostToolUseFailure` predates 0.4.0; `StopFailure` is the 0.4.0 registration) | `hooks.json` + the repo validator | the validator manifest checks | unknown events stay passthrough; a registration missing its timeout or carrying `onFailure` outside PreToolUse shell rows fails validation |
 | H20 | `claude plugin test` applies to mods only (`*.test.ts`/`*.test.tsx`), not a replacement for the Node suites | **captured** — `claude plugin test --help` | **captured**; no migration planned | none (documentation of scope) | n/a | Node `--test` suites remain the contract layer |
+| H24 | Headless compaction of a live session (`claude -p --resume <id> "/compact"`) | 2.1.303 (host canary) | **captured** — 2026-10-22: in print mode the host accepts `/compact` on a resumed session; the compaction is delivered as SessionStart with `source=compact` (and the resumed session as `source=resume`), and the plugin's ledger restoration runs on it (`restored_task_seq` incremented twice per compact+resume cycle in the live probe) | `handleSessionStartRestore` (`hook-dispatcher.mjs`) + `buildSessionStartRestore` (`ledger.mjs`) | `test/compatibility/payloads/compat_session_start_compact.json`, `test/compatibility/payloads/compat_session_start_resume.json` (captured 2026-10-21, replayed with the live state seed) | without a compaction the restore channel never fires and the session keeps its own context only |
 
 ## Unverified rows that block further claims
 
@@ -88,6 +100,15 @@ CLI and turned them into **captured** rows; the redacted evidence is under
 `test/compatibility/captures/` and the payloads that could be asserted
 end-to-end are under `test/compatibility/payloads/` with
 `source: "captured"`.
+
+**The four state-dependent captures are now active contract fixtures.** The
+Stop payloads and the two SessionStart payloads were recorded live, but their
+verdict depends on the state the live session had (a prior block; an open
+task). The manifest declares that prior state per entry (`state_seed`), the
+contract test writes it into the probe's data root through the plugin's own
+state writer, and the probe then reproduces the **live** verdict. Before that,
+these entries were held at `pending_capture` even though the payload existed —
+the capture was real, only the assertion was missing.
 
 What is still **not** host-verified:
 
