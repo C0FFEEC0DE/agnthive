@@ -320,7 +320,7 @@ test('DEFAULT_STATE seeds the ADR-0009/0010 evidence and lifecycle contract', ()
   assert.deepEqual(DEFAULT_STATE.background_tasks, {});
   assert.equal(DEFAULT_STATE.restored_task_seq, 0);
   // task 11 wires the selector; legacy is the default until the quality gate.
-  assert.equal(DEFAULT_STATE.workflow_profile, 'legacy');
+  assert.equal(DEFAULT_STATE.workflow_profile, 'lean');
 });
 
 test('reducer honors map_set on the agents registry and append on verification', () => {

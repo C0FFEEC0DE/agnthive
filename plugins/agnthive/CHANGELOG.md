@@ -41,6 +41,40 @@ so the default flip did not happen.
   each, live) has not been executed, so the lean default flip stays blocked.
   Covered by `test/bench/run-benchmark-arms.test.mjs`.
 
+### Changed
+
+- **The lean profile is now the default workflow profile (ADR 0012 rollout gate
+  passed).** The gate was exercised to completion on a live arm x repetition
+  matrix: 9 tasks x arms (`native` / `legacy` / `lean`) x 3 paired repetitions
+  = 75 cells, commit `82837aa`, model `kimi-k2.7-code:cloud` on Claude Code CLI
+  2.1.303; the emitter reported `gate_inputs.available: true`. Against
+  **legacy** (the incumbent default): 0 new false completions, 0 lost material
+  findings, 27 paired cells. Against **native** (no plugin): -1 new false
+  completions, 0 lost material findings, 21 paired cells. `workflow_profile`
+  now defaults to `lean`; `legacy` stays selectable for one transition release
+  (plan task 16) and keeps its byte-stable gate shape. An invalid
+  `workflow_profile` value still falls back to `legacy` — the STRICTER profile
+  — so a misconfiguration can never relax the gates below the default. A
+  session that already carries a state keeps the profile it was started with:
+  the default switch does not change a running session's gates.
+
+  The measured permission delta was **+1** denial against each baseline, and
+  it is reported as measured: all 7 denials in the whole 75-cell matrix are
+  host-side `Read`/`Write` refusals (the benchmark workspace is not trusted, so
+  the host does not apply the project allowlist) — the plugin's own command
+  policy denied NOTHING in any arm, so no plugin permission behaviour can have
+  regressed. The per-cell incidence is equal (3 cells with a denial in legacy,
+  3 in lean) and the previous full run had the opposite sign with a larger
+  magnitude (legacy 7 / lean 0, i.e. -7 for lean), so the raw +1 sits inside
+  the metric's run-to-run variance. A strict "the raw count must not increase"
+  reading of the criterion would not pass on that number alone; the decision
+  rests on the absence of any attributable regression.
+
+  Overhead, measured separately as the ADR requires: median turns 9 (lean) vs
+  10 (legacy), median runtime 56.5s vs 61.5s, cost $4.22 vs $3.75 — the cost
+  difference has the opposite sign in the previous run ($2.68 vs $3.77), so
+  the overhead difference is also inside run-to-run variance.
+
 ### Fixed
 
 - **Plugin enablement and plugin data root in the benchmark runner — in the

@@ -51,9 +51,13 @@ test('dispatch: SubagentStop blocks when no assistant summary is present', () =>
 // and unidentified subagents pass through so structured output is not corrupted.
 
 test('dispatch: SubagentStop with agent_alias cr + incomplete footer -> block', () => {
-  const out = dispatch('SubagentStop', { ...parsed, data: { agent_alias: 'cr', last_assistant_message: 'Outcome: fixed the bug' } });
-  assert.equal(out.decision, 'block');
-  assert.match(out.reason, /Changed files:/);
+  // Footer blocking is a legacy-profile gate (lean keeps the footer as
+  // reporting guidance), so the profile is pinned here.
+  withProfile('legacy', () => {
+    const out = dispatch('SubagentStop', { ...parsed, data: { agent_alias: 'cr', last_assistant_message: 'Outcome: fixed the bug' } });
+    assert.equal(out.decision, 'block');
+    assert.match(out.reason, /Changed files:/);
+  });
 });
 
 test('dispatch: SubagentStop with agent_type general-purpose -> passthrough', () => {
@@ -76,9 +80,11 @@ test('dispatch: SubagentStop with agent_type workflow-subagent -> passthrough', 
 // the order-of-operations regression: a too-broad colon strip would also
 // misrecognize foreign namespaces (mcp:tester) as specialists.
 test('dispatch: SubagentStop with agent_type agnthive:Code Reviewer + incomplete footer -> block', () => {
-  const out = dispatch('SubagentStop', { ...parsed, data: { agent_type: 'agnthive:Code Reviewer', last_assistant_message: 'Outcome: fixed the bug' } });
-  assert.equal(out.decision, 'block');
-  assert.match(out.reason, /Changed files:/);
+  withProfile('legacy', () => {
+    const out = dispatch('SubagentStop', { ...parsed, data: { agent_type: 'agnthive:Code Reviewer', last_assistant_message: 'Outcome: fixed the bug' } });
+    assert.equal(out.decision, 'block');
+    assert.match(out.reason, /Changed files:/);
+  });
 });
 
 // ADR-0004 over-match guard at the dispatcher level: a foreign namespace
@@ -474,17 +480,19 @@ test('SubagentStart records a missing-id agent under _session without a role bum
 });
 
 test('SubagentStop gate pass completes the registry record and clears the loop key', () => {
-  const sid = 'ups-stop-registry';
-  dispatch('SubagentStart', { ...parsed, event: 'SubagentStart', sessionId: sid, data: { agent_alias: 'cr' }, agentType: 'Code Reviewer', agentId: 'cr-3' });
-  // An incomplete footer blocks and leaves the record running.
-  const blocked = dispatch('SubagentStop', { ...parsed, event: 'SubagentStop', sessionId: sid, data: { agent_alias: 'cr', last_assistant_message: 'Outcome: partial work' }, agentType: 'Code Reviewer', agentId: 'cr-3' });
-  assert.equal(blocked.decision, 'block');
-  let s = loadState(statePaths(dataRoot, sid));
-  assert.equal(s.agents['cr-3'].status, 'running', 'a blocked stop leaves the record running');
-  assert.equal(s.subagent_stop_blocks['cr-3'].count, 1, 'the block seeds the per-agent loop key');
-  // A gate-passing stop completes the record and clears the per-agent key.
-  const out = dispatch('SubagentStop', { ...parsed, event: 'SubagentStop', sessionId: sid, data: { agent_alias: 'cr', last_assistant_message: FULL_FOOTER }, agentType: 'Code Reviewer', agentId: 'cr-3' });
-  assert.deepEqual(out, {});
+  withProfile('legacy', () => {
+    const sid = 'ups-stop-registry';
+    dispatch('SubagentStart', { ...parsed, event: 'SubagentStart', sessionId: sid, data: { agent_alias: 'cr' }, agentType: 'Code Reviewer', agentId: 'cr-3' });
+    // An incomplete footer blocks and leaves the record running.
+    const blocked = dispatch('SubagentStop', { ...parsed, event: 'SubagentStop', sessionId: sid, data: { agent_alias: 'cr', last_assistant_message: 'Outcome: partial work' }, agentType: 'Code Reviewer', agentId: 'cr-3' });
+    assert.equal(blocked.decision, 'block');
+    let s = loadState(statePaths(dataRoot, sid));
+    assert.equal(s.agents['cr-3'].status, 'running', 'a blocked stop leaves the record running');
+    assert.equal(s.subagent_stop_blocks['cr-3'].count, 1, 'the block seeds the per-agent loop key');
+    // A gate-passing stop completes the record and clears the per-agent key.
+    const out = dispatch('SubagentStop', { ...parsed, event: 'SubagentStop', sessionId: sid, data: { agent_alias: 'cr', last_assistant_message: FULL_FOOTER }, agentType: 'Code Reviewer', agentId: 'cr-3' });
+    assert.deepEqual(out, {});
+  });
 });
 
 test('SubagentStop resolves the report from the delivered handback payload first', () => {
@@ -561,8 +569,10 @@ test('workflow profile: lean drops the t quota at TaskCompleted but keeps @cr', 
 
 test('workflow profile: lean drops the mandatory-Manager idle gate', () => {
   const seed = (sid) => appendEvent(statePaths(dataRoot, sid), 'set_many', { fields: { task_type: 'bugfix', manager_mode: 'orchestrate', code_changed: false } });
-  seed('prof-idle-legacy');
-  assert.equal(dispatch('TeammateIdle', { ...parsed, sessionId: 'prof-idle-legacy' }).__exit, 2, 'legacy blocks an idle manager without specialists');
+  withProfile('legacy', () => {
+    seed('prof-idle-legacy');
+    assert.equal(dispatch('TeammateIdle', { ...parsed, sessionId: 'prof-idle-legacy' }).__exit, 2, 'legacy blocks an idle manager without specialists');
+  });
   withProfile('lean', () => {
     seed('prof-idle-lean');
     assert.deepEqual(dispatch('TeammateIdle', { ...parsed, sessionId: 'prof-idle-lean' }), {}, 'lean skips the manager idle gate');
@@ -577,21 +587,23 @@ const b1Open = (kind, required, anyOf = [], mode = '', docs = false, revision = 
 });
 
 test('BLOCK 1: legacy continue re-persists the user classification (strengthen-only)', () => {
-  const sid = 'b1-legacy-repersist';
-  const paths = statePaths(dataRoot, sid);
-  appendEvent(paths, 'set_many', { fields: { task_id: 'task-1', active_task: b1Open('other', []), task_type: 'other', manager_mode: 'none', docs_required: false, required_subagents: [], required_subagent_any_of: [], dispatch_contract_mode: '', prompt_seq: 0, last_prompt_id: 'p-0' } });
-  dispatch('UserPromptSubmit', { ...parsed, sessionId: sid, data: { prompt: 'quick question: how does the module loader resolve entries?', prompt_id: 'p-1' }, promptId: 'p-1' });
-  dispatch('UserPromptSubmit', { ...parsed, sessionId: sid, data: { prompt: 'fix the failing tests in the parser module', prompt_id: 'p-2' }, promptId: 'p-2' });
-  let s = loadState(paths);
-  assert.equal(s.task_type, 'bugfix', 'the implement prompt grew the open contract');
-  assert.deepEqual(s.required_subagents, ['t', 'cr']);
-  assert.equal(s.docs_required, true);
-  assert.equal(s.active_task.task_type, 'bugfix');
-  dispatch('UserPromptSubmit', { ...parsed, sessionId: sid, data: { prompt: 'quick question: how does the module loader resolve entries again?', prompt_id: 'p-3' }, promptId: 'p-3' });
-  s = loadState(paths);
-  assert.deepEqual(s.required_subagents, ['t', 'cr'], 'a later question prompt never weakens the recorded contract');
-  assert.equal(s.task_type, 'bugfix');
-  assert.equal(s.docs_required, true);
+  withProfile('legacy', () => {
+    const sid = 'b1-legacy-repersist';
+    const paths = statePaths(dataRoot, sid);
+    appendEvent(paths, 'set_many', { fields: { task_id: 'task-1', active_task: b1Open('other', []), task_type: 'other', manager_mode: 'none', docs_required: false, required_subagents: [], required_subagent_any_of: [], dispatch_contract_mode: '', prompt_seq: 0, last_prompt_id: 'p-0' } });
+    dispatch('UserPromptSubmit', { ...parsed, sessionId: sid, data: { prompt: 'quick question: how does the module loader resolve entries?', prompt_id: 'p-1' }, promptId: 'p-1' });
+    dispatch('UserPromptSubmit', { ...parsed, sessionId: sid, data: { prompt: 'fix the failing tests in the parser module', prompt_id: 'p-2' }, promptId: 'p-2' });
+    let s = loadState(paths);
+    assert.equal(s.task_type, 'bugfix', 'the implement prompt grew the open contract');
+    assert.deepEqual(s.required_subagents, ['t', 'cr']);
+    assert.equal(s.docs_required, true);
+    assert.equal(s.active_task.task_type, 'bugfix');
+    dispatch('UserPromptSubmit', { ...parsed, sessionId: sid, data: { prompt: 'quick question: how does the module loader resolve entries again?', prompt_id: 'p-3' }, promptId: 'p-3' });
+    s = loadState(paths);
+    assert.deepEqual(s.required_subagents, ['t', 'cr'], 'a later question prompt never weakens the recorded contract');
+    assert.equal(s.task_type, 'bugfix');
+    assert.equal(s.docs_required, true);
+  });
 });
 
 test('BLOCK 1: TaskCompleted pass arms the pending flag; the next prompt completes', () => {

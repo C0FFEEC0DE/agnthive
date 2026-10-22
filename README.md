@@ -87,17 +87,14 @@ These are the documented entry points; the hooks enforce the actual handoff and 
 | review | `@cr` |
 | docs | `@doc` |
 
-These are the **legacy-profile** gates (the default `workflow_profile=legacy`):
-completion counts current verification evidence plus started-and-completed
-specialist roles. The experimental `lean` profile drops the mandatory role
-quotas and Manager-idle gate while keeping the current-verification and
-independent-review gates; completion evidence is read from the plugin's
-session state (`verification[]` records scoped to the current change revision
-and the agent registry), not from footer text. The default flips only after
-the ADR 0012 outcome benchmark passes its rollout gate — that gate has not
-been exercised to completion (no full live arm x repetition matrix run exists),
-so `legacy` is still the
-default and `lean` is still experimental.
+These are the **legacy-profile** gates (`workflow_profile=legacy`): completion
+counts current verification evidence plus started-and-completed specialist
+roles. The `lean` profile — the **default** since the ADR 0012 rollout gate
+passed on 2026-10-22 — drops the mandatory role quotas and the Manager-idle
+gate while keeping the current-verification and independent-review gates;
+completion evidence is read from the plugin's session state (`verification[]`
+records scoped to the current change revision and the agent registry), not
+from footer text. `legacy` stays selectable for one transition release.
 
 ## Install
 
@@ -147,7 +144,7 @@ README.
 All configuration is **environment variables and the plugin-scoped `userConfig`**. The plugin never reads or writes `~/.claude/settings.json`, so installation is non-destructive.
 
 - **Command policy mode:** `userConfig.enforcement_mode` (default `advisory`) or the `AGNTHIVE_POLICY` env var (`advisory` fail-open vs `enforce` fail-closed on unparseable indirection). The legacy `CLAUDE_CREW_POLICY` alias is still honored.
-- **Workflow profile:** `userConfig.workflow_profile` (default `legacy`) or the `AGNTHIVE_WORKFLOW_PROFILE` env var selects the SDLC gate shape. `legacy` keeps the full specialist-handoff and footer gates; `lean` is **experimental** (root orchestration, no mandatory role quotas, verification + review evidence gates stay). The default flips only after the ADR 0012 outcome benchmark passes its rollout gate; the gate has not been exercised to completion (no full live arm x repetition matrix run exists), so the default is still `legacy`.
+- **Workflow profile:** `userConfig.workflow_profile` (default `lean`) or the `AGNTHIVE_WORKFLOW_PROFILE` env var selects the SDLC gate shape. `lean` (root orchestration, no mandatory role quotas, verification + review evidence gates stay) is the default since the ADR 0012 rollout gate passed on 2026-10-22; `legacy` keeps the full specialist-handoff and footer gates and stays selectable for one transition release.
 - **Log rotation / ledger size:** `userConfig.log_max_bytes` (1 MiB default) and `userConfig.ledger_max_bytes` (64 KiB default), overridable via `AGNTHIVE_LOG_MAX_BYTES` / `AGNTHIVE_LEDGER_MAX_BYTES` (with `CLAUDE_CREW_*` legacy aliases).
 - **Knob precedence:** every tunable knob reads `AGNTHIVE_*` (explicit) > `CLAUDE_CREW_*` (legacy alias) > `CLAUDE_PLUGIN_OPTION_*` (the `userConfig` bridge, lowest priority) — so a `userConfig` value always applies unless an explicit env var overrides it.
 - **Progress ledger:** `AGNTHIVE_PROGRESS_FILE` overrides the location; default `<projectDir>/.agnthive/progress.md` (gitignored).

@@ -17,7 +17,8 @@
 //   2. CLAUDE_PLUGIN_OPTION_WORKFLOW_PROFILE (bridge env var exported by
 //      Claude Code from the workflow_profile userConfig key, same pattern as
 //      CLAUDE_PLUGIN_OPTION_ENFORCEMENT_MODE)
-//   3. default 'legacy'
+//   3. default 'lean' — the ADR 0012 rollout gate passed its live outcome
+//      comparison; 'legacy' stays selectable for one transition release
 //
 // Validation: a value is trimmed and lowercased and must be exactly 'legacy'
 // or 'lean'. An UNSET or EMPTY value falls through to the next source; a
@@ -25,11 +26,12 @@
 // `note` (it does not silently fall through to the userConfig value underneath
 // — the caller set an explicit override that is not one of the enum values).
 
-/** Valid workflow profile values (plan task 11.1). The default is 'legacy'
- *  until the ADR 0012 rollout gate passes (task 16); lean is experimental. */
+/** Valid workflow profile values (plan task 11.1). The default is 'lean'
+ *  since the ADR 0012 rollout gate passed its live outcome comparison;
+ *  'legacy' stays selectable for one transition release (plan task 16). */
 export const WORKFLOW_PROFILES = Object.freeze(['legacy', 'lean']);
 
-export const DEFAULT_WORKFLOW_PROFILE = 'legacy';
+export const DEFAULT_WORKFLOW_PROFILE = 'lean';
 
 /**
  * Resolve the workflow profile. Returns
@@ -54,6 +56,8 @@ export function resolveWorkflowProfile(env = process.env) {
     if (value === 'legacy' || value === 'lean') {
       return { profile: value, source, raw: shown, valid: true, note: '' };
     }
+    // A misconfigured value falls back to 'legacy' — the STRICTER profile —
+    // so a typo can never relax the gates below the default.
     return {
       profile: 'legacy',
       source,
@@ -62,7 +66,7 @@ export function resolveWorkflowProfile(env = process.env) {
       note: `plugin-config: invalid ${key}="${shown}" — expected ${WORKFLOW_PROFILES.join('|')}; falling back to 'legacy'\n`,
     };
   }
-  return { profile: 'legacy', source: 'default', raw: '', valid: true, note: '' };
+  return { profile: DEFAULT_WORKFLOW_PROFILE, source: 'default', raw: '', valid: true, note: '' };
 }
 
 /**

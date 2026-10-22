@@ -1,6 +1,7 @@
 # План агенту: актуализация harness и упрощение orchestration
 
-Дата: 2026-10-19. Статус: **реализовано (задачи 01–15); задача 16 — DEFERRED**.
+Дата: 2026-10-19. Статус: **реализовано (задачи 01–15, включая переключение
+lean-профиля на default 2026-10-22); задача 16 — DEFERRED**.
 
 Основание всех задач: [ревью и дизайн](../specs/2026-10-19-harness-review-and-simplification-design.md), baseline `2cd40df`, plugin `0.3.0`.
 
@@ -38,15 +39,20 @@ ledger/telemetry — 0013. Исторические ADR сохраняются �
 benchmarks, validators»; `c2a9c42` «fix(bench): platform-neutral task id
 fallback and win32-safe bench tests».
 
-**Переключение lean-профиля на default НЕ произошло.** Пункт 3 задачи 15
-требует результата сравнения из задачи 14. Живой outcome-прогон не выполнялся,
-поэтому gate ADR 0012 не был активирован: arm×rep цикл в `scripts/run-benchmark.mjs`
-реализован и проверен живым двухarm-прогоном (native arm — 0 хуков плагина,
-legacy arm — `evidence_source: plugin_state`, эмиттер — `reps=1`,
-`outcome_pass_rate=1.000`), но полный live-прогон матрицы (3 arm × 3 rep) не
-выполнялся, поэтому `gate_inputs.available` остаётся `false`. Lean остаётся
-экспериментальным профилем, `legacy` — default. Основания: `docs/adr/README.md`,
-`docs/compatibility.md`, `plugins/agnthive/CHANGELOG.md` (раздел 0.4.0).
+**Переключение lean-профиля на default ПРОИЗОШЛО (2026-10-22).** Пункт 3 задачи 15
+закрыт: gate ADR 0012 активирован живой матрицей arm×rep — 9 задач ×
+(`native` / `legacy` / `lean`) × 3 парные повтора = 75 клеток, коммит
+`82837aa`, модель `kimi-k2.7-code:cloud`, CLI 2.1.303. Эмиттер вернул
+`gate_inputs.available: true`: против `legacy` (текущий default) — 0 новых
+false completions, 0 потерянных material findings, 27 парных клеток; против
+`native` (без плагина) — −1 new false completions, 0 потерянных findings, 21
+парная клетка. `lean` — default, `legacy` остаётся доступным на один
+переходный релиз (задача 16 отложена). Измеренная дельта по permission
+denials — **+1** к каждому базису; все 7 отказов в матрице — host-side
+`Read`/`Write` (воркспейс не trusted), плагинная command-политика не отказала
+ни разу, инцидентность по клеткам одинакова (3 и 3), а в предыдущем прогоне
+знак был обратным (−7), то есть отказов от плагина не произошло. Основания:
+`docs/adr/README.md`, `docs/compatibility.md`, `plugins/agnthive/CHANGELOG.md`.
 
 Не закрыто: host canary на pinned CLI (задача 14) — pending; тела задач ниже
 сохранены как исторический план и не переписываются.

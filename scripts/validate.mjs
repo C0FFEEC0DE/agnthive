@@ -428,9 +428,10 @@ export const USER_CONFIG_CONTRACT_KEYS = [
   'enforcement_mode', 'log_max_bytes', 'ledger_max_bytes', 'workflow_profile',
 ];
 // Value domain of the workflow_profile userConfig key (task 11 / ADR 0012):
-// legacy is the default; lean is experimental.
+// 'lean' is the default since the ADR 0012 rollout gate passed; 'legacy'
+// stays selectable for one transition release.
 export const WORKFLOW_PROFILE_VALUES = new Set(['legacy', 'lean']);
-export const DEFAULT_WORKFLOW_PROFILE = 'legacy';
+export const DEFAULT_WORKFLOW_PROFILE = 'lean';
 export const ENFORCEMENT_MODE_VALUES = new Set(['advisory', 'enforce']);
 // Allowlist for hooks.json's own top-level keys.
 const VALID_MANIFEST_KEYS = new Set(['description', 'hooks']);

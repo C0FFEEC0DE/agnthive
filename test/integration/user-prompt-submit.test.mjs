@@ -21,7 +21,10 @@ function runDispatcher(event, fixtureName, dataRoot) {
   return spawnSync(process.execPath, [dispatcher, '--event', event], {
     input: stdin,
     encoding: 'utf8',
-    env: { ...process.env, CLAUDE_PLUGIN_DATA: dataRoot },
+    // The default profile is 'lean' since the ADR 0012 rollout gate passed;
+    // these cases assert the LEGACY classification contract (role quotas,
+    // manager routing), so the profile is pinned explicitly.
+    env: { ...process.env, CLAUDE_PLUGIN_DATA: dataRoot, AGNTHIVE_WORKFLOW_PROFILE: 'legacy' },
   });
 }
 
@@ -135,7 +138,9 @@ function runPromptInline(prompt, sessionId, dataRootLocal = dataRoot) {
   return spawnSync(process.execPath, [dispatcher, '--event', 'UserPromptSubmit'], {
     input: payload,
     encoding: 'utf8',
-    env: { ...process.env, CLAUDE_PLUGIN_DATA: dataRootLocal },
+    // Legacy routing (manager orchestration + role quotas) is asserted here, so
+    // the profile is pinned instead of relying on the (now 'lean') default.
+    env: { ...process.env, CLAUDE_PLUGIN_DATA: dataRootLocal, AGNTHIVE_WORKFLOW_PROFILE: 'legacy' },
   });
 }
 

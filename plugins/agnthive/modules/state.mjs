@@ -117,10 +117,11 @@ export const DEFAULT_STATE = Object.freeze({
   // restored_task_seq: bookkeeping so ledger restoration fires once per
   // restoration cycle (ADR-0013).
   restored_task_seq: 0,
-  // workflow_profile: 'legacy' | 'lean' selector, planned by task 11; inert
-  // until its gate wiring lands (ADR-0008/0012 rollout policy). Default stays
-  // 'legacy' until the quality gate passes.
-  workflow_profile: 'legacy',
+  // workflow_profile: 'legacy' | 'lean' selector. The default is 'lean' since
+  // the ADR-0012 rollout gate passed its live outcome comparison. A session
+  // that already carries a state keeps the profile it was started with, so a
+  // default switch never changes a running session's gates.
+  workflow_profile: 'lean',
 });
 
 /** Validate and sanitize a session id, rejecting path traversal. */

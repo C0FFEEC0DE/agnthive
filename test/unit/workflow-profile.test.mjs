@@ -23,11 +23,11 @@ const LEAN_FLAGS = {
   enforceReviewGate: true, enforceVerificationGate: true, enforceFooterGates: false,
 };
 
-test('resolveWorkflowProfile: default is legacy with no note', () => {
-  assert.equal(DEFAULT_WORKFLOW_PROFILE, 'legacy');
+test('resolveWorkflowProfile: default is lean with no note', () => {
+  assert.equal(DEFAULT_WORKFLOW_PROFILE, 'lean');
   assert.deepEqual([...WORKFLOW_PROFILES], ['legacy', 'lean']);
   const r = resolveWorkflowProfile({});
-  const exp = { profile: 'legacy', source: 'default', raw: '', valid: true, note: '' };
+  const exp = { profile: 'lean', source: 'default', raw: '', valid: true, note: '' };
   assert.deepEqual(r, exp);
 });
 
@@ -41,7 +41,8 @@ test('resolveWorkflowProfile: precedence env > userConfig bridge > default', () 
   const both = resolveWorkflowProfile({ AGNTHIVE_WORKFLOW_PROFILE: 'legacy', CLAUDE_PLUGIN_OPTION_WORKFLOW_PROFILE: 'lean' });
   assert.equal(both.profile, 'legacy', 'env override beats the userConfig bridge');
   const blank = resolveWorkflowProfile({ AGNTHIVE_WORKFLOW_PROFILE: '   ' });
-  assert.equal(blank.profile, 'legacy');
+  assert.equal(blank.profile, 'lean', 'a blank override falls through to the default');
+  assert.equal(blank.source, 'default');
   const skip = resolveWorkflowProfile({ AGNTHIVE_WORKFLOW_PROFILE: '   ', CLAUDE_PLUGIN_OPTION_WORKFLOW_PROFILE: 'lean' });
   assert.equal(skip.profile, 'lean', 'blank env override falls through to the bridge');
 });

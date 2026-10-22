@@ -48,9 +48,11 @@ function runCase(c, dataRoot) {
   if (matcher) args.push('--matcher', matcher);
   // Honor a case-declared `env` (e.g. AGNTHIVE_BLOCK_STDOUT_JSON) the same way
   // the make-hooks runner does, so the two harnesses stay consistent.
+  // The default profile is 'lean' since the ADR 0012 rollout gate passed; these
+  // cases assert the LEGACY stop/summary gate shape, so the profile is pinned.
   return spawnSync(process.execPath, args, {
     input: stdin, encoding: 'utf8',
-    env: { ...process.env, ...c.env, CLAUDE_PLUGIN_DATA: dataRoot },
+    env: { ...process.env, ...c.env, CLAUDE_PLUGIN_DATA: dataRoot, AGNTHIVE_WORKFLOW_PROFILE: 'legacy' },
     cwd: root,
   });
 }
@@ -113,7 +115,7 @@ test('regression: repeated identical Stop block escalates to terminal hardStop',
     appendEvent(statePaths(dataRoot, 'case-stop-guard'), 'set_many', { fields: seed });
     const res = spawnSync(process.execPath, [dispatcher, '--event', 'Stop'], {
       input: stdin, encoding: 'utf8',
-      env: { ...process.env, CLAUDE_PLUGIN_DATA: dataRoot }, cwd: root,
+      env: { ...process.env, CLAUDE_PLUGIN_DATA: dataRoot, AGNTHIVE_WORKFLOW_PROFILE: 'legacy' }, cwd: root,
     });
     assert.equal(res.status, 0);
     const out = JSON.parse(res.stdout);

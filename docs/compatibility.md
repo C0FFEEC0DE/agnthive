@@ -77,7 +77,7 @@ canary replaces them). The host canary of 2026-10-21 is described in
 | H18 | Background command responses (`run_in_background`): real completion/error shapes | 2.1.303 (host canary) | **captured** — 2026-10-21: a background launch delivers `tool_input.run_in_background: true` and a `tool_response` of `{stdout:"", stderr:"", interrupted:false, isImage:false, noOutputExpected:false, backgroundTaskId:"<id>"}`; the **completion arrives as a UserPromptSubmit `<task-notification>`**, not as a second PostToolUse. The host sends **no exit code** in `tool_response`, so an undeterminable outcome is recorded as `status: "unknown"` — never `passed` (F01) | `modules/verification.mjs` + PostToolUse/PostToolUseFailure routing | `test/compatibility/payloads/compat_post_tool_use_background_bash.json`, `test/compatibility/payloads/compat_user_prompt_submit_background_return.json` (captured 2026-10-21) | unknown response is never treated as passed; a background launch without a completion signal requires a foreground rerun to close the gate |
 | H19 | `stop_hook_active` semantics (continue-after-block marker) | 2.1.303 (host canary) | **captured** — 2026-10-21: after the plugin blocked a Stop, the host re-fired Stop with `stop_hook_active: true` and the runtime answered `{}` — the bounded one-cycle yield (ADR 0003) | `hook-input.mjs` reads `data.stop_hook_active` (ADR 0003 bounded retry) | `test/compatibility/captures/stop_active_work.*`, `test/compatibility/captures/stop_after_own_block.*` (captured 2026-10-21) | bounded one-cycle yield; never converts failed checks to passed |
 | H21 | `StopFailure` telemetry event (turn/Stop failure record) | unknown locally | **implemented (0.4.0)** — async registration (`hooks.json`, `timeout: 30`, no `onFailure`: async telemetry has no blocking semantics per docs); writes one bounded `stop-failure.jsonl` record (`ts, session_id, error_name, exit_code, signal, agent_id`), API error text never logged. Arrival of the payload shape on the pinned CLI is **unverified** | `handleStopFailure` (`hook-dispatcher.mjs`) + `stopFailurePayload` (`notifications.mjs`) | `test/hooks/` StopFailure cases (synthetic) | failure of this telemetry write is nonblocking (ADR 0011 telemetry class) |
-| H22 | `workflow_profile` selector: `userConfig.workflow_profile` + `AGNTHIVE_WORKFLOW_PROFILE` env override | plugin-format baseline | **implemented (0.4.0)** — resolver precedence env > `CLAUDE_PLUGIN_OPTION_WORKFLOW_PROFILE` > `legacy`, invalid value falls back to `legacy` with a stderr note; `legacy` is **byte-stable**, `lean` is experimental | `modules/plugin-config.mjs`; `UserPromptSubmit` persists `workflow_profile`, Stop/TaskCompleted/TeammateIdle/SubagentStop consume the lean gate projection (`leanProfileGates`) | `test/unit/workflow-profile.test.mjs`, dispatcher/workflow unit tests | unknown/misconfigured value = legacy, never a silent behavior change |
+| H22 | `workflow_profile` selector: `userConfig.workflow_profile` + `AGNTHIVE_WORKFLOW_PROFILE` env override | plugin-format baseline | **implemented (0.4.0)** — resolver precedence env > `CLAUDE_PLUGIN_OPTION_WORKFLOW_PROFILE` > `lean` (the default since the ADR 0012 rollout gate passed), invalid value falls back to `legacy` — the stricter profile — with a stderr note; `legacy` is **byte-stable** and stays selectable for one transition release | `modules/plugin-config.mjs`; `UserPromptSubmit` persists `workflow_profile`, Stop/TaskCompleted/TeammateIdle/SubagentStop consume the lean gate projection (`leanProfileGates`) | `test/unit/workflow-profile.test.mjs`, dispatcher/workflow unit tests | unknown/misconfigured value = legacy, never a silent behavior change |
 | H23 | Hooks manifest contract in the validator: event vocabulary incl. the new `StopFailure` event, `timeout`/`onFailure` rules, PowerShell matcher parity | plugin-format baseline | **implemented (0.4.0)** — `scripts/validate.mjs` + `test/validators/hook-manifest-contract.test.mjs` enforce it (`PostToolUseFailure` predates 0.4.0; `StopFailure` is the 0.4.0 registration) | `hooks.json` + the repo validator | the validator manifest checks | unknown events stay passthrough; a registration missing its timeout or carrying `onFailure` outside PreToolUse shell rows fails validation |
 | H20 | `claude plugin test` applies to mods only (`*.test.ts`/`*.test.tsx`), not a replacement for the Node suites | **captured** — `claude plugin test --help` | **captured**; no migration planned | none (documentation of scope) | n/a | Node `--test` suites remain the contract layer |
 
@@ -105,9 +105,10 @@ What is still **not** host-verified:
   cancellation are observed, see H13).
 
 What remains genuinely unimplemented is plan task 16 (legacy
-compatibility-agent removal, deferred to the compatibility window) and the lean
-**default** flip, which is gated by the ADR 0012 outcome benchmark, not by
-these rows.
+compatibility-agent removal, deferred to the compatibility window). The lean
+**default** flip is done: the ADR 0012 outcome-benchmark rollout gate passed on
+the live arm x repetition matrix, so `lean` is the default profile and `legacy`
+stays selectable for one transition release.
 
 ## Host canary 2026-10-21 (CLI 2.1.303)
 
@@ -186,7 +187,7 @@ drift:
 4. `userConfig` declares the contract keys `enforcement_mode`,
    `log_max_bytes`, `ledger_max_bytes` (extra keys allowed, missing required
    keys fail; the repo validator additionally type/default-checks
-   `workflow_profile` — `legacy|lean`, default `legacy`);
+   `workflow_profile` — `legacy|lean`, default `lean`);
 5. hooks use exec form (`command:"node"` + `args`), no shell strings, no
    `shell:true`; every `${CLAUDE_PLUGIN_ROOT}` target resolves;
 6. no `.py`/`.sh` in the packaged runtime (Node-only);

@@ -43,8 +43,8 @@
     "workflow_profile": {
       "type": "string",
       "title": "Workflow profile",
-      "description": "SDLC hook workflow selector. 'legacy' (default) keeps the full specialist-handoff, Manager-idle, footer and summary gates; 'lean' (experimental, ADR 0008/0012) is the root-orchestration profile: the benchmark dispatch contract applies only in a benchmark test context, mandatory role quotas relax, and the @cr and verification-evidence gates stay. Valid values: legacy|lean (an invalid value falls back to legacy with a stderr note). The AGNTHIVE_WORKFLOW_PROFILE env var overrides this if set. The default stays legacy until the ADR 0012 outcome-benchmark rollout gate passes.",
-      "default": "legacy"
+      "description": "SDLC hook workflow selector. 'lean' (default since the ADR 0012 outcome-benchmark rollout gate passed) is the root-orchestration profile: the benchmark dispatch contract applies only in a benchmark test context, mandatory role quotas relax, and the @cr and verification-evidence gates stay. 'legacy' keeps the full specialist-handoff, Manager-idle, footer and summary gates and stays selectable for one transition release. Valid values: legacy|lean (an invalid value falls back to legacy — the stricter profile — with a stderr note). The AGNTHIVE_WORKFLOW_PROFILE env var overrides this if set.",
+      "default": "lean"
     }
   }
 }

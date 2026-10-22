@@ -19,7 +19,7 @@
 //  11 userConfig missing contract key
 //  12 enforcement_mode advisory|enforce
 //  13 byte-cap userConfig defaults (positive finite numbers)
-//  14 workflow_profile is a required contract key (legacy|lean, default legacy)
+//  14 workflow_profile is a required contract key (legacy|lean, default lean)
 //  15 slash-command inventory: agent-backed set is exactly ['review']
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
@@ -68,7 +68,7 @@ test('workflow_profile is a required contract key with legacy|lean domain', () =
   assert.ok(WORKFLOW_PROFILE_VALUES.has('legacy') && WORKFLOW_PROFILE_VALUES.has('lean'));
   // The landed manifest ships default "legacy" (task 11), and `lean` stays an
   // accepted in-domain value.
-  assert.equal(PLUGIN_JSON.userConfig.workflow_profile.default, 'legacy');
+  assert.equal(PLUGIN_JSON.userConfig.workflow_profile.default, 'lean');
   const uc = ucClone();
   uc.workflow_profile.default = 'lean';
   assert.deepEqual(validateUserConfigShape(uc), []);

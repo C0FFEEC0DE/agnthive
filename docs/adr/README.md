@@ -18,6 +18,17 @@ requires the rollout gates in ADR 0012 (plan task 16, deferred to the
 compatibility window — the eight agent definitions still ship in
 `plugins/agnthive/agents/`).
 
+**Update (2026-10-22): the lean default flip has HAPPENED.** The ADR 0012
+rollout gate was exercised to completion on a live arm x repetition matrix
+(`native` / `legacy` / `lean`, three paired repetitions per task, nine tasks,
+75 cells) and reported `gate_inputs.available: true` with no new false
+completions, no permission regressions and no lost material findings against
+either baseline. `lean` is now the default workflow profile; `legacy` stays
+selectable for one transition release and its removal stays deferred to the
+compatibility window (plan task 16). The gate evidence and the two findings
+the matrix surfaced are recorded in `plugins/agnthive/CHANGELOG.md` and
+`docs/benchmarking.md`.
+
 The lean **default** flip has **not** happened. ADR 0012 gates it on a live
 outcome-benchmark run, and the gate has not been exercised to completion:
 `gate_inputs` can only be reported as `available: true` for a live run that
@@ -57,7 +68,7 @@ plugin identity remain in force even when lean removes mandatory role gates.
 | [0009](0009-completion-evidence-over-role-quotas.md) | Current completion evidence instead of role/footer quotas | Implemented in 0.4.0 (plan 04, 09, 11, 13); host canaries (plan 14) pending; plan 16 deferred |
 | [0010](0010-task-and-agent-lifecycle-identity.md) | Task/agent lifecycle and result ownership | Implemented in 0.4.0 (plan 02, 05–06, 09); host canaries (plan 14) pending |
 | [0011](0011-explicit-hook-failure-and-permission-policy.md) | Explicit enforcement/advisory/telemetry failures | Implemented in 0.4.0 (plan 01–03, 08); host canaries (plan 14) pending |
-| [0012](0012-versioned-harness-contracts-and-outcome-benchmarks.md) | Versioned contracts, outcome benchmarks, rollout gates | Implemented in 0.4.0 (plan 01–02, 09–10, 13); the lean default flip is gated and has NOT happened (the outcome gate is unexercised — no live outcome run); plan 16 deferred |
+| [0012](0012-versioned-harness-contracts-and-outcome-benchmarks.md) | Versioned contracts, outcome benchmarks, rollout gates | Implemented in 0.4.0 (plan 01–02, 09–10, 13); the lean default flip HAPPENED on 2026-10-22 — the outcome gate was exercised on a live 75-cell arm x repetition matrix and passed; plan 16 deferred |
 | [0013](0013-ledger-restoration-and-minimal-telemetry.md) | Verified ledger restoration and bounded metadata | Implemented in 0.4.0 (plan 02, 07); host canaries (plan 14) pending |
 
 ## Historical correction

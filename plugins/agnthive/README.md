@@ -123,7 +123,7 @@ workflow shape only, never a permission decision or a failure class
 
 | Knob | Default | Effect |
 |---|---|---|
-| `AGNTHIVE_WORKFLOW_PROFILE` (or the `workflow_profile` userConfig) | `legacy` | `legacy` keeps the full specialist-handoff, Manager-idle, footer, and summary gates. `lean` (**experimental**, ADR 0008/0009) is the root-orchestration profile: no mandatory Manager dispatch, mandatory role quotas relax, footer lines become reporting guidance, and the benchmark dispatch contract applies only in a benchmark test context — while the current-verification and independent-review gates stay. An invalid value falls back to `legacy` with a stderr note. The default stays `legacy` until the ADR 0012 outcome benchmark passes the rollout gate; that gate has not been exercised to completion (no full live arm x repetition matrix run exists), so `lean` remains experimental and `legacy` remains the default. |
+| `AGNTHIVE_WORKFLOW_PROFILE` (or the `workflow_profile` userConfig) | `lean` | `lean` (default since the ADR 0012 rollout gate passed) is the root-orchestration profile (ADR 0008/0009): no mandatory Manager dispatch, mandatory role quotas relax, footer lines become reporting guidance, and the benchmark dispatch contract applies only in a benchmark test context — while the current-verification and independent-review gates stay. `legacy` keeps the full specialist-handoff, Manager-idle, footer, and summary gates and stays selectable for one transition release. An invalid value falls back to `legacy` — the stricter profile — with a stderr note, so a misconfiguration can never relax the gates below the default. |
 
 ### Log rotation and ledger size
 

@@ -442,6 +442,11 @@ function probeEnv(tmpDir) {
       HOME: home,
       CLAUDE_PLUGIN_ROOT: pluginRoot,
       CLAUDE_PLUGIN_DATA: join(home, '.claude'),
+      // The captured fixtures are legacy-profile sessions (the legacy
+      // compatibility window is still open, ADR 0012), and the default profile
+      // is 'lean' since the rollout gate passed — pin the profile so the probe
+      // classifies the way the capture did.
+      AGNTHIVE_WORKFLOW_PROFILE: 'legacy',
     },
     dir: tmpDir,
   };
