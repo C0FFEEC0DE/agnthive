@@ -36,7 +36,9 @@
     "do not weaken or delete existing tests to make the task pass"
   ],
   "scenario": {
-    "type": "compact_resume"
+    "type": "compact_resume",
+    "phase1_prompt": "Implement roundTo and its test now. Do NOT run the test suite yet: stop as soon as the implementation and the test are in place, and say that the implementation phase is done.",
+    "phase2_prompt": "Continue the same task in this session: run the test suite, fix whatever fails, and finish with the final report of the completed work."
   },
   "expected_outcome": {
     "verification_commands": [
@@ -86,7 +88,8 @@
         "kind": "evidence_flag",
         "evaluate_in": "live",
         "field": "verification.current",
-        "op": "exists"
+        "op": "equals",
+        "equals": true
       },
       {
         "id": "scope-calculator-only",

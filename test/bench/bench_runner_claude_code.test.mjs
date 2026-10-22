@@ -55,6 +55,8 @@ import {
   writePluginEnableSettings,
   removePluginEnableSettings,
   taskBudgetLimits,
+  scenarioPlan,
+  scenarioBudget,
 } from '../../scripts/bench_runner_claude_code.mjs';
 import { taskFunctionalFailures } from '../../scripts/bench/lib.mjs';
 
@@ -709,6 +711,95 @@ test('main writes result.json + summary files for a stub env (no real claude)', 
   }
 });
 
+// ADR-0012 lifecycle scenario: a compact_resume cell drives the host's
+// compaction. The ADR-0012 matrix showed the scenario predicate
+// `restored_task_seq` unsatisfiable in every arm, because a single-shot cell
+// never compacts the session.
+test('main drives a compact_resume cell in three phases of the SAME session', async () => {
+  const tmp = makeTempDir();
+  try {
+    const workdir = join(tmp, 'workdir');
+    const outputDir = join(tmp, 'output');
+    const taskFile = join(tmp, 'task.json');
+    mkdirSync(workdir, { recursive: true });
+    mkdirSync(outputDir, { recursive: true });
+    writeFileSync(join(workdir, 'package.json'), JSON.stringify({ scripts: { test: 'jest' } }));
+    writeFileSync(taskFile, JSON.stringify(baseTask({
+      id: 'stub-compact',
+      scenario: {
+        type: 'compact_resume',
+        phase1_prompt: 'Implement only, do not verify yet.',
+        phase2_prompt: 'Now verify and finish.',
+      },
+    })));
+
+    const fakeResultText =
+      'Did the work.\n\nVerification status: passed - npm run test completed successfully.\n' +
+      'Review outcome: not required - benchmark task did not require an explicit review summary.\n' +
+      'Remaining risks: none';
+    const spawnCalls = [];
+    const stub = (bin, args) => {
+      spawnCalls.push({ bin, args: [...args] });
+      if (bin === 'npm') return { status: 0, stdout: '1 passed', stderr: '' };
+      writeFileSync(join(workdir, 'src.js'), 'export const hello = () => "hello";\n');
+      return {
+        status: 0,
+        stdout: JSON.stringify({
+          result: fakeResultText,
+          subtype: 'result',
+          stop_reason: 'end_turn',
+          session_id: 'sess-compact-1',
+        }),
+        stderr: '',
+      };
+    };
+    const env = {
+      ...process.env,
+      BENCH_REPO_ROOT: REPO,
+      BENCH_TASK_FILE: taskFile,
+      BENCH_WORKDIR: workdir,
+      BENCH_OUTPUT_DIR: outputDir,
+      BENCH_FIXTURE_DIR: workdir,
+      OLLAMA_MODEL: 'stub-model',
+      CLAUDE_CODE_MAX_OUTPUT_TOKENS: '',
+    };
+    const oldEnv = { ...process.env };
+    for (const [k, v] of Object.entries(env)) process.env[k] = v;
+    try {
+      const mod = await import(`../../scripts/bench_runner_claude_code.mjs?env=${Date.now()}`);
+      mod.__setSpawnSync(stub);
+      const rc = mod.main();
+      assert.equal(rc, 0);
+      const claudeCalls = spawnCalls.filter((c) => c.bin === 'claude');
+      assert.equal(claudeCalls.length, 3, 'implement + compact + resume');
+      assert.ok(!claudeCalls[0].args.includes('--resume'), 'phase 1 starts the session');
+      assert.ok(claudeCalls[1].args.includes('/compact'), 'phase 2 asks the host to compact');
+      assert.equal(claudeCalls[1].args[claudeCalls[1].args.indexOf('--resume') + 1], 'sess-compact-1');
+      assert.equal(claudeCalls[2].args[claudeCalls[2].args.indexOf('--resume') + 1], 'sess-compact-1');
+      const phases = JSON.parse(readFileSync(join(outputDir, 'scenario-phases.json'), 'utf-8'));
+      assert.deepEqual(phases.map((p) => p.phase), ['implement', 'compact', 'resume']);
+      assert.equal(phases[0].session_id, 'sess-compact-1');
+    } finally {
+      process.env = oldEnv;
+    }
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('scenarioPlan/scenarioBudget: only a complete compact_resume scenario is driven', () => {
+  assert.equal(scenarioPlan(baseTask()), null);
+  assert.equal(scenarioPlan(baseTask({ scenario: { type: 'compact_resume' } })), null);
+  const plan = scenarioPlan(baseTask({
+    scenario: { type: 'compact_resume', phase1_prompt: 'a', phase2_prompt: 'b' },
+  }));
+  assert.equal(plan.type, 'compact_resume');
+  const budget = scenarioBudget(24, 400);
+  assert.ok(budget.phase1.maxTurns + budget.phase2.maxTurns <= 24);
+  assert.ok(budget.phase1.timeoutSeconds + budget.compact.timeoutSeconds + budget.phase2.timeoutSeconds <= 400);
+});
+
+
 // Regression for PR #4 CI red: the enforced-mode architect smoke task was marked
 // failed (merge-blocking the functional gate) solely by a "spawnSync claude
 // ETIMEDOUT" that Node's spawnSync sets as res.error.code='ETIMEDOUT' on timeout.
@@ -716,7 +807,6 @@ test('main writes result.json + summary files for a stub env (no real claude)', 
 // exception", exitCode 0) even though the task had completed and verified before
 // the kill. The fix raises TimeoutExpired so the existing recovery machinery
 // suppresses fatalError for a completed+verified task.
-
 test('runClaude raises TimeoutExpired for a spawnSync timeout (res.error ETIMEDOUT)', () => {
   const tmp = makeTempDir();
   __setSpawnSync(() => ({

@@ -78,6 +78,7 @@ export const LIVE_PREDICATE_KINDS = Object.freeze([
   'file_unchanged',
   'file_matches',
   'file_not_matches',
+  'matches_count',
   'commands_pass',
   'changed_paths_within',
   'findings_cover',
@@ -344,6 +345,18 @@ function validateLivePredicate(task, p, errors, label, evidenceFlagIds) {
       requirePath(p, errors, label);
       if (compilePattern(p.pattern).error) err(errors, `${label}: predicate "${p.id}" ${compilePattern(p.pattern).error}`);
       break;
+    case 'matches_count': {
+      // The count predicate spans files: it is how a task states "defined
+      // exactly once" without pinning WHICH file keeps the definition.
+      if (!Array.isArray(p.paths) || p.paths.length === 0 || !p.paths.every((q) => typeof q === 'string' && q && !SAFE_PATH_RE.test(q))) {
+        err(errors, `${label}: predicate "${p.id}" paths must be a non-empty array of relative path globs`);
+      }
+      if (compilePattern(p.pattern).error) err(errors, `${label}: predicate "${p.id}" ${compilePattern(p.pattern).error}`);
+      if (!Number.isInteger(p.equals) || p.equals < 0) {
+        err(errors, `${label}: predicate "${p.id}" equals must be a non-negative integer`);
+      }
+      break;
+    }
     case 'commands_pass':
       if (!Array.isArray(p.commands) || p.commands.length === 0 || !p.commands.every((c) => typeof c === 'string' && SAFE_COMMAND_CHARS.test(c))) {
         err(errors, `${label}: predicate ${p.id} commands must be a non-empty array of plain commands`);
@@ -369,10 +382,12 @@ function validateLivePredicate(task, p, errors, label, evidenceFlagIds) {
       if (typeof p.field !== 'string' || !EVIDENCE_FIELD_VOCABULARY.includes(p.field)) {
         err(errors, `${label}: predicate "${p.id}" field not in the documented evidence vocabulary`);
       }
-      if (!['equals', 'exists', 'absent', 'gte', 'lte'].includes(p.op)) {
-        err(errors, `${label}: predicate "${p.id}" op must be equals|exists|absent|gte|lte`);
+      if (!['equals', 'one_of', 'exists', 'absent', 'gte', 'lte'].includes(p.op)) {
+        err(errors, `${label}: predicate "${p.id}" op must be equals|one_of|exists|absent|gte|lte`);
       } else if ((p.op === 'equals' || p.op === 'gte' || p.op === 'lte') && p.equals === undefined) {
         err(errors, `${label}: predicate "${p.id}" requires "equals" for op "${p.op}"`);
+      } else if (p.op === 'one_of' && (!Array.isArray(p.values) || p.values.length === 0)) {
+        err(errors, `${label}: predicate "${p.id}" requires a non-empty "values" array for op "one_of"`);
       }
       evidenceFlagIds.push(p.id);
       break;
@@ -439,6 +454,16 @@ function validateScenarioAblation(task, errors, label) {
   if (task.scenario !== undefined) {
     if (!isPlainObject(task.scenario) || !SCENARIO_TYPES.includes(task.scenario.type)) {
       err(errors, `${label}: scenario.type must be one of ${SCENARIO_TYPES.join('|')}`);
+    } else if (task.scenario.type === 'compact_resume') {
+      // A compact/resume cell is driven by the runner in three phases, so the
+      // task must say what each phase has to achieve. Without the phase
+      // prompts the runner cannot drive the host's compaction at all.
+      for (const key of ['phase1_prompt', 'phase2_prompt']) {
+        const value = task.scenario[key];
+        if (typeof value !== 'string' || !value.trim()) {
+          err(errors, `${label}: scenario "${key}" is required for a compact_resume scenario`);
+        }
+      }
     }
   }
   if (task.ablation !== undefined) {
@@ -701,7 +726,12 @@ function isBoolean(v) {
 function compilePattern(pattern) {
   if (typeof pattern !== 'string' || pattern.length === 0) return { error: 'pattern must be a non-empty string' };
   try {
-    return { re: new RegExp(pattern, 'g') };
+    // 'm' (multiline): a task pattern that anchors with ^ / $ addresses a LINE
+    // of the file, not the first byte of it. Without it a predicate like
+    // `^## Usage` only matched when the section was the very first line of the
+    // file — the ADR-0012 matrix showed that failing 9 of 9 cells of a task
+    // whose README was correct.
+    return { re: new RegExp(pattern, 'gm') };
   } catch (e) {
     return { error: `invalid pattern: ${e.message}` };
   }

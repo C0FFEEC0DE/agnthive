@@ -12,7 +12,7 @@
 // (04.05), and `currentRevision` / `nextRevisionValue` / `verificationAppendEvent`
 // are the small pure seams the dispatcher wires 1:1 when recording evidence.
 // `verificationOutcome` and the discovery exports stay byte-stable for legacy.
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 function projectDir(explicit) {
@@ -53,6 +53,45 @@ function exists(opts, ...names) {
   return names.some((n) => existsSync(join(dir, n)));
 }
 
+// Node's built-in test runner: the project files that prove it is in use.
+// `node --test` needs no package.json script, so a project can be a test
+// project with no manifest at all (the ADR-0012 outcome fixtures are exactly
+// that: calculator.mjs + calculator.test.mjs and no package.json).
+const NODE_TEST_FILE_RE = /(^|[\\/])(test-.*|.*\.(test|spec))\.(mjs|cjs|js|jsx|ts|tsx)$/;
+const NODE_TEST_DIRS = ['test', 'tests'];
+
+function readDirSafe(dir) {
+  try { return readdirSync(dir); } catch { return []; }
+}
+
+/** True when the project carries Node-style test files (node --test finds them). */
+function hasNodeTestFiles(opts) {
+  const dir = projectDir(opts.cwd);
+  for (const name of readDirSafe(dir)) {
+    if (NODE_TEST_FILE_RE.test(name)) return true;
+  }
+  for (const sub of NODE_TEST_DIRS) {
+    const subDir = join(dir, sub);
+    for (const name of readDirSafe(subDir)) {
+      if (NODE_TEST_FILE_RE.test(name)) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * A `tests/` directory is ambiguous: it is the pytest convention AND a plain
+ * JS/TS layout. The Python defaults only apply when the directory carries no
+ * JavaScript/TypeScript test files — otherwise a Node project would be told to
+ * run `pytest` (plan task 04 discovery gap, found in the ADR-0012 matrix).
+ */
+function hasPythonTests(opts) {
+  if (exists(opts, 'pytest.ini', 'pyproject.toml')) return true;
+  if (!existsDir(opts, 'tests')) return false;
+  const dir = projectDir(opts.cwd);
+  return !readDirSafe(join(dir, 'tests')).some((n) => /\.(mjs|cjs|js|jsx|ts|tsx)$/.test(n));
+}
+
 /** detect_test_cmd: language-neutral test command discovery. */
 export function detectTestCmd(opts = {}) {
   let cmd;
@@ -60,7 +99,8 @@ export function detectTestCmd(opts = {}) {
   if ((cmd = detectMakeTarget('test', opts))) return cmd;
   if (exists(opts, 'Cargo.toml')) return 'cargo test';
   if (exists(opts, 'go.mod')) return 'go test ./...';
-  if (exists(opts, 'pytest.ini', 'pyproject.toml') || existsDir(opts, 'tests')) return 'pytest';
+  if (hasPythonTests(opts)) return 'pytest';
+  if (hasNodeTestFiles(opts)) return 'node --test';
   return null;
 }
 
@@ -70,7 +110,8 @@ export function detectLintCmd(opts = {}) {
   if ((cmd = detectNodeScript('lint', opts))) return cmd;
   if ((cmd = detectMakeTarget('lint', opts))) return cmd;
   if (exists(opts, 'Cargo.toml')) return 'cargo clippy --all-targets --all-features -- -D warnings';
-  if (exists(opts, 'pyproject.toml') || existsDir(opts, 'tests')) return 'python -m compileall .';
+  if (exists(opts, 'pyproject.toml')) return 'python -m compileall .';
+  if (existsDir(opts, 'tests') && !hasNodeTestFiles(opts)) return 'python -m compileall .';
   return null;
 }
 
@@ -94,6 +135,27 @@ function existsDir(opts, name) {
 }
 
 /**
+ * Node's built-in test runner: `node --test`, `node --test <path>`,
+ * `node --test-reporter=spec --test`, `node --test-watch`.
+ *
+ * The `--test` flag must be a STANDALONE token: `--test-reporter` alone only
+ * selects a reporter (it does not start the runner), so `node --test-reporter=spec`
+ * is not a test command. Found while validating the ADR-0012 matrix: without
+ * this classification every `node --test` run was invisible to the evidence
+ * layer, so a Node project never recorded a verification result at all.
+ */
+const NODE_TEST_RUNNER_RE = /(?:^|[;&|(]\s*)node\s+(?:-{1,2}[\w-]+(?:=[^\s]*)?\s+)*--test(?![\w-])(?:\s|$)/;
+const NODE_TEST_WATCH_RE = /(?:^|[;&|(]\s*)node\s+(?:-{1,2}[\w-]+(?:=[^\s]*)?\s+)*--test-watch(?![\w-])(?:\s|$)/;
+// JavaScript/TypeScript test runners that are launched through a runner binary
+// (`npx vitest run`, `pnpm exec jest`) — the runner decides the project, not us.
+const JS_RUNNER_RE = /(?:^|[;&|(]\s*)(?:npx|pnpm\s+exec|yarn\s+dlx|bunx)\s+(?:--\S+\s+)*(?:jest|vitest|mocha|ava|tap|playwright)(?:\s|$)/;
+const OTHER_RUNTIME_TEST_RE = /(?:^|[;&|(]\s*)(?:deno|bun)\s+test(?:\s|$)/;
+
+function isNodeTestCommand(c) {
+  return NODE_TEST_RUNNER_RE.test(c) || NODE_TEST_WATCH_RE.test(c);
+}
+
+/**
  * command_class: classify a command string as test/lint/build/other. Pure.
  * Order matters: test and lint are checked before build; "make clean" is
  * "other"; a bare "make" or "make <anything-else>" is "build".
@@ -101,6 +163,8 @@ function existsDir(opts, name) {
 export function commandClass(command) {
   const c = typeof command === 'string' ? command : '';
   if (/pytest|npm test|npm run test|pnpm test|yarn test|cargo test|go test|ctest|make test/.test(c)) return 'test';
+  if (isNodeTestCommand(c) || JS_RUNNER_RE.test(c)) return 'test';
+  if (OTHER_RUNTIME_TEST_RE.test(c)) return 'test';
   if (/npm run lint|pnpm lint|yarn lint|ruff|flake8|cargo clippy|golangci-lint|eslint|shellcheck|python -m compileall |make lint/.test(c)) return 'lint';
   if (/cmake --build|make all/.test(c)) return 'build';
   if (/make clean/.test(c)) return 'other';
@@ -324,7 +388,7 @@ export function resultFromBashPayload(commandClassResult, command, toolResponse,
     error,
     startedAt: isoStamp(ctx.startedAt ?? ctx.now),
     finishedAt: status === 'pending' ? null : isoStamp(ctx.now),
-    source: 'post_tool_use',
+    source: typeof ctx.source === 'string' && ctx.source ? ctx.source : 'post_tool_use',
   };
   const message = definite && legacy
     ? legacy.message
@@ -349,6 +413,100 @@ export function verificationAppendEvent(result) {
   const record = result && typeof result === 'object' ? result.record : null;
   if (!record || typeof record !== 'object') return null;
   return { field: 'verification', value: record };
+}
+
+// --- ADR-0009 background completion (the host's <task-notification>) -------
+//
+// A background command is LAUNCH evidence only (F01): the PostToolUse event
+// that starts it carries a launch notice, not an outcome, so the record stays
+// 'pending' and can never satisfy the gate.
+//
+// The host DOES deliver the completion, but not as a tool result: it arrives as
+// a prompt whose body is a <task-notification> envelope carrying the original
+// <tool-use-id>, the task status and a summary with the exit code. The
+// envelope is the only completion channel the plugin can observe for a
+// background run, so it is parsed here and turned into the same revision-scoped
+// record the foreground path produces.
+
+const TASK_NOTIFICATION_RE = /<task-notification>([\s\S]*?)<\/task-notification>/;
+const NOTIFICATION_TOOL_USE_RE = /<tool-use-id>([^<]+)<\/tool-use-id>/;
+const NOTIFICATION_STATUS_RE = /<status>([^<]+)<\/status>/;
+const NOTIFICATION_EXIT_RE = /exit code\s+(-?\d+)/i;
+
+/**
+ * backgroundTaskNotification: parse the host's background-task envelope out of
+ * a prompt. Returns null when the prompt is not such an envelope. Pure.
+ *
+ * The exit code is optional: the host's summary normally carries it
+ * ("... completed (exit code 0)"), but a completion without one is reported as
+ * `exitCode: null` and never treated as a pass.
+ */
+export function backgroundTaskNotification(prompt) {
+  if (typeof prompt !== 'string' || !prompt.includes('<task-notification>')) return null;
+  const m = TASK_NOTIFICATION_RE.exec(prompt);
+  if (!m) return null;
+  const body = m[1];
+  const toolUseId = ((NOTIFICATION_TOOL_USE_RE.exec(body) || [])[1] || '').trim();
+  if (!toolUseId) return null;
+  const status = ((NOTIFICATION_STATUS_RE.exec(body) || [])[1] || '').trim().toLowerCase();
+  const exitMatch = NOTIFICATION_EXIT_RE.exec(body);
+  const exitCode = exitMatch ? Number(exitMatch[1]) : null;
+  return {
+    toolUseId,
+    status,
+    exitCode: Number.isFinite(exitCode) ? exitCode : null,
+    taskId: ((/<task-id>([^<]+)<\/task-id>/.exec(body) || [])[1] || '').trim(),
+  };
+}
+
+/**
+ * pendingVerificationRecord: the pending (launch-only) verification record a
+ * background completion belongs to, or null. The newest matching record wins.
+ * Pure.
+ */
+export function pendingVerificationRecord(state, toolUseId) {
+  if (!state || !toolUseId || !Array.isArray(state.verification)) return null;
+  for (let i = state.verification.length - 1; i >= 0; i--) {
+    const rec = state.verification[i];
+    if (rec && rec.toolUseId === toolUseId && rec.status === 'pending') return rec;
+  }
+  return null;
+}
+
+/**
+ * backgroundCompletionResult: turn a host background-task notification into the
+ * revision-scoped verification record the foreground path produces.
+ *
+ * Returns null when the notification is not a completion of a tracked
+ * verification launch, so an unrelated background task never writes evidence.
+ * A completion with no exit code yields an 'unknown' record (honest gap, never
+ * a manufactured pass — ADR-0009); a notification that reports a failure
+ * without an exit code is failure evidence.
+ */
+export function backgroundCompletionResult(notification, state, ctx = {}) {
+  if (!notification || typeof notification !== 'object') return null;
+  const pending = pendingVerificationRecord(state, notification.toolUseId);
+  if (!pending) return null;
+  if (notification.status && notification.status !== 'completed' && notification.status !== 'failed') return null;
+  const kind = pending.kind;
+  if (kind !== 'test' && kind !== 'lint' && kind !== 'build') return null;
+  const exitCode = notification.exitCode;
+  const failedWithoutCode = exitCode === null && notification.status === 'failed';
+  if (exitCode === null && !failedWithoutCode) {
+    // The host says the task finished but reports no exit code: the outcome is
+    // NOT derivable, so the record stays 'unknown' and the gate stays open.
+    return resultFromBashPayload(kind, pending.command, { exitCode: null }, notification.toolUseId, {
+      ...ctx,
+      startedRevision: pending.startedRevision,
+      source: 'background_completion',
+    });
+  }
+  return resultFromBashPayload(kind, pending.command, { exitCode: exitCode ?? 1 }, notification.toolUseId, {
+    ...ctx,
+    assumeFailure: failedWithoutCode,
+    startedRevision: pending.startedRevision,
+    source: 'background_completion',
+  });
 }
 
 /**

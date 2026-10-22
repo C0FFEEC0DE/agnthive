@@ -9,6 +9,7 @@ import {
   detectBuildCmd, commandClass, isReleaseOrDeployCommand, verificationOutcome,
   resultFromBashPayload, isMutatingShellCommand, currentRevision,
   nextRevisionValue, verificationAppendEvent,
+  backgroundTaskNotification, pendingVerificationRecord, backgroundCompletionResult,
 } from '../../plugins/agnthive/modules/verification.mjs';
 import { successfulVerification } from '../../plugins/agnthive/modules/summary-contract.mjs';
 
@@ -52,6 +53,25 @@ const CLASS_CASES = [
   ['echo hello', 'other'],
   ['git status', 'other'],
   ['', 'other'],
+  // Node's built-in test runner (ADR-0012 matrix finding: `node --test` was
+  // invisible to the evidence layer, so Node projects never recorded a
+  // verification result).
+  ['node --test', 'test'],
+  ['node --test calculator.test.mjs', 'test'],
+  ['node --test-reporter=spec --test', 'test'],
+  ['node --test --test-reporter=tap', 'test'],
+  ['node --test-watch', 'test'],
+  ['cd /repo && node --test', 'test'],
+  ['npx vitest run', 'test'],
+  ['npx jest', 'test'],
+  ['pnpm exec jest', 'test'],
+  ['deno test', 'test'],
+  ['bun test', 'test'],
+  // `--test-reporter` alone only selects a reporter, it does not start the
+  // runner; `--test` after a script path is that script's own argument.
+  ['node --test-reporter=spec', 'other'],
+  ['node script.js --test', 'other'],
+  ['echo node --test', 'other'],
 ];
 for (const [cmd, expected] of CLASS_CASES) {
   test(`commandClass(${JSON.stringify(cmd)}) -> ${expected}`, () => {
@@ -135,6 +155,31 @@ test('pytest project: pytest detected via tests/ dir and pyproject.toml', () => 
     rmSync(d1, { recursive: true, force: true });
     rmSync(d2, { recursive: true, force: true });
   }
+});
+
+// ADR-0012 matrix finding: a Node project without a package.json test script
+// (the outcome fixtures are exactly that) had NO detected test command, so the
+// evidence layer never recorded a verification result and the gate could not
+// close. `node --test` is the runner such a project uses.
+test('node built-in runner project: node --test detected from test files', () => {
+  const d = mkdtempSync(join(tmpdir(), 'ver-node-test-'));
+  try {
+    writeFileSync(join(d, 'calculator.mjs'), 'export const add = (a, b) => a + b;\n');
+    writeFileSync(join(d, 'calculator.test.mjs'), "import { test } from 'node:test';\n");
+    assert.equal(detectTestCmd({ cwd: d }), 'node --test');
+    // No lint default is invented for a Node project.
+    assert.equal(detectLintCmd({ cwd: d }), null);
+  } finally { rmSync(d, { recursive: true, force: true }); }
+});
+
+test('node project with tests/ dir: node --test, not pytest', () => {
+  const d = mkdtempSync(join(tmpdir(), 'ver-node-dir-'));
+  try {
+    mkdirSync(join(d, 'tests'));
+    writeFileSync(join(d, 'tests', 'api.test.mjs'), "import { test } from 'node:test';\n");
+    assert.equal(detectTestCmd({ cwd: d }), 'node --test');
+    assert.equal(detectLintCmd({ cwd: d }), null);
+  } finally { rmSync(d, { recursive: true, force: true }); }
 });
 
 // --- verificationOutcome (state patch + message) --------------------------
@@ -250,6 +295,89 @@ test('resultFromBashPayload: foreground completion failure -> failed, legacy fai
   assert.equal(res.record.error, 'AssertionError: expected 2 == 3');
   assert.equal(res.record.completedRevision, 3);
   assert.equal(res.record.finishedAt, new Date(NOW).toISOString());
+});
+
+// --- ADR-0009 background completion (host <task-notification> envelope) ----
+// The envelope shape below is the one the pinned CLI (2.1.303) delivered for a
+// finished background command in the ADR-0012 matrix run.
+
+const BG_NOTIFICATION = [
+  '<task-notification>',
+  '<task-id>b11rb65br</task-id>',
+  '<tool-use-id>functions.Bash:7</tool-use-id>',
+  '<output-file>/tmp/claude-1000/session/tasks/b11rb65br.output</output-file>',
+  '<status>completed</status>',
+  '<summary>Background command "Run node test suite in background" completed (exit code 0)</summary>',
+  '</task-notification>',
+].join('\n');
+
+test('backgroundTaskNotification: parses the host envelope (tool id, status, exit code)', () => {
+  const n = backgroundTaskNotification(BG_NOTIFICATION);
+  assert.equal(n.toolUseId, 'functions.Bash:7');
+  assert.equal(n.taskId, 'b11rb65br');
+  assert.equal(n.status, 'completed');
+  assert.equal(n.exitCode, 0);
+});
+
+test('backgroundTaskNotification: a normal prompt is not a notification', () => {
+  assert.equal(backgroundTaskNotification('add a helper function'), null);
+  assert.equal(backgroundTaskNotification(''), null);
+  assert.equal(backgroundTaskNotification(undefined), null);
+  // An envelope without a tool-use-id cannot be correlated with a launch.
+  assert.equal(backgroundTaskNotification('<task-notification><status>completed</status></task-notification>'), null);
+});
+
+const PENDING_STATE = {
+  verification: [
+    {
+      id: 'v1', kind: 'test', command: 'node --test', toolUseId: 'functions.Bash:7',
+      status: 'pending', startedRevision: 2, completedRevision: null, cwd: '/repo',
+      exitStatus: null, signal: null, error: '', startedAt: null, finishedAt: null,
+      source: 'post_tool_use',
+    },
+  ],
+};
+
+test('pendingVerificationRecord: finds the launch record of a background run', () => {
+  assert.equal(pendingVerificationRecord(PENDING_STATE, 'functions.Bash:7').status, 'pending');
+  assert.equal(pendingVerificationRecord(PENDING_STATE, 'functions.Bash:99'), null);
+  assert.equal(pendingVerificationRecord(null, 'functions.Bash:7'), null);
+});
+
+test('backgroundCompletionResult: exit code 0 completes the pending record as passed', () => {
+  const res = backgroundCompletionResult(backgroundTaskNotification(BG_NOTIFICATION), PENDING_STATE, { revision: 3, cwd: '/repo', now: NOW, seq: 9 });
+  assert.equal(res.status, 'passed');
+  assert.equal(res.record.status, 'passed');
+  assert.equal(res.record.source, 'background_completion');
+  assert.equal(res.record.exitStatus, 0);
+  assert.equal(res.record.completedRevision, 3);
+  assert.equal(res.record.startedRevision, 2);
+  assert.deepEqual(res.fields, { tests_ok: true, tests_failed: false, last_test_command: 'node --test' });
+});
+
+test('backgroundCompletionResult: a non-zero exit code is failure evidence', () => {
+  const note = backgroundTaskNotification(BG_NOTIFICATION.replace('exit code 0', 'exit code 1'));
+  const res = backgroundCompletionResult(note, PENDING_STATE, { revision: 3, cwd: '/repo', now: NOW, seq: 9 });
+  assert.equal(res.status, 'failed');
+  assert.equal(res.record.exitStatus, 1);
+  assert.deepEqual(res.fields, { tests_failed: true, tests_ok: false, last_test_command: 'node --test' });
+});
+
+test('backgroundCompletionResult: a completion without an exit code is unknown, never a pass', () => {
+  const note = backgroundTaskNotification(BG_NOTIFICATION.replace(' (exit code 0)', ''));
+  assert.equal(note.exitCode, null);
+  const res = backgroundCompletionResult(note, PENDING_STATE, { revision: 3, cwd: '/repo', now: NOW, seq: 9 });
+  assert.equal(res.status, 'unknown');
+  assert.equal(res.record.completedRevision, null);
+  assert.deepEqual(res.fields, { last_test_command: 'node --test' });
+});
+
+test('backgroundCompletionResult: a notification for an untracked task writes nothing', () => {
+  const note = backgroundTaskNotification(BG_NOTIFICATION.replace('functions.Bash:7', 'functions.Bash:42'));
+  assert.equal(backgroundCompletionResult(note, PENDING_STATE, { revision: 3, cwd: '/repo', now: NOW, seq: 9 }), null);
+  // A still-running task is not a completion either.
+  const running = backgroundTaskNotification(BG_NOTIFICATION.replace('<status>completed</status>', '<status>running</status>'));
+  assert.equal(backgroundCompletionResult(running, PENDING_STATE, {}), null);
 });
 
 test('resultFromBashPayload: exit code read on whichever field carries it', () => {

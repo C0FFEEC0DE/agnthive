@@ -76,18 +76,28 @@
         "pattern": "function normalizeLabel"
       },
       {
-        "id": "fmt-copy-gone",
-        "kind": "file_not_matches",
+        "id": "single-normalize-label-definition",
+        "kind": "matches_count",
         "evaluate_in": "live",
-        "path": "pipeline-fmt.mjs",
-        "pattern": "export function normalizeLabel"
+        "paths": [
+          "*.mjs"
+        ],
+        "pattern": "(?:function\\s+normalizeLabel|normalizeLabel\\s*=)",
+        "equals": 1
       },
       {
-        "id": "fmt-imports-shared",
+        "id": "pipeline-uses-normalize-label",
+        "kind": "file_matches",
+        "evaluate_in": "live",
+        "path": "pipeline.mjs",
+        "pattern": "normalizeLabel"
+      },
+      {
+        "id": "fmt-uses-normalize-label",
         "kind": "file_matches",
         "evaluate_in": "live",
         "path": "pipeline-fmt.mjs",
-        "pattern": "from ['\"]\\./pipeline"
+        "pattern": "normalizeLabel"
       },
       {
         "id": "suite-passes",

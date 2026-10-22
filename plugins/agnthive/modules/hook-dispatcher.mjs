@@ -27,6 +27,7 @@ import {
   commandClass, resultFromBashPayload, verificationAppendEvent,
   currentRevision, nextRevisionValue, isMutatingShellCommand,
   detectTestCmd, detectLintCmd, detectBuildCmd,
+  backgroundTaskNotification, backgroundCompletionResult,
 } from './verification.mjs';
 import {
   extractSubagentLabel, extractSubagentScope, loadAliases, effectiveStartedRoles,
@@ -84,6 +85,11 @@ function handleUserPromptSubmit(parsed) {
   // persists (persistPatch / the helpers would resolve them again internally).
   const paths = statePathsFor(parsed);
   const state = loadStateFor(parsed);
+  // ADR-0010: the host's <task-notification> envelope is an AUTOMATED event,
+  // not a user objective. It correlates to background work, so it never opens
+  // a task (a background deliverable must not become a task boundary) and it
+  // never resets the open contract's evidence.
+  const notification = backgroundTaskNotification(prompt);
   // ADR-0010 prompt correlation (plan 05.2): prompt_id correlation only, never
   // provenance; a duplicate delivery (same prompt_id + same classification)
   // skips both the reset and the task transition.
@@ -105,7 +111,7 @@ function handleUserPromptSubmit(parsed) {
       promptId: parsed.promptId ?? '',
       prompt,
       dedupe: corr.dedupe,
-      backgroundCorrelation: hasPendingBackgroundTasks(state),
+      backgroundCorrelation: hasPendingBackgroundTasks(state) || Boolean(notification),
       // CR BLOCK 1: the completed signal is only the TaskCompleted-evidenced
       // single-shot pending flag — never report text (F02).
       completed: state?.task_completed_pending === state?.task_id && state?.task_id !== '',
@@ -142,8 +148,36 @@ function handleUserPromptSubmit(parsed) {
       safeAppend(paths, 'set_many', { fields: { task_completed_pending: '' } });
     }
   }
+  // ADR-0009: a background task that finished is delivered as a prompt; its
+  // completion completes the pending launch record (a launch is never a pass).
+  // Recorded AFTER the task transition so a transition cannot reset the
+  // freshly written evidence flags.
+  const background = notification ? recordBackgroundVerificationCompletion(parsed, paths, state) : null;
   if (cls.contextMessage) return additionalContext(cls.contextMessage, 'UserPromptSubmit');
+  if (background && background.message) return additionalContext(background.message, 'UserPromptSubmit');
   return passthrough();
+}
+
+// ADR-0009 background completion: the host delivers a finished background task
+// as a prompt whose body is a <task-notification> envelope (task-id,
+// tool-use-id, status, summary with the exit code). It is the ONLY completion
+// channel a background run has — the launch PostToolUse carried no outcome
+// (F01) — so the pending launch record is completed here. A notification that
+// belongs to no tracked verification launch writes nothing.
+function recordBackgroundVerificationCompletion(parsed, paths, state) {
+  const prompt = parsed.data?.prompt ?? '';
+  if (typeof prompt !== 'string' || !prompt.includes('<task-notification>')) return null;
+  const notification = backgroundTaskNotification(prompt);
+  if (!notification) return null;
+  const result = backgroundCompletionResult(notification, state, {
+    revision: state ? currentRevision(state) : null,
+    cwd: parsed.cwd ?? state?.cwd ?? '',
+  });
+  if (!result) return null;
+  const recordEvent = verificationAppendEvent(result);
+  if (recordEvent) safeAppend(paths, 'append', recordEvent);
+  if (result.fields) persistPatch(parsed, result.fields);
+  return result;
 }
 
 // ADR-0010: a submission correlates to pending background work only via a

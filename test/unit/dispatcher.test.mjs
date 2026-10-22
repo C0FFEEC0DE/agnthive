@@ -375,6 +375,64 @@ test('PostToolUse PowerShell matcher registration routes through the shared Bash
   assert.equal(state.verification[0].status, 'unknown');
 });
 
+// ADR-0009 background completion, end to end through the dispatcher: the
+// launch PostToolUse records 'pending' (a launch is never a pass, F01) and the
+// host's <task-notification> prompt completes that record.
+test('UserPromptSubmit background notification completes the pending verification record', () => {
+  const sid = 'bg-completion';
+  const paths = statePaths(dataRoot, sid);
+  const launch = dispatch('PostToolUse', {
+    ...parsed,
+    sessionId: sid,
+    cwd: '/repo',
+    toolName: 'Bash',
+    toolInput: { command: 'node --test', run_in_background: true },
+    data: {
+      tool_use_id: 'functions.Bash:7',
+      tool_response: { stdout: 'Command running in background with ID: b11rb65br. Output is being written to: /tmp/x.output', stderr: '' },
+    },
+  }, 'Bash');
+  assert.match(launch?.hookSpecificOutput?.additionalContext ?? '', /not completed yet/);
+  let state = loadState(paths);
+  assert.equal(state.verification.length, 1);
+  assert.equal(state.verification[0].status, 'pending');
+  assert.equal(state.verification[0].toolUseId, 'functions.Bash:7');
+
+  const notification = [
+    '<task-notification>',
+    '<task-id>b11rb65br</task-id>',
+    '<tool-use-id>functions.Bash:7</tool-use-id>',
+    '<output-file>/tmp/x.output</output-file>',
+    '<status>completed</status>',
+    '<summary>Background command "Run node test suite in background" completed (exit code 0)</summary>',
+    '</task-notification>',
+  ].join('\n');
+  const out = dispatch('UserPromptSubmit', { ...parsed, sessionId: sid, cwd: '/repo', data: { prompt: notification }, promptId: 'p-bg-1' });
+  assert.match(out?.hookSpecificOutput?.additionalContext ?? '', /Successful verification command recorded/);
+  state = loadState(paths);
+  assert.equal(state.verification.length, 2);
+  assert.equal(state.verification[1].status, 'passed');
+  assert.equal(state.verification[1].source, 'background_completion');
+  assert.equal(state.verification[1].exitStatus, 0);
+  assert.equal(state.tests_ok, true);
+});
+
+test('UserPromptSubmit background notification for an untracked task writes no evidence', () => {
+  const sid = 'bg-untracked';
+  const paths = statePaths(dataRoot, sid);
+  const notification = [
+    '<task-notification>',
+    '<tool-use-id>functions.Bash:99</tool-use-id>',
+    '<status>completed</status>',
+    '<summary>Background command "ls" completed (exit code 0)</summary>',
+    '</task-notification>',
+  ].join('\n');
+  const out = dispatch('UserPromptSubmit', { ...parsed, sessionId: sid, cwd: '/repo', data: { prompt: notification }, promptId: 'p-bg-2' });
+  assert.deepEqual(out, {});
+  const state = loadState(paths);
+  assert.equal((state.verification || []).length, 0);
+});
+
 // --- ADR-0010 dispatcher wiring: prompt correlation, task identity, registry -
 
 const FULL_FOOTER = 'Outcome: ok\nChanged files: none\nVerification status: pass\nRemaining risks: none';

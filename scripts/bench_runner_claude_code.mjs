@@ -510,6 +510,137 @@ export function dispatchContractMarker(task) {
   return `BENCHMARK_DISPATCH_CONTRACT: ${rootOnly}mode=${mode}; roles=${roles.join(',')}`;
 }
 
+// ---------- lifecycle scenario plan ----------
+/**
+ * scenarioPlan: the lifecycle scenario a task asks the runner to drive, or
+ * null for a plain single-shot cell.
+ *
+ * `compact_resume` is a THREE-PHASE cell: the agent implements the change
+ * (phase 1), the host compacts the session (`/compact` on the same session),
+ * and the agent continues in the resumed session (phase 2). The host delivers
+ * the compaction as a SessionStart with source=compact, which is the channel
+ * the plugin's ledger restoration runs on (ADR-0013) — a single-shot cell can
+ * never exercise it, so the scenario predicate `restored_task_seq` was
+ * unsatisfiable in every arm of the ADR-0012 matrix.
+ *
+ * The phase prompts come from the TASK file: the task owns what each phase
+ * must achieve, the runner only drives the host.
+ */
+export function scenarioPlan(task) {
+  const sc = task && typeof task.scenario === 'object' && task.scenario !== null ? task.scenario : null;
+  if (!sc || sc.type !== 'compact_resume') return null;
+  const phase1 = typeof sc.phase1_prompt === 'string' ? sc.phase1_prompt.trim() : '';
+  const phase2 = typeof sc.phase2_prompt === 'string' ? sc.phase2_prompt.trim() : '';
+  if (!phase1 || !phase2) return null;
+  return { type: 'compact_resume', phase1, phase2 };
+}
+
+/**
+ * scenarioBudget: split the task's turn/time budget across the phases of a
+ * multi-phase cell so the cell as a whole stays inside the declared budget
+ * (a compact/resume cell is three invocations, not one).
+ */
+export function scenarioBudget(totalTurns, totalSeconds) {
+  const turns = Number.isFinite(Number(totalTurns)) && Number(totalTurns) > 0 ? Math.floor(Number(totalTurns)) : 12;
+  const seconds = Number.isFinite(Number(totalSeconds)) && Number(totalSeconds) > 0 ? Math.floor(Number(totalSeconds)) : 240;
+  const phase1Turns = Math.max(4, Math.floor(turns * 0.6));
+  const phase2Turns = Math.max(4, turns - phase1Turns);
+  const phase1Seconds = Math.max(60, Math.floor(seconds * 0.5));
+  const compactSeconds = Math.max(30, Math.floor(seconds * 0.15));
+  const phase2Seconds = Math.max(60, seconds - phase1Seconds - compactSeconds);
+  return {
+    phase1: { maxTurns: phase1Turns, timeoutSeconds: phase1Seconds },
+    compact: { maxTurns: 4, timeoutSeconds: compactSeconds },
+    phase2: { maxTurns: phase2Turns, timeoutSeconds: phase2Seconds },
+  };
+}
+
+/** session_id from a CLI result payload (the resume key for the next phase). */
+export function sessionIdFromPayload(payload) {
+  if (!payload || typeof payload !== 'object') return '';
+  const direct = payload.session_id || payload.sessionId;
+  if (typeof direct === 'string' && direct.trim() !== '') return direct.trim();
+  return '';
+}
+
+/**
+ * runCompactResumeScenario: drive the host's compact/resume cycle for a cell.
+ *
+ * Phase 1 runs the task prompt and stops at the task's phase-1 boundary; the
+ * host then compacts the SAME session (`/compact`), which the host delivers
+ * as a SessionStart with source=compact — the channel the plugin's ledger
+ * restoration runs on (ADR-0013); phase 2 resumes the session and finishes the
+ * task. The cell's result is the resumed phase's result.
+ *
+ * Every phase is recorded in scenario-phases.json, so a cell that did not
+ * actually compact says so in its own artifacts.
+ */
+export function runCompactResumeScenario({ task, prompt, ctx, outputDir }) {
+  const scenario = scenarioPlan(task);
+  const plan = scenarioBudget(ctx.maxTurns, ctx.timeoutSeconds);
+  const phases = [];
+  const runPhase = (phasePrompt, phase, resume) => {
+    const debugPath = join(outputDir, `claude-debug-${phase}.log`);
+    const stderrPath = join(outputDir, `claude-stderr-${phase}.log`);
+    const phaseCtx = { ...ctx, timeoutSeconds: plan[phase].timeoutSeconds };
+    try {
+      const [code, out, err] = runClaude(phasePrompt, debugPath, stderrPath, { maxTurns: plan[phase].maxTurns, resume }, phaseCtx);
+      return { exitCode: code, stdout: out, stderr: err, payload: extractResultPayload(out) };
+    } catch (exc) {
+      return {
+        exitCode: exc instanceof TimeoutExpired ? 124 : 1,
+        stdout: (exc && exc.stdout) || '',
+        stderr: (exc && exc.stderr) || '',
+        payload: null,
+        error: String((exc && exc.message) || exc),
+      };
+    }
+  };
+
+  const phase1Prompt = `${prompt}\n\nPhase 1 of 2 — this session will be compacted and then resumed:\n${scenario.phase1}`;
+  const phase2Prompt = `Phase 2 of 2 — this session was compacted and resumed, and your earlier work is still in it:\n${scenario.phase2}`;
+  const phase1 = runPhase(phase1Prompt, 'phase1', '');
+  const sessionId = sessionIdFromPayload(phase1.payload);
+  phases.push({ phase: 'implement', exit_code: phase1.exitCode, session_id: sessionId || null });
+  if (!sessionId) {
+    writeText(join(outputDir, 'scenario-phases.json'), JSON.stringify(phases, null, 2) + '\n');
+    return {
+      exitCode: phase1.exitCode || 1,
+      rawStdout: phase1.stdout,
+      rawStderr: phase1.stderr,
+      payload: phase1.payload,
+      resultText: '',
+      fatalError: `compact_resume scenario: phase 1 produced no session id (${phase1.error || 'the CLI result carried no session_id'}), so the compaction could not be driven.`,
+      phases,
+      sessionId: '',
+      phase2Prompt,
+    };
+  }
+  const compact = runPhase('/compact', 'compact', sessionId);
+  phases.push({ phase: 'compact', exit_code: compact.exitCode });
+  const phase2 = runPhase(phase2Prompt, 'phase2', sessionId);
+  phases.push({ phase: 'resume', exit_code: phase2.exitCode });
+  writeText(join(outputDir, 'scenario-phases.json'), JSON.stringify(phases, null, 2) + '\n');
+  const payload = phase2.payload;
+  let resultText = extractResultText(payload);
+  if (!resultText.trim()) resultText = extractResultTextFromTranscript(payload);
+  let fatalError = '';
+  if (!phase2.stdout.trim()) fatalError = 'Claude output JSON is missing or empty (resumed phase).';
+  else if (payload === null) fatalError = 'Claude output JSON is invalid (resumed phase).';
+  else if (!resultText.trim()) fatalError = 'Claude result text is missing or empty (resumed phase).';
+  return {
+    exitCode: phase2.exitCode,
+    rawStdout: phase2.stdout,
+    rawStderr: phase2.stderr,
+    payload,
+    resultText,
+    fatalError,
+    phases,
+    sessionId,
+    phase2Prompt,
+  };
+}
+
 // ---------- prompt builder ----------
 export function buildPrompt(task, verificationLabel, options = {}) {
   // The prompt must describe the session the agent actually gets (ADR-0012).
@@ -1300,12 +1431,49 @@ export function evaluateOutcomeLivePredicates(task, ctx = {}) {
             results.push({ id: p.id, result: 'failed', detail: `missing file: ${p.path}` });
             break;
           }
-          const { re, error } = compileOutcomePattern(p.pattern);
+          // 'm' (multiline): an anchored task pattern addresses a LINE of the
+          // file. Without it `^## Usage` only matched when the section was the
+          // first line of the file — the ADR-0012 matrix showed that failing
+          // 9 of 9 cells of a task whose README was correct.
+          const { re, error } = compileOutcomePattern(p.pattern, 'gm');
           if (error) { results.push({ id: p.id, result: 'unverified', detail: error }); break; }
           const text = readFileSync(file, 'utf-8');
           const matches = [...text.matchAll(re)].length;
           const ok = p.kind === 'file_matches' ? matches >= 1 : matches === 0;
           results.push({ id: p.id, result: ok ? 'passed' : 'failed', detail: `${matches} occurrence(s)` });
+          break;
+        }
+        case 'matches_count': {
+          // Count the pattern's occurrences across a set of files inside the
+          // workdir. The count predicate expresses criteria a per-file
+          // predicate cannot: "this helper is defined exactly once" holds no
+          // matter WHICH file keeps the definition (the ADR-0012 matrix showed
+          // the per-file form rejecting a solution the task allowed).
+          const patterns = Array.isArray(p.paths) ? p.paths : [];
+          if (patterns.length === 0) {
+            results.push({ id: p.id, result: 'unverified', detail: 'matches_count needs a non-empty paths array' });
+            break;
+          }
+          const { re, error } = compileOutcomePattern(p.pattern, 'gm');
+          if (error) { results.push({ id: p.id, result: 'unverified', detail: error }); break; }
+          const escaped = patterns.filter((q) => typeof q !== 'string' || !insideDir(workdir, q));
+          if (escaped.length > 0) {
+            results.push({ id: p.id, result: 'failed', detail: 'path escape rejected' });
+            break;
+          }
+          let total = 0;
+          const files = [];
+          for (const glob of patterns) {
+            for (const file of workdirFiles(workdir, glob)) {
+              if (files.includes(file)) continue;
+              files.push(file);
+              const text = readFileSync(file, 'utf-8');
+              total += [...text.matchAll(re)].length;
+            }
+          }
+          const expected = Number(p.equals);
+          const ok = Number.isFinite(expected) && total === expected;
+          results.push({ id: p.id, result: ok ? 'passed' : 'failed', detail: `${total} occurrence(s) in ${files.length} file(s)` });
           break;
         }
         case 'file_unchanged': {
@@ -1462,7 +1630,7 @@ function outcomeBasePath(task, p, ctx) {
   return null;
 }
 
-/** Op evaluation for evidence_flag predicates (equals|exists|absent|gte|lte). */
+/** Op evaluation for evidence_flag predicates (equals|one_of|exists|absent|gte|lte). */
 function evaluateEvidenceFlagOp(p, value, found) {
   switch (p.op) {
     case 'exists':
@@ -1472,6 +1640,15 @@ function evaluateEvidenceFlagOp(p, value, found) {
     case 'equals':
       if (!found) return false;
       return value === p.equals || String(value) === String(p.equals);
+    case 'one_of': {
+      // Membership in a closed set: used where the CONTRACT admits several
+      // honest states (e.g. a background verification is 'pending' until the
+      // host delivers the completion and 'passed' once it does) but not the
+      // dishonest ones ('unknown', a pass the plugin never observed).
+      if (!found) return false;
+      const values = Array.isArray(p.values) ? p.values : [];
+      return values.some((v) => v === value || String(v) === String(value));
+    }
     case 'gte':
     case 'lte': {
       if (!found || !Number.isFinite(Number(value))) return false;
@@ -1833,6 +2010,37 @@ function globDirFiles(dir, pattern) {
 let _spawnSync = spawnSync; // injectable for tests
 export function __setSpawnSync(fn) {
   _spawnSync = fn || spawnSync;
+}
+
+/**
+ * workdirFiles: the files a `matches_count` predicate counts over. The glob is
+ * relative to the workdir and may name a subdirectory (`src/*.mjs`); a glob
+ * that escapes the workdir resolves to no files at all (the M4 containment
+ * rule), so a task can never read outside its own workspace.
+ */
+export function workdirFiles(workdir, glob) {
+  const rel = String(glob || '').replace(/^\.\//, '');
+  const slash = rel.lastIndexOf('/');
+  const dirPart = slash === -1 ? '' : rel.slice(0, slash);
+  const namePart = slash === -1 ? rel : rel.slice(slash + 1);
+  const root = resolve(workdir);
+  const base = dirPart ? resolve(root, dirPart) : root;
+  if (base !== root && !base.startsWith(root + sep)) return [];
+  const re = globToRegExp(namePart);
+  let entries = [];
+  try {
+    entries = readdirSync(base, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const out = [];
+  for (const ent of entries) {
+    if (ent.name === 'node_modules' || ent.name === '.git') continue;
+    if (!ent.isFile()) continue;
+    if (!re.test(ent.name)) continue;
+    out.push(join(base, ent.name));
+  }
+  return out;
 }
 
 export function runVerification(workdir) {
@@ -2386,6 +2594,13 @@ export function runClaude(prompt, debugLogPath, stderrLogPath, opts = {}, ctx = 
     '--permission-mode',
     'acceptEdits',
   ];
+  // Session resume: the compact/resume lifecycle scenario continues the SAME
+  // session in a later invocation, so the plugin's per-session state (and the
+  // host's compaction) is exercised end to end. ctx.scenarioResume carries the
+  // session id into the runner's retry/repair invocations, which must continue
+  // the same session instead of starting a fresh one.
+  const resumeSession = String(opts.resume || ctx.scenarioResume || '').trim();
+  if (resumeSession) command.push('--resume', resumeSession);
   if (pluginEnabled) {
     command.push('--plugin-dir', String(pluginDir));
     // The settings file is what ENABLES the plugin for this session: the
@@ -2771,7 +2986,7 @@ export function main() {
   // told to use a plugin it does not have (ADR-0012 baseline integrity), and
   // it must name the cell's working directory so the agent cannot wander
   // into the real repository or a sibling arm's workdir.
-  const prompt = buildPrompt(task, verificationLabel, { pluginEnabled, workdir: WORKDIR });
+  let prompt = buildPrompt(task, verificationLabel, { pluginEnabled, workdir: WORKDIR });
   let exitCode = 0;
   let rawStdout = '';
   let rawStderr = '';
@@ -2790,13 +3005,34 @@ export function main() {
   let effectiveStderrLogPath = stderrLogPath;
 
   try {
-    [exitCode, rawStdout, rawStderr] = runClaude(prompt, debugLogPath, stderrLogPath, {}, ctx);
-    payload = extractResultPayload(rawStdout);
-    resultText = extractResultText(payload);
-    if (!resultText.trim()) resultText = extractResultTextFromTranscript(payload);
-    if (!rawStdout.trim()) fatalError = 'Claude output JSON is missing or empty.';
-    else if (payload === null) fatalError = 'Claude output JSON is invalid.';
-    else if (!resultText.trim()) fatalError = 'Claude result text is missing or empty.';
+    // ADR-0012 lifecycle scenario: a compact/resume cell drives the host's
+    // compaction (three invocations of the SAME session) instead of one
+    // single-shot run. The cell's result is the resumed phase's result; the
+    // phases are recorded in scenario-phases.json.
+    const scenario = scenarioPlan(task);
+    if (scenario) {
+      const run = runCompactResumeScenario({ task, prompt, ctx, outputDir: OUTPUT_DIR });
+      exitCode = run.exitCode;
+      rawStdout = run.rawStdout;
+      rawStderr = run.rawStderr;
+      payload = run.payload;
+      resultText = run.resultText;
+      fatalError = run.fatalError;
+      // The retry/repair invocations must continue the SAME session, and they
+      // must re-run the resumed phase (not phase 1).
+      if (run.sessionId) {
+        ctx.scenarioResume = run.sessionId;
+        prompt = run.phase2Prompt;
+      }
+    } else {
+      [exitCode, rawStdout, rawStderr] = runClaude(prompt, debugLogPath, stderrLogPath, {}, ctx);
+      payload = extractResultPayload(rawStdout);
+      resultText = extractResultText(payload);
+      if (!resultText.trim()) resultText = extractResultTextFromTranscript(payload);
+      if (!rawStdout.trim()) fatalError = 'Claude output JSON is missing or empty.';
+      else if (payload === null) fatalError = 'Claude output JSON is invalid.';
+      else if (!resultText.trim()) fatalError = 'Claude result text is missing or empty.';
+    }
   } catch (exc) {
     if (exc instanceof TimeoutExpired) {
       exitCode = 124;
