@@ -8,6 +8,35 @@ profile (the `claudecfg/` layout installed via `./install.sh`) to a distributabl
 Node.js ESM plugin runtime. The repository-root `CHANGELOG.md` covers the older
 profile history; entries here begin with the plugin.
 
+## [0.6.1] - 2026-11-27
+
+Verification evidence is now bound to the files it actually certified. A
+completed verification record carries a file fingerprint taken from the
+session's tracked change files, and the stop/completion gate re-reads it: an
+editor, `git checkout`, a formatter, or a build step that rewrites a tracked
+file after a passing check now invalidates that check instead of leaving it
+revision-current against a tree that no longer exists
+([ADR 0009 amendment](../../docs/adr/0009-completion-evidence-over-role-quotas.md)).
+The `FileChanged` hook event was evaluated for this and rejected: its watch
+list is literal filenames in the working directory, so a file first edited
+mid-session is never watched in time.
+
+### Added
+
+- `modules/evidence.mjs` — file fingerprint capture (`size`, `mtimeMs`, or a
+  `missing` marker) and comparison.
+- Hook regression cases `stop_guard_blocks_when_evidence_fingerprint_is_stale`
+  and `stop_guard_allows_when_evidence_fingerprint_still_matches`.
+
+### Fixed
+
+- A verification record whose tracked files changed outside the session no
+  longer satisfies the completion gate, and the block reason names the files
+  instead of claiming the check never ran. Docs paths stay outside the
+  fingerprint, matching the revision model that never bumps on a docs edit.
+  Records without a fingerprint (older sessions, record-less fixtures) keep
+  the previous behavior.
+
 ## [0.6.0] - 2026-11-27
 
 Standing context is now budgeted, the review is two-stage, and the last

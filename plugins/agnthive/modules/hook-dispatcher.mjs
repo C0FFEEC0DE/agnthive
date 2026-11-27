@@ -28,6 +28,7 @@ import {
   detectTestCmd, detectLintCmd, detectBuildCmd,
   backgroundTaskNotification, backgroundCompletionResult,
 } from './verification.mjs';
+import { snapshotFiles } from './evidence.mjs';
 import {
   extractSubagentLabel, extractSubagentScope, loadAliases, effectiveStartedRoles,
   shouldEnforceSubagentFooter, isGenericType, isAliasesLoaded, CURRENT_AGENT_ALIASES,
@@ -179,6 +180,21 @@ function handleUserPromptSubmit(parsed) {
 // channel a background run has — the launch PostToolUse carried no outcome
 // (F01) — so the pending launch record is completed here. A notification that
 // belongs to no tracked verification launch writes nothing.
+// ADR-0009 amendment (2026-11-27): bind a completed verification record to the
+// tracked files it actually saw. The gate re-reads these fingerprints, so an
+// out-of-session rewrite between the check and Stop makes the record stale.
+function withEvidenceFingerprint(recordEvent, state, cwd) {
+  const record = recordEvent && recordEvent.value;
+  if (!record || typeof record !== 'object') return recordEvent;
+  // Docs edits never bump the revision, so they must not be part of the
+  // fingerprint either: a docs phase after a passing run would otherwise
+  // invalidate evidence the revision model deliberately keeps current.
+  const tracked = (Array.isArray(state?.files) ? state.files : []).filter((p) => !isDocsPath(p));
+  if (tracked.length === 0) return recordEvent;
+  record.files = snapshotFiles(tracked, record.cwd || cwd || '');
+  return recordEvent;
+}
+
 function recordBackgroundVerificationCompletion(parsed, paths, state) {
   const prompt = parsed.data?.prompt ?? '';
   if (typeof prompt !== 'string' || !prompt.includes('<task-notification>')) return null;
@@ -189,7 +205,7 @@ function recordBackgroundVerificationCompletion(parsed, paths, state) {
     cwd: parsed.cwd ?? state?.cwd ?? '',
   });
   if (!result) return null;
-  const recordEvent = verificationAppendEvent(result);
+  const recordEvent = withEvidenceFingerprint(verificationAppendEvent(result), state, parsed.cwd);
   if (recordEvent) safeAppend(paths, 'append', recordEvent);
   if (result.fields) persistPatch(parsed, result.fields);
   return result;
@@ -323,7 +339,7 @@ function handlePostToolUseBash(parsed) {
     }
     return passthrough();
   }
-  const recordEvent = verificationAppendEvent(result);
+  const recordEvent = withEvidenceFingerprint(verificationAppendEvent(result), state, parsed.cwd);
   if (recordEvent) safeAppend(statePathsFor(parsed), 'append', recordEvent);
   if (result.fields) persistPatch(parsed, result.fields);
   return result.message ? additionalContext(result.message, 'PostToolUse') : passthrough();
@@ -402,7 +418,7 @@ function handlePostToolUseFailure(parsed) {
     }
     return passthrough();
   }
-  const recordEvent = verificationAppendEvent(result);
+  const recordEvent = withEvidenceFingerprint(verificationAppendEvent(result), state, parsed.cwd);
   if (recordEvent) safeAppend(statePathsFor(parsed), 'append', recordEvent);
   if (result.fields) persistPatch(parsed, result.fields);
   return result.message ? additionalContext(result.message, 'PostToolUseFailure') : passthrough();

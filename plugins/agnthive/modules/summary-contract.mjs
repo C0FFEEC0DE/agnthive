@@ -4,13 +4,16 @@
 // message_has_line_prefix, message_has_any_line_prefix, message_mentions_*,
 // message_reports_no_changes, block_checklist_*, build_block_checklist,
 // session_block_reason, session_agent_enforcement_reason,
-// session_manager_idle_reason, is_docs_path. Pure module: operates on a state
-// object and message string; the dispatcher supplies transcript-derived inputs.
+// session_manager_idle_reason, is_docs_path. Mostly pure: operates on a state
+// object and message string, and the dispatcher supplies transcript-derived
+// inputs. The one filesystem read is the ADR-0009 amendment's fingerprint check
+// (`evidence.mjs`), which only runs for records that carry a snapshot.
 import { taskTypeRequiresImplementationSummary } from './workflow.mjs';
 import { CURRENT_AGENT_ALIASES } from './agents.mjs';
 import { recordLoopBlock, loopBlockFields } from './workflow.mjs';
 import { formatSubagentList, formatSubagentGroup } from './agents.mjs';
 import { currentRevision } from './verification.mjs';
+import { fingerprintsMatch, fingerprintMismatches } from './evidence.mjs';
 
 // --- footer hint ----------------------------------------------------------
 
@@ -185,7 +188,8 @@ export function buildBlockChecklist(prefix, finalReason, message, state) {
 // 'passed' result certifies the current tree only when it completed at the
 // then-current revision, no tracked edit lands between its start and its
 // completion (startedRevision === completedRevision), the record is still
-// current at gate time, and, when both sides carry a cwd, it ran in the
+// current at gate time, its file fingerprint still matches the tree
+// (ADR-0009 amendment), and, when both sides carry a cwd, it ran in the
 // tracked cwd/worktree (results from another worktree do not certify the
 // integrated diff). Records are the authoritative evidence whenever
 // state.verification is non-empty: honoring the legacy *_ok flags of a
@@ -206,27 +210,56 @@ function legacySuccessfulVerification(state) {
   return false;
 }
 
-function recordBasedVerification(state, records) {
-  const current = currentRevision(state);
-  // cwd binding only when the state carries a cwd: a synthetic gate state
-  // without one keeps deciding on revisions alone. A record with a different
-  // cwd never certifies this session's tree (plan 04: worktrees are not mixed).
-  const cwdBound = typeof state?.cwd === 'string' && state.cwd !== ''
+// cwd binding only when the state carries a cwd: a synthetic gate state
+// without one keeps deciding on revisions alone. A record with a different
+// cwd never certifies this session's tree (plan 04: worktrees are not mixed).
+function cwdBinding(state) {
+  return typeof state?.cwd === 'string' && state.cwd !== ''
     ? (r) => r.cwd === state.cwd
     : () => true;
-  const currentPass = (kind) => records.some((r) => {
-    if (!r || typeof r !== 'object') return false;
-    return r.kind === kind
-      && r.status === 'passed'
-      && Number.isFinite(r.startedRevision)
-      && Number.isFinite(r.completedRevision)
-      && r.startedRevision === r.completedRevision
-      && r.completedRevision === current
-      && cwdBound(r);
-  });
+}
+
+// Revision/cwd currency, without the fingerprint half.
+function recordAtCurrentRevision(r, current, cwdBound) {
+  if (!r || typeof r !== 'object') return false;
+  return Number.isFinite(r.startedRevision)
+    && Number.isFinite(r.completedRevision)
+    && r.startedRevision === r.completedRevision
+    && r.completedRevision === current
+    && cwdBound(r);
+}
+
+function recordBasedVerification(state, records) {
+  const current = currentRevision(state);
+  const cwdBound = cwdBinding(state);
+  const currentPass = (kind) => records.some((r) => r
+    && r.kind === kind
+    && r.status === 'passed'
+    && recordAtCurrentRevision(r, current, cwdBound)
+    && fingerprintsMatch(r.files));
   if (currentPass('test')) return true;
   if (!state?.detected_test_command && (currentPass('lint') || currentPass('build'))) return true;
   return false;
+}
+
+// Paths whose later write invalidated an otherwise-current passing record.
+// Separated from `successfulVerification` so the block reason can say the
+// check ran and passed instead of claiming it never happened.
+export function staleVerificationFiles(state) {
+  const records = Array.isArray(state?.verification) ? state.verification : [];
+  if (records.length === 0) return [];
+  const current = currentRevision(state);
+  const cwdBound = cwdBinding(state);
+  const relevant = (r) => r.kind === 'test'
+    || (!state?.detected_test_command && (r.kind === 'lint' || r.kind === 'build'));
+  for (const r of records) {
+    if (!r || typeof r !== 'object') continue;
+    if (relevant(r) && r.status === 'passed' && recordAtCurrentRevision(r, current, cwdBound)) {
+      const changed = fingerprintMismatches(r.files);
+      if (changed.length > 0) return changed;
+    }
+  }
+  return [];
 }
 
 export function sessionBlockReason(state) {
@@ -263,6 +296,12 @@ export function sessionBlockReason(state) {
     return `Code or config changed, but the latest build command failed in this session (${lastBuild || 'build command'}). Fix the failure and rerun it successfully before stopping.`;
   }
   if (codeChanged && hasDetectedVerification && !hasBehaviorVerification) {
+    const staleFiles = staleVerificationFiles(state);
+    if (staleFiles.length > 0) {
+      const shown = staleFiles.slice(0, 3).join(', ');
+      const more = staleFiles.length > 3 ? ` (+${staleFiles.length - 3} more)` : '';
+      return `Verification ran and passed in this session, but these tracked files changed afterwards: ${shown}${more}. A write from outside the session invalidates earlier evidence (ADR 0009) — rerun the verification before stopping.`;
+    }
     if (detectedTest) {
       return `Code or config changed, and this repo has a detected test command (${detectedTest}), but no successful test command was recorded in this session. Run the detected tests before stopping.`;
     }

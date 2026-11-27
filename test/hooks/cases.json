@@ -1357,6 +1357,29 @@
     "stdout_jq": ".hookSpecificOutput.hookEventName == \"PermissionDenied\" and (.hookSpecificOutput.retry == true) and (has(\"retry\") | not)"
   },
   {
+    "name": "post_bash_records_file_fingerprint_on_completion",
+    "script": "post-bash.sh",
+    "stdin": "test/hooks/fixtures/post_bash_test_pass_tracked.json",
+    "seed_state": "test/hooks/fixtures/state_post_bash_fingerprint_seed.json",
+    "expect_exit": 0,
+    "state_jq": ".verification[0].status == \"passed\" and (.verification[0].files | length) == 1 and (.verification[0].files[0].path | contains(\"state_post_bash_seed.json\")) and (.verification[0].files[0] | has(\"size\")) and ((.verification[0].files[0] | has(\"missing\")) | not)"
+  },
+  {
+    "name": "stop_guard_blocks_when_evidence_fingerprint_is_stale",
+    "script": "stop-guard.sh",
+    "stdin": "test/hooks/fixtures/stop_guard_evidence_fingerprint.json",
+    "seed_state": "test/hooks/fixtures/state_stop_guard_stale_fingerprint.json",
+    "expect_exit": 0,
+    "stdout_jq": ".decision == \"block\" and (.reason | contains(\"changed afterwards\")) and (.reason | contains(\"no-such-evidence-file.mjs\"))"
+  },
+  {
+    "name": "stop_guard_allows_when_evidence_fingerprint_still_matches",
+    "script": "stop-guard.sh",
+    "stdin": "test/hooks/fixtures/stop_guard_evidence_fingerprint.json",
+    "seed_state": "test/hooks/fixtures/state_stop_guard_fresh_fingerprint.json",
+    "expect_exit": 0
+  },
+  {
     "name": "compat_subagent_stop_delivers_valid_footer_passthrough",
     "script": "subagent-stop-guard.sh",
     "stdin": "test/compatibility/payloads/compat_subagent_stop_return.json",

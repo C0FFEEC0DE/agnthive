@@ -1,6 +1,6 @@
 # ADR 0009: Completion evidence instead of role quotas and footer gates
 
-- **Status:** Accepted; implemented in 0.4.0 (working tree); host canaries pending (plan task 14); legacy removal LANDED in 0.5.0 (plan task 16) — the mandatory role quotas are gone and completion is decided by current evidence.
+- **Status:** Accepted; implemented in 0.4.0 (working tree); host canaries pending (plan task 14); legacy removal LANDED in 0.5.0 (plan task 16) — the mandatory role quotas are gone and completion is decided by current evidence. Amended 2026-11-27: file fingerprints enforce the evidence-freshness half of the decision (see the amendment below).
 - **Date:** 2026-10-19.
 - **Decides:** Completion depends on current verification and completed review where required, not agent starts, alias mentions, or footer formatting.
 - **Relationship:** Replaces mandatory footer gates from [ADR 0001](0001-scope-subagent-stop-footer-to-agnthive-specialists.md) in lean only; legacy behavior remains during migration. Retains the bounded-loop policy of [ADR 0003](0003-honor-stop-hook-active.md).
@@ -40,3 +40,13 @@ Keeping roles as a proxy for success or treating no error as successful completi
 ## Acceptance evidence
 
 Regression cases cover background launch/completion, test→edit→stop, edits during tests, separate worktrees, reviewer start without completion, stale review, false handoff text, unknown outcomes, and loop escape preserving failure. Benchmarks must read the same structured evidence rather than reconstruct success from prose.
+
+## Amendment 2026-11-27: fingerprint freshness
+
+The decision above requires shell and external edits to be accounted for "through a checkpoint/fingerprint or conservative fallback". The revision counter plus `fs_revision_hint` implement the conservative fallback for changes Claude itself makes (Edit/Write, and mutating Bash commands). Neither can see a write from outside the session: an editor, `git checkout`, a formatter, or a build step that rewrites a tracked file between a passing check and Stop leaves the record revision-current while the tree it certified no longer exists.
+
+Completed verification records therefore carry a file fingerprint — `files: [{path, size, mtimeMs}]`, or `{path, missing: true}` for a path that could not be stat'ed — captured from `state.files` when the record completes. A record certifies the current tree only if every fingerprinted path still matches its recorded size and mtime; a missing-then-present or present-then-missing path is a mismatch. Records without a fingerprint (older sessions, record-less fixtures) keep the pre-amendment behavior.
+
+This is a freshness check, not tamper-proofing: it detects a later write, not a deliberate restoration of mtime, and it does not replace revision scoping. The host's `FileChanged` hook event was evaluated and rejected for this purpose: its watch list is built from literal filenames in the working directory (or absolute `watchPaths` seeded at SessionStart/CwdChanged), so a file first edited mid-session is never watched in time. A gate-time fingerprint works on every host version.
+
+Two boundaries follow from the existing revision model. Docs paths are excluded from the snapshot, because a docs edit never bumps the revision and the contract allows a docs phase after a passing run. And the snapshot covers only files the session edited through `Edit`/`Write`: a file rewritten by a mutating Bash command is represented by the conservative revision bump, not by a fingerprint, so an out-of-session rewrite of such a file between the check and Stop is not detected by this check alone. Closing that gap needs command-to-file attribution, which the command policy does not attempt.

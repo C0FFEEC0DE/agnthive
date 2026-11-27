@@ -1,6 +1,6 @@
 {
   "name": "agnthive",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "private": true,
   "type": "module",
   "description": "Claude Code plugin and Node.js hook runtime for a hook-gated multi-agent SDLC profile.",

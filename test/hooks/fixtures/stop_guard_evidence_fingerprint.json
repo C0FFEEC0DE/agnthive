@@ -1,0 +1,4 @@
+{
+  "session_id": "case-stop-guard-fingerprint",
+  "last_assistant_message": "Verification status: node --test passed.\nReview outcome: not required.\nChanged files: test/hooks/fixtures/no-such-evidence-file.mjs.\nRemaining risks: none."
+}

@@ -1,0 +1,8 @@
+{
+  "session_id": "case-post-bash-fingerprint",
+  "tool_name": "Bash",
+  "tool_use_id": "toolu_fingerprint_producer",
+  "cwd": "",
+  "tool_input": { "command": "pytest -q" },
+  "tool_response": { "stdout": "3 passed in 0.2s", "stderr": "", "exitCode": 0, "interrupted": false }
+}
