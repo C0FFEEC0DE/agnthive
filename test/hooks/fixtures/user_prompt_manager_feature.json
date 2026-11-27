@@ -1,4 +1,4 @@
 {
   "session_id": "case-manager-feature",
-  "prompt": "@m implement new feature: add orchestration logging to the hook workflow"
+  "prompt": "/manager implement new feature: add orchestration logging to the hook workflow"
 }

@@ -26,7 +26,7 @@
     "stdin": "test/hooks/fixtures/pre_tool_use_edit_dispatch.json",
     "seed_state": "test/hooks/fixtures/state_dispatch_enforced_pending.json",
     "expect_exit": 0,
-    "stdout_jq": ".hookSpecificOutput.permissionDecision == \"deny\" and (.hookSpecificOutput.permissionDecisionReason | contains(\"Dispatch contract enforced\")) and (.hookSpecificOutput.permissionDecisionReason | contains(\"@a\"))"
+    "stdout_jq": ".hookSpecificOutput.permissionDecision == \"deny\" and (.hookSpecificOutput.permissionDecisionReason | contains(\"Dispatch contract enforced\")) and (.hookSpecificOutput.permissionDecisionReason | contains(\"@cr\"))"
   },
   {
     "name": "pre_tool_use_editwrite_allowed_after_dispatch",
@@ -225,11 +225,12 @@
     ]
   },
   {
-    "name": "subagent_stop_blocks_without_concrete_outcome_prefix",
+    "name": "subagent_stop_allows_missing_outcome_prefix_as_reporting_guidance",
     "script": "subagent-stop-guard.sh",
     "stdin": "test/hooks/fixtures/subagent_stop_invalid_outcome.json",
     "expect_exit": 0,
-    "stdout_jq": ".decision == \"block\" and (.reason | contains(\"Outcome:\")) and (.reason | contains(\"`\") | not)"
+    "stdout_jq": "(has(\"decision\") | not) and .hookSpecificOutput == null",
+    "state_jq": "(.agents | has(\"_session\")) and (.subagent_stop_blocks | length) == 0"
   },
   {
     "name": "subagent_stop_allows_loose_concrete_outcome_keywords",
@@ -243,28 +244,31 @@
     "script": "subagent-stop-guard.sh",
     "stdin": "test/hooks/fixtures/subagent_stop_no_message.json",
     "expect_exit": 0,
-    "stdout_jq": ".decision == \"block\" and (.reason | contains(\"No assistant summary message\"))"
+    "stdout_jq": ".decision == \"block\" and (.reason | contains(\"No assistant summary message\")) and (.errorDetails | contains(\"- [FAIL] Concrete outcome\")) and (.errorDetails | contains(\"- [FAIL] Closure line\")) and (.errorDetails | contains(\"### Minimal Valid Template\")) and (.errorDetails | contains(\"Next step:\"))"
   },
   {
-    "name": "subagent_stop_blocks_without_changed_files",
+    "name": "subagent_stop_allows_missing_changed_files_as_reporting_guidance",
     "script": "subagent-stop-guard.sh",
     "stdin": "test/hooks/fixtures/subagent_stop_missing_files.json",
     "expect_exit": 0,
-    "stdout_jq": ".decision == \"block\" and (.reason | contains(\"Changed files:\")) and (.reason | contains(\"`\") | not)"
+    "stdout_jq": "(has(\"decision\") | not) and .hookSpecificOutput == null",
+    "state_jq": "(.agents | has(\"agent-xyz\")) and (.subagent_stop_blocks | length) == 0"
   },
   {
-    "name": "subagent_stop_blocks_without_verification_status",
+    "name": "subagent_stop_allows_missing_verification_status_as_reporting_guidance",
     "script": "subagent-stop-guard.sh",
     "stdin": "test/hooks/fixtures/subagent_stop_missing_verification.json",
     "expect_exit": 0,
-    "stdout_jq": ".decision == \"block\" and (.reason | contains(\"Verification status:\")) and (.reason | contains(\"`\") | not)"
+    "stdout_jq": "(has(\"decision\") | not) and .hookSpecificOutput == null",
+    "state_jq": "(.agents | has(\"_session\")) and (.subagent_stop_blocks | length) == 0"
   },
   {
-    "name": "subagent_stop_blocks_without_risks_or_next_step",
+    "name": "subagent_stop_allows_missing_risks_or_next_step_as_reporting_guidance",
     "script": "subagent-stop-guard.sh",
     "stdin": "test/hooks/fixtures/subagent_stop_missing_risks_or_next.json",
     "expect_exit": 0,
-    "stdout_jq": ".decision == \"block\" and (.reason | contains(\"Remaining risks:\")) and (.reason | contains(\"Next step:\")) and (.reason | contains(\"`\") | not) and (.errorDetails | contains(\"- [PASS] Concrete outcome\")) and (.errorDetails | contains(\"- [FAIL] Closure line\")) and (.errorDetails | contains(\"### Minimal Valid Template\"))"
+    "stdout_jq": "(has(\"decision\") | not) and .hookSpecificOutput == null",
+    "state_jq": "(.agents | has(\"_session\")) and (.subagent_stop_blocks | length) == 0"
   },
   {
     "name": "subagent_stop_allows_complete_summary",
@@ -287,12 +291,13 @@
     "state_jq": ".subagent_stop_blocks | length == 0"
   },
   {
-    "name": "subagent_stop_escalates_repeated_same_block_reason",
+    "name": "subagent_stop_escalates_repeated_missing_message_block",
     "script": "subagent-stop-guard.sh",
-    "stdin": "test/hooks/fixtures/subagent_stop_missing_files.json",
-    "seed_state": "test/hooks/fixtures/state_subagent_stop_repeated_files_block.json",
+    "stdin": "test/hooks/fixtures/subagent_stop_no_message.json",
+    "seed_state": "test/hooks/fixtures/state_subagent_stop_repeated_no_message.json",
     "expect_exit": 0,
-    "stdout_jq": "((has(\"decision\") | not)) and .hardStop == true and .continue == false and (.stopReason | contains(\"Repeated stop-block loop detected\"))"
+    "stdout_jq": "((has(\"decision\") | not)) and .hardStop == true and .continue == false and (.stopReason | contains(\"Repeated stop-block loop detected\"))",
+    "state_jq": ".subagent_stop_blocks._session.count == 3"
   },
   {
     "name": "subagent_stop_passthrough_for_generic_type",
@@ -307,14 +312,16 @@
     "stdin": "test/hooks/fixtures/subagent_stop_agent_b_same_block.json",
     "seed_state": "test/hooks/fixtures/state_subagent_stop_agent_a_count_2.json",
     "expect_exit": 0,
-    "stdout_jq": ".decision == \"block\" and .hardStop == false"
+    "stdout_jq": ".decision == \"block\" and .hardStop == false and (.reason | contains(\"No assistant summary message\"))",
+    "state_jq": ".subagent_stop_blocks.agentA.count == 2 and .subagent_stop_blocks.agentB.count == 1"
   },
   {
-    "name": "subagent_stop_namespaced_specialist_is_enforced",
+    "name": "subagent_stop_namespaced_specialist_passes_and_completes_registry",
     "script": "subagent-stop-guard.sh",
     "stdin": "test/hooks/fixtures/subagent_stop_namespaced_cr.json",
     "expect_exit": 0,
-    "stdout_jq": ".decision == \"block\" and (.reason | contains(\"Changed files:\"))"
+    "stdout_jq": "(has(\"decision\") | not) and .hookSpecificOutput == null",
+    "state_jq": "(.agents | has(\"agentNS\")) and (.subagent_stop_blocks | length) == 0"
   },
   {
     "name": "subagent_stop_foreign_namespace_passes_through",
@@ -344,8 +351,8 @@
     "script": "user-prompt-submit.sh",
     "stdin": "test/hooks/fixtures/user_prompt_feature.json",
     "expect_exit": 0,
-    "stdout_jq": ".hookSpecificOutput.hookEventName == \"UserPromptSubmit\" and (.hookSpecificOutput.additionalContext | contains(\"successful verification or @t\"))",
-    "state_jq": ".task_type == \"feature\" and ((.required_subagents | sort) == [\"cr\", \"t\"]) and .required_subagent_any_of == [[\"e\", \"a\"]] and .docs_required == true"
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"UserPromptSubmit\" and (.hookSpecificOutput.additionalContext | contains(\"Treat this as a feature workflow.\")) and (.hookSpecificOutput.additionalContext | contains(\"Completion requires current verification evidence\"))",
+    "state_jq": ".task_type == \"feature\" and .required_subagents == [\"cr\"] and .required_subagent_any_of == [] and .docs_required == true"
   },
   {
     "name": "user_prompt_submit_leaves_informational_model_question_as_other",
@@ -366,7 +373,7 @@
     "script": "user-prompt-submit.sh",
     "stdin": "test/hooks/fixtures/user_prompt_tech_support_bug_word.json",
     "expect_exit": 0,
-    "stdout_jq": ".hookSpecificOutput.hookEventName == \"UserPromptSubmit\" and (.hookSpecificOutput.additionalContext | contains(\"support workflow\")) and (.hookSpecificOutput.additionalContext | contains(\"No workflow-specific specialist handoffs are required\"))",
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"UserPromptSubmit\" and (.hookSpecificOutput.additionalContext | contains(\"support workflow\")) and (.hookSpecificOutput.additionalContext | contains(\"Completion requires current verification evidence\"))",
     "state_jq": ".task_type == \"support\" and .required_subagents == [] and .required_subagent_any_of == []"
   },
   {
@@ -374,16 +381,16 @@
     "script": "user-prompt-submit.sh",
     "stdin": "test/hooks/fixtures/user_prompt_models_feature.json",
     "expect_exit": 0,
-    "stdout_jq": ".hookSpecificOutput.hookEventName == \"UserPromptSubmit\" and (.hookSpecificOutput.additionalContext | contains(\"successful verification or @t\"))",
-    "state_jq": ".task_type == \"feature\" and ((.required_subagents | sort) == [\"cr\", \"t\"]) and .required_subagent_any_of == [[\"e\", \"a\"]] and .docs_required == true"
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"UserPromptSubmit\" and (.hookSpecificOutput.additionalContext | contains(\"Treat this as a feature workflow.\")) and (.hookSpecificOutput.additionalContext | contains(\"Completion requires current verification evidence\"))",
+    "state_jq": ".task_type == \"feature\" and .required_subagents == [\"cr\"] and .required_subagent_any_of == [] and .docs_required == true"
   },
   {
     "name": "user_prompt_submit_classifies_model_advice_plus_repo_change_as_feature",
     "script": "user-prompt-submit.sh",
     "stdin": "test/hooks/fixtures/user_prompt_models_mixed_feature.json",
     "expect_exit": 0,
-    "stdout_jq": ".hookSpecificOutput.hookEventName == \"UserPromptSubmit\" and (.hookSpecificOutput.additionalContext | contains(\"successful verification or @t\"))",
-    "state_jq": ".task_type == \"feature\" and ((.required_subagents | sort) == [\"cr\", \"t\"]) and .required_subagent_any_of == [[\"e\", \"a\"]] and .docs_required == true"
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"UserPromptSubmit\" and (.hookSpecificOutput.additionalContext | contains(\"Treat this as a feature workflow.\")) and (.hookSpecificOutput.additionalContext | contains(\"Completion requires current verification evidence\"))",
+    "state_jq": ".task_type == \"feature\" and .required_subagents == [\"cr\"] and .required_subagent_any_of == [] and .docs_required == true"
   },
   {
     "name": "user_prompt_submit_leaves_model_comparison_for_repo_as_other",
@@ -413,48 +420,48 @@
     "script": "user-prompt-submit.sh",
     "stdin": "test/hooks/fixtures/user_prompt_models_docs.json",
     "expect_exit": 0,
-    "stdout_jq": ".hookSpecificOutput.hookEventName == \"UserPromptSubmit\" and (.hookSpecificOutput.additionalContext | contains(\"@doc\"))",
-    "state_jq": ".task_type == \"docs\" and .required_subagents == [\"doc\"] and .required_subagent_any_of == [] and .docs_required == true"
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"UserPromptSubmit\" and (.hookSpecificOutput.additionalContext | contains(\"Treat this as a docs workflow.\")) and (.hookSpecificOutput.additionalContext | contains(\"Completion requires current verification evidence\"))",
+    "state_jq": ".task_type == \"docs\" and .required_subagents == [] and .required_subagent_any_of == [] and .docs_required == true"
   },
   {
     "name": "user_prompt_submit_classifies_mixed_intent_as_bugfix",
     "script": "user-prompt-submit.sh",
     "stdin": "test/hooks/fixtures/user_prompt_mixed_intent.json",
     "expect_exit": 0,
-    "stdout_jq": ".hookSpecificOutput.hookEventName == \"UserPromptSubmit\" and (.hookSpecificOutput.additionalContext | contains(\"successful verification or @t\"))",
-    "state_jq": ".task_type == \"bugfix\" and ((.required_subagents | sort) == [\"cr\", \"t\"]) and .required_subagent_any_of == [[\"bug\", \"e\", \"dbg\"]] and .docs_required == true"
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"UserPromptSubmit\" and (.hookSpecificOutput.additionalContext | contains(\"Treat this as a bugfix workflow.\")) and (.hookSpecificOutput.additionalContext | contains(\"Completion requires current verification evidence\"))",
+    "state_jq": ".task_type == \"bugfix\" and .required_subagents == [\"cr\"] and .required_subagent_any_of == [] and .docs_required == true"
   },
   {
     "name": "user_prompt_submit_classifies_bugfix",
     "script": "user-prompt-submit.sh",
     "stdin": "test/hooks/fixtures/user_prompt_bugfix.json",
     "expect_exit": 0,
-    "stdout_jq": ".hookSpecificOutput.hookEventName == \"UserPromptSubmit\" and (.hookSpecificOutput.additionalContext | contains(\"successful verification or @t, plus @cr and one of @bug/@e/@dbg\"))",
-    "state_jq": ".task_type == \"bugfix\" and ((.required_subagents | sort) == [\"cr\", \"t\"]) and .required_subagent_any_of == [[\"bug\", \"e\", \"dbg\"]] and .docs_required == true"
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"UserPromptSubmit\" and (.hookSpecificOutput.additionalContext | contains(\"Treat this as a bugfix workflow.\")) and (.hookSpecificOutput.additionalContext | contains(\"Completion requires current verification evidence\"))",
+    "state_jq": ".task_type == \"bugfix\" and .required_subagents == [\"cr\"] and .required_subagent_any_of == [] and .docs_required == true"
   },
   {
     "name": "user_prompt_submit_classifies_russian_bugfix",
     "script": "user-prompt-submit.sh",
     "stdin": "test/hooks/fixtures/user_prompt_bugfix_ru.json",
     "expect_exit": 0,
-    "stdout_jq": ".hookSpecificOutput.hookEventName == \"UserPromptSubmit\" and (.hookSpecificOutput.additionalContext | contains(\"successful verification or @t, plus @cr and one of @bug/@e/@dbg\"))",
-    "state_jq": ".task_type == \"bugfix\" and ((.required_subagents | sort) == [\"cr\", \"t\"]) and .required_subagent_any_of == [[\"bug\", \"e\", \"dbg\"]] and .docs_required == true"
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"UserPromptSubmit\" and (.hookSpecificOutput.additionalContext | contains(\"Treat this as a bugfix workflow.\")) and (.hookSpecificOutput.additionalContext | contains(\"Completion requires current verification evidence\"))",
+    "state_jq": ".task_type == \"bugfix\" and .required_subagents == [\"cr\"] and .required_subagent_any_of == [] and .docs_required == true"
   },
   {
     "name": "user_prompt_submit_classifies_refactor",
     "script": "user-prompt-submit.sh",
     "stdin": "test/hooks/fixtures/user_prompt_refactor.json",
     "expect_exit": 0,
-    "stdout_jq": ".hookSpecificOutput.hookEventName == \"UserPromptSubmit\" and (.hookSpecificOutput.additionalContext | contains(\"successful verification or @t, plus @cr and one of @a/@e\"))",
-    "state_jq": ".task_type == \"refactor\" and ((.required_subagents | sort) == [\"cr\", \"t\"]) and .required_subagent_any_of == [[\"a\", \"e\"]] and .docs_required == true"
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"UserPromptSubmit\" and (.hookSpecificOutput.additionalContext | contains(\"Treat this as a refactor workflow.\")) and (.hookSpecificOutput.additionalContext | contains(\"Completion requires current verification evidence\"))",
+    "state_jq": ".task_type == \"refactor\" and .required_subagents == [\"cr\"] and .required_subagent_any_of == [] and .docs_required == true"
   },
   {
     "name": "user_prompt_submit_prefers_benchmark_refactor_override_over_bugfix_regex_hits",
     "script": "user-prompt-submit.sh",
     "stdin": "test/hooks/fixtures/user_prompt_benchmark_refactor_override.json",
     "expect_exit": 0,
-    "stdout_jq": ".hookSpecificOutput.hookEventName == \"UserPromptSubmit\" and (.hookSpecificOutput.additionalContext | contains(\"Treat this as a refactor workflow.\")) and (.hookSpecificOutput.additionalContext | contains(\"@a/@e\"))",
-    "state_jq": ".task_type == \"refactor\" and ((.required_subagents | sort) == [\"cr\", \"t\"]) and .required_subagent_any_of == [[\"a\", \"e\"]] and .docs_required == true"
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"UserPromptSubmit\" and (.hookSpecificOutput.additionalContext | contains(\"Treat this as a refactor workflow.\")) and (.hookSpecificOutput.additionalContext | contains(\"Completion requires current verification evidence\"))",
+    "state_jq": ".task_type == \"refactor\" and .required_subagents == [\"cr\"] and .required_subagent_any_of == [] and .docs_required == true"
   },
   {
     "name": "user_prompt_submit_classifies_review",
@@ -469,16 +476,16 @@
     "script": "user-prompt-submit.sh",
     "stdin": "test/hooks/fixtures/user_prompt_docs.json",
     "expect_exit": 0,
-    "stdout_jq": ".hookSpecificOutput.hookEventName == \"UserPromptSubmit\" and (.hookSpecificOutput.additionalContext | contains(\"@doc\"))",
-    "state_jq": ".task_type == \"docs\" and .required_subagents == [\"doc\"] and .required_subagent_any_of == [] and .docs_required == true"
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"UserPromptSubmit\" and (.hookSpecificOutput.additionalContext | contains(\"Treat this as a docs workflow.\")) and (.hookSpecificOutput.additionalContext | contains(\"Completion requires current verification evidence\"))",
+    "state_jq": ".task_type == \"docs\" and .required_subagents == [] and .required_subagent_any_of == [] and .docs_required == true"
   },
   {
     "name": "user_prompt_submit_enables_manager_led_orchestration_for_feature",
     "script": "user-prompt-submit.sh",
     "stdin": "test/hooks/fixtures/user_prompt_manager_feature.json",
     "expect_exit": 0,
-    "stdout_jq": ".hookSpecificOutput.hookEventName == \"UserPromptSubmit\" and (.hookSpecificOutput.additionalContext | contains(\"Manager-led orchestration is active\")) and (.hookSpecificOutput.additionalContext | contains(\"successful verification or @t, plus @cr and one of @e/@a\"))",
-    "state_jq": ".task_type == \"feature\" and .manager_mode == \"orchestrate\" and ((.required_subagents | sort) == [\"cr\", \"t\"]) and .required_subagent_any_of == [[\"e\", \"a\"]]"
+    "stdout_jq": ".hookSpecificOutput.hookEventName == \"UserPromptSubmit\" and (.hookSpecificOutput.additionalContext | contains(\"Treat this as a feature workflow.\")) and (.hookSpecificOutput.additionalContext | contains(\"Completion requires current verification evidence\"))",
+    "state_jq": ".task_type == \"feature\" and .manager_mode == \"orchestrate\" and .required_subagents == [\"cr\"] and .required_subagent_any_of == []"
   },
   {
     "name": "user_prompt_submit_supports_explicit_manager_plan_only_mode",
@@ -493,14 +500,14 @@
     "script": "subagent-start.sh",
     "stdin": "test/hooks/fixtures/subagent_start_designer_alias.json",
     "expect_exit": 0,
-    "state_jq": ".subagents_started == [\"a\"]"
+    "state_jq": ".subagents_started == [\"design\"]"
   },
   {
     "name": "subagent_start_canonicalizes_code_reviewer_alias",
     "script": "subagent-start.sh",
     "stdin": "test/hooks/fixtures/subagent_start_code_reviewer.json",
     "expect_exit": 0,
-    "stdout_jq": ".hookSpecificOutput.hookEventName == \"SubagentStart\" and (.hookSpecificOutput.additionalContext | contains(\"@cr\"))",
+    "stdout_jq": ".hookSpecificOutput == null",
     "state_jq": ".subagent_start_count == 1 and .subagents_started == [\"cr\"]"
   },
   {
@@ -508,23 +515,23 @@
     "script": "subagent-start.sh",
     "stdin": "test/hooks/fixtures/subagent_start_tool_input_name_over_type.json",
     "expect_exit": 0,
-    "stdout_jq": ".hookSpecificOutput.hookEventName == \"SubagentStart\" and (.hookSpecificOutput.additionalContext | contains(\"@t\"))",
-    "state_jq": ".subagent_start_count == 1 and .subagents_started == [\"t\"]"
+    "stdout_jq": ".hookSpecificOutput == null",
+    "state_jq": ".subagent_start_count == 1 and .subagents_started == [\"tester\"]"
   },
   {
     "name": "subagent_start_prefers_tool_input_subagent_type_over_agent_type",
     "script": "subagent-start.sh",
     "stdin": "test/hooks/fixtures/subagent_start_tool_input_subagent_type_over_agent_type.json",
     "expect_exit": 0,
-    "stdout_jq": ".hookSpecificOutput.hookEventName == \"SubagentStart\" and (.hookSpecificOutput.additionalContext | contains(\"@t\"))",
-    "state_jq": ".subagent_start_count == 1 and .subagents_started == [\"t\"]"
+    "stdout_jq": ".hookSpecificOutput == null",
+    "state_jq": ".subagent_start_count == 1 and .subagents_started == [\"tester\"]"
   },
   {
     "name": "subagent_start_supports_camelcase_subagent_type_over_agent_type",
     "script": "subagent-start.sh",
     "stdin": "test/hooks/fixtures/subagent_start_camelcase_subagent_type_over_agent_type.json",
     "expect_exit": 0,
-    "stdout_jq": ".hookSpecificOutput.hookEventName == \"SubagentStart\" and (.hookSpecificOutput.additionalContext | contains(\"@e\"))",
+    "stdout_jq": ".hookSpecificOutput == null",
     "state_jq": ".subagent_start_count == 1 and .subagents_started == [\"e\"]"
   },
   {
@@ -532,17 +539,17 @@
     "script": "subagent-start.sh",
     "stdin": "test/hooks/fixtures/subagent_start_top_level_subagent_type_over_type.json",
     "expect_exit": 0,
-    "stdout_jq": ".hookSpecificOutput.hookEventName == \"SubagentStart\" and (.hookSpecificOutput.additionalContext | contains(\"@a\"))",
-    "state_jq": ".subagent_start_count == 1 and .subagents_started == [\"a\"]"
+    "stdout_jq": ".hookSpecificOutput == null",
+    "state_jq": ".subagent_start_count == 1 and .subagents_started == [\"architect\"]"
   },
   {
     "name": "subagent_start_keeps_started_roles_unique",
     "script": "subagent-start.sh",
-    "stdin": "test/hooks/fixtures/subagent_start_duplicate_tester.json",
-    "seed_state": "test/hooks/fixtures/state_subagent_start_duplicate_tester.json",
+    "stdin": "test/hooks/fixtures/subagent_start_duplicate_explorer.json",
+    "seed_state": "test/hooks/fixtures/state_subagent_start_duplicate_explorer.json",
     "expect_exit": 0,
-    "stdout_jq": ".hookSpecificOutput.hookEventName == \"SubagentStart\" and (.hookSpecificOutput.additionalContext | contains(\"@t\"))",
-    "state_jq": ".subagent_start_count == 2 and .subagents_started == [\"t\"] and .subagent_instance_count_by_role.t == 2 and (.subagent_events | length) == 2 and .agents.t1.status == \"running\" and .agents.t2.starts == 1"
+    "stdout_jq": ".hookSpecificOutput == null",
+    "state_jq": ".subagent_start_count == 2 and .subagents_started == [\"e\"] and .subagent_instance_count_by_role.e == 2 and (.subagent_events | length) == 2 and .agents.e1.status == \"running\" and .agents.e2.starts == 1"
   },
   {
     "name": "subagent_start_tracks_parallel_same_role_instances_with_distinct_scope",
@@ -550,7 +557,7 @@
     "stdin": "test/hooks/fixtures/subagent_start_second_explorer_scope.json",
     "seed_state": "test/hooks/fixtures/state_subagent_start_first_explorer_scope.json",
     "expect_exit": 0,
-    "stdout_jq": ".hookSpecificOutput.hookEventName == \"SubagentStart\" and (.hookSpecificOutput.additionalContext | contains(\"Parallel same-role handoffs are allowed\"))",
+    "stdout_jq": ".hookSpecificOutput == null",
     "state_jq": ".subagent_start_count == 2 and .subagents_started == [\"e\"] and .subagent_instance_count_by_role.e == 2 and (.subagent_events | length) == 2 and .subagent_events[0].purpose == \"Trace workflow A\" and .subagent_events[1].purpose == \"Trace workflow B\" and .agents.e1.status == \"running\" and .agents.e2.starts == 1"
   },
   {
@@ -558,7 +565,7 @@
     "script": "subagent-start.sh",
     "stdin": "test/hooks/fixtures/subagent_start_tool_input_agent_name_over_type.json",
     "expect_exit": 0,
-    "stdout_jq": ".hookSpecificOutput.hookEventName == \"SubagentStart\" and (.hookSpecificOutput.additionalContext | contains(\"@cr\"))",
+    "stdout_jq": ".hookSpecificOutput == null",
     "state_jq": ".subagent_start_count == 1 and .subagents_started == [\"cr\"]"
   },
   {
@@ -566,7 +573,7 @@
     "script": "subagent-start.sh",
     "stdin": "test/hooks/fixtures/subagent_start_tool_input_agent_alias_over_type.json",
     "expect_exit": 0,
-    "stdout_jq": ".hookSpecificOutput.hookEventName == \"SubagentStart\" and (.hookSpecificOutput.additionalContext | contains(\"@dbg\"))",
+    "stdout_jq": ".hookSpecificOutput == null",
     "state_jq": ".subagent_start_count == 1 and .subagents_started == [\"dbg\"]"
   },
   {
@@ -574,7 +581,7 @@
     "script": "post-edit-write.sh",
     "stdin": "test/hooks/fixtures/post_edit_write_code.json",
     "expect_exit": 0,
-    "stdout_jq": ".hookSpecificOutput.hookEventName == \"PostToolUse\" and (.hookSpecificOutput.additionalContext | contains(\"requires verification\"))",
+    "stdout_jq": ".hookSpecificOutput == null",
     "state_jq": ".edited == true and .code_changed == true and .docs_changed == false and ((.files | index(\"src/app.py\")) != null)"
   },
   {
@@ -582,7 +589,7 @@
     "script": "post-edit-write.sh",
     "stdin": "test/hooks/fixtures/post_multiedit_code.json",
     "expect_exit": 0,
-    "stdout_jq": ".hookSpecificOutput.hookEventName == \"PostToolUse\" and (.hookSpecificOutput.additionalContext | contains(\"requires verification\"))",
+    "stdout_jq": ".hookSpecificOutput == null",
     "state_jq": ".edited == true and .code_changed == true and .docs_changed == false and ((.files | index(\"src/app.py\")) != null)"
   },
   {
@@ -590,7 +597,7 @@
     "script": "post-edit-write.sh",
     "stdin": "test/hooks/fixtures/post_edit_path_code.json",
     "expect_exit": 0,
-    "stdout_jq": ".hookSpecificOutput.hookEventName == \"PostToolUse\" and (.hookSpecificOutput.additionalContext | contains(\"requires verification\"))",
+    "stdout_jq": ".hookSpecificOutput == null",
     "state_jq": ".edited == true and .code_changed == true and .docs_changed == false and ((.files | index(\"src/from-path.py\")) != null)"
   },
   {
@@ -598,7 +605,7 @@
     "script": "post-edit-write.sh",
     "stdin": "test/hooks/fixtures/post_notebook_edit_code.json",
     "expect_exit": 0,
-    "stdout_jq": ".hookSpecificOutput.hookEventName == \"PostToolUse\" and (.hookSpecificOutput.additionalContext | contains(\"requires verification\"))",
+    "stdout_jq": ".hookSpecificOutput == null",
     "state_jq": ".edited == true and .code_changed == true and .docs_changed == false and ((.files | index(\"notebooks/demo.ipynb\")) != null)"
   },
   {
@@ -686,14 +693,14 @@
     "expect_exit": 0
   },
   {
-    "name": "task_completed_allows_when_feature_architect_branch_is_satisfied",
+    "name": "task_completed_allows_feature_when_only_a_removed_role_is_required",
     "script": "task-completed.sh",
     "stdin": "test/hooks/fixtures/task_completed_feature_architect_roles_satisfied.json",
     "seed_state": "test/hooks/fixtures/state_feature_architect_required_subagents_satisfied.json",
     "expect_exit": 0
   },
   {
-    "name": "task_completed_allows_when_bugfix_bug_branch_is_satisfied",
+    "name": "task_completed_allows_bugfix_with_legacy_bug_start_and_current_cr",
     "script": "task-completed.sh",
     "stdin": "test/hooks/fixtures/task_completed_bugfix_bug_roles_satisfied.json",
     "seed_state": "test/hooks/fixtures/state_bugfix_bug_required_subagents_satisfied.json",
@@ -707,27 +714,26 @@
     "expect_exit": 0
   },
   {
-    "name": "task_completed_blocks_when_bugfix_branch_is_missing_even_with_verification",
+    "name": "task_completed_allows_bugfix_without_legacy_branch_when_verified",
     "script": "task-completed.sh",
     "stdin": "test/hooks/fixtures/task_completed_bugfix_missing_branch.json",
     "seed_state": "test/hooks/fixtures/state_bugfix_missing_branch_verified.json",
-    "expect_exit": 2,
-    "stderr_regex": "Missing one-of groups: @bug/@e/@dbg"
+    "expect_exit": 0
   },
   {
-    "name": "task_completed_allows_when_refactor_architect_branch_is_satisfied",
+    "name": "task_completed_allows_refactor_with_legacy_architect_and_current_cr",
     "script": "task-completed.sh",
     "stdin": "test/hooks/fixtures/task_completed_refactor_architect_roles_satisfied.json",
     "seed_state": "test/hooks/fixtures/state_refactor_architect_required_subagents_satisfied.json",
     "expect_exit": 0
   },
   {
-    "name": "task_completed_blocks_when_feature_lacks_successful_verification_and_tester_handoff",
+    "name": "task_completed_blocks_when_feature_lacks_successful_verification",
     "script": "task-completed.sh",
     "stdin": "test/hooks/fixtures/task_completed_feature_missing_tester_without_verification.json",
     "seed_state": "test/hooks/fixtures/state_feature_missing_tester_without_verification.json",
     "expect_exit": 2,
-    "stderr_regex": "Missing required roles: @t"
+    "stderr_regex": "no successful test command"
   },
   {
     "name": "task_completed_blocks_when_only_lint_passed_but_tests_are_detected",
@@ -752,20 +758,22 @@
     "expect_exit": 0
   },
   {
-    "name": "stop_guard_blocks_without_verification_status",
+    "name": "stop_guard_allows_missing_verification_status_as_reporting_guidance",
     "script": "stop-guard.sh",
     "stdin": "test/hooks/fixtures/stop_guard_missing_verification.json",
     "seed_state": "test/hooks/fixtures/state_stop_guard_seed.json",
     "expect_exit": 0,
-    "stdout_jq": ".decision == \"block\" and (.reason | contains(\"Verification status:\")) and (.reason | contains(\"`\") | not) and (.errorDetails | contains(\"- [FAIL] Verification status line\")) and (.errorDetails | contains(\"- [FAIL] Review outcome line\")) and (.errorDetails | contains(\"- [PASS] Changed files line\")) and (.errorDetails | contains(\"### Workflow Gates\")) and (.errorDetails | contains(\"### Minimal Valid Template\"))"
+    "stdout_jq": "(has(\"decision\") | not) and .hookSpecificOutput == null",
+    "state_jq": ".stop_block_count == 0 and .stop_block_reason == \"\" and .stop_block_message == \"\""
   },
   {
-    "name": "stop_guard_blocks_keyword_only_summary_without_exact_footer_prefixes",
+    "name": "stop_guard_allows_keyword_only_summary_as_reporting_guidance",
     "script": "stop-guard.sh",
     "stdin": "test/hooks/fixtures/stop_guard_keyword_only_summary.json",
     "seed_state": "test/hooks/fixtures/state_stop_guard_seed.json",
     "expect_exit": 0,
-    "stdout_jq": ".decision == \"block\" and (.reason | contains(\"Verification status:\")) and (.reason | contains(\"`\") | not)"
+    "stdout_jq": "(has(\"decision\") | not) and .hookSpecificOutput == null",
+    "state_jq": ".stop_block_count == 0 and .stop_block_reason == \"\" and .stop_block_message == \"\""
   },
   {
     "name": "stop_guard_allows_lowercase_footer_prefixes",
@@ -784,19 +792,12 @@
     "stdout_jq": ".decision == \"block\" and (.reason | contains(\"@cr\"))"
   },
   {
-    "name": "stop_guard_allows_manager_backgrounded_review_without_specialist_yet",
+    "name": "stop_guard_blocks_review_with_backgrounded_text_and_no_specialist",
     "script": "stop-guard.sh",
-    "stdin": "test/hooks/fixtures/stop_guard_manager_backgrounded_review.json",
-    "seed_state": "test/hooks/fixtures/state_review_manager_backgrounded.json",
+    "stdin": "test/hooks/fixtures/stop_guard_review_backgrounded_transcript_no_specialist.json",
+    "seed_state": "test/hooks/fixtures/state_review_missing_code_reviewer.json",
     "expect_exit": 0,
-    "state_jq": ".stop_block_count == 0 and .stop_block_reason == \"\" and .stop_block_message == \"\""
-  },
-  {
-    "name": "stop_guard_allows_review_when_skill_transcript_proves_code_reviewer_started",
-    "script": "stop-guard.sh",
-    "stdin": "test/hooks/fixtures/stop_guard_review_skill_transcript.json",
-    "seed_state": "test/hooks/fixtures/state_review_manager_transcript_skill.json",
-    "expect_exit": 0
+    "stdout_jq": ".decision == \"block\" and (.reason | contains(\"@cr\"))"
   },
   {
     "name": "stop_guard_allows_review_when_agent_transcript_proves_code_reviewer_started",
@@ -813,36 +814,40 @@
     "expect_exit": 0
   },
   {
-    "name": "stop_guard_blocks_review_only_without_verification_status",
+    "name": "stop_guard_allows_review_only_summary_without_verification_status_as_guidance",
     "script": "stop-guard.sh",
     "stdin": "test/hooks/fixtures/stop_guard_review_only.json",
     "seed_state": "test/hooks/fixtures/state_stop_guard_seed.json",
     "expect_exit": 0,
-    "stdout_jq": ".decision == \"block\" and (.reason | contains(\"Verification status:\")) and (.reason | contains(\"`\") | not)"
+    "stdout_jq": "(has(\"decision\") | not) and .hookSpecificOutput == null",
+    "state_jq": ".stop_block_count == 0 and .stop_block_reason == \"\" and .stop_block_message == \"\""
   },
   {
-    "name": "stop_guard_blocks_without_review_outcome",
+    "name": "stop_guard_allows_missing_review_outcome_as_reporting_guidance",
     "script": "stop-guard.sh",
     "stdin": "test/hooks/fixtures/stop_guard_missing_review.json",
     "seed_state": "test/hooks/fixtures/state_stop_guard_seed.json",
     "expect_exit": 0,
-    "stdout_jq": ".decision == \"block\" and (.reason | contains(\"Review outcome:\")) and (.reason | contains(\"`\") | not)"
+    "stdout_jq": "(has(\"decision\") | not) and .hookSpecificOutput == null",
+    "state_jq": ".stop_block_count == 0 and .stop_block_reason == \"\" and .stop_block_message == \"\""
   },
   {
-    "name": "stop_guard_blocks_without_changed_files",
+    "name": "stop_guard_allows_missing_changed_files_as_reporting_guidance",
     "script": "stop-guard.sh",
     "stdin": "test/hooks/fixtures/stop_guard_missing_files.json",
     "seed_state": "test/hooks/fixtures/state_stop_guard_seed.json",
     "expect_exit": 0,
-    "stdout_jq": ".decision == \"block\" and (.reason | contains(\"Changed files:\")) and (.reason | contains(\"`\") | not)"
+    "stdout_jq": "(has(\"decision\") | not) and .hookSpecificOutput == null",
+    "state_jq": ".stop_block_count == 0 and .stop_block_reason == \"\" and .stop_block_message == \"\""
   },
   {
-    "name": "stop_guard_blocks_without_remaining_risks",
+    "name": "stop_guard_allows_missing_remaining_risks_as_reporting_guidance",
     "script": "stop-guard.sh",
     "stdin": "test/hooks/fixtures/stop_guard_missing_risks.json",
     "seed_state": "test/hooks/fixtures/state_stop_guard_seed.json",
     "expect_exit": 0,
-    "stdout_jq": ".decision == \"block\" and (.reason | contains(\"Remaining risks:\")) and (.reason | contains(\"`\") | not)"
+    "stdout_jq": "(has(\"decision\") | not) and .hookSpecificOutput == null",
+    "state_jq": ".stop_block_count == 0 and .stop_block_reason == \"\" and .stop_block_message == \"\""
   },
   {
     "name": "stop_guard_blocks_when_code_changed_and_no_assistant_message",
@@ -858,7 +863,7 @@
     "stdin": "test/hooks/fixtures/stop_guard_failed_build_after_tests.json",
     "seed_state": "test/hooks/fixtures/state_failed_build_after_tests.json",
     "expect_exit": 0,
-    "stdout_jq": ".decision == \"block\" and (.reason | contains(\"latest build command failed\"))"
+    "stdout_jq": ".decision == \"block\" and (.reason | contains(\"latest build command failed\")) and (.errorDetails | contains(\"- [PASS] Verification status line\")) and (.errorDetails | contains(\"- [FAIL] Review outcome line\")) and (.errorDetails | contains(\"- [FAIL] Changed files line\")) and (.errorDetails | contains(\"- [FAIL] Remaining risks line\")) and (.errorDetails | contains(\"- [FAIL] Verification gate\")) and (.errorDetails | contains(\"### Workflow Gates\")) and (.errorDetails | contains(\"### Minimal Valid Template\"))"
   },
   {
     "name": "stop_guard_uses_transcript_summary_when_payload_message_is_missing",
@@ -905,10 +910,10 @@
     "state_jq": ".stop_block_count == 0 and .stop_block_reason == \"\" and .stop_block_message == \"\""
   },
   {
-    "name": "stop_guard_escalates_repeated_same_block_reason",
+    "name": "stop_guard_escalates_repeated_build_failure_block",
     "script": "stop-guard.sh",
-    "stdin": "test/hooks/fixtures/stop_guard_missing_review.json",
-    "seed_state": "test/hooks/fixtures/state_stop_guard_repeated_review_block.json",
+    "stdin": "test/hooks/fixtures/stop_guard_failed_build_after_tests.json",
+    "seed_state": "test/hooks/fixtures/state_stop_guard_repeated_build_block.json",
     "expect_exit": 0,
     "stdout_jq": "((has(\"decision\") | not)) and .hardStop == true and .continue == false and (.stopReason | contains(\"Repeated stop-block loop detected\"))",
     "state_jq": ".stalled_by_policy == true and (.policy_stall_reason | contains(\"Repeated stop-block loop detected\"))"
@@ -1022,19 +1027,35 @@
     "stdout_jq": ".decision == \"block\" and (.reason | contains(\"latest lint/static-check command failed\"))"
   },
   {
-    "name": "teammate_idle_blocks_manager_led_workflow_without_specialist_handoff",
+    "name": "teammate_idle_blocks_manager_led_feature_without_cr_handoff",
     "script": "teammate-idle.sh",
     "stdin": "test/hooks/fixtures/task_completed_feature_required_roles.json",
     "seed_state": "test/hooks/fixtures/state_feature_manager_only_started.json",
     "expect_exit": 2,
-    "stderr_regex": "Manager-led orchestration has not handed off to any specialist yet"
+    "stderr_regex": "Missing required roles: @cr"
   },
   {
-    "name": "teammate_idle_allows_manager_led_review_when_skill_transcript_shows_specialist",
+    "name": "teammate_idle_allows_manager_led_review_when_transcript_shows_specialist",
     "script": "teammate-idle.sh",
-    "stdin": "test/hooks/fixtures/stop_guard_review_skill_transcript.json",
-    "seed_state": "test/hooks/fixtures/state_review_manager_transcript_skill.json",
+    "stdin": "test/hooks/fixtures/stop_guard_review_agent_transcript.json",
+    "seed_state": "test/hooks/fixtures/state_review_manager_agent_transcript.json",
     "expect_exit": 0
+  },
+  {
+    "name": "stop_guard_blocks_review_when_only_a_skill_load_is_claimed",
+    "script": "stop-guard.sh",
+    "stdin": "test/hooks/fixtures/stop_guard_review_skill_load_only.json",
+    "seed_state": "test/hooks/fixtures/state_review_manager_skill_load_only.json",
+    "expect_exit": 0,
+    "stdout_jq": ".decision == \"block\" and (.reason | contains(\"Missing required roles: @cr\"))"
+  },
+  {
+    "name": "teammate_idle_blocks_review_when_only_a_skill_load_is_claimed",
+    "script": "teammate-idle.sh",
+    "stdin": "test/hooks/fixtures/stop_guard_review_skill_load_only.json",
+    "seed_state": "test/hooks/fixtures/state_review_manager_skill_load_only.json",
+    "expect_exit": 2,
+    "stderr_regex": "Missing required roles: @cr"
   },
   {
     "name": "config_change_tracks_user_settings_modification",
@@ -1205,12 +1226,12 @@
     ]
   },
   {
-    "name": "stop_guard_blocks_without_docs_status",
+    "name": "stop_guard_blocks_without_summary_when_docs_required",
     "script": "stop-guard.sh",
-    "stdin": "test/hooks/fixtures/stop_guard_missing_docs.json",
+    "stdin": "test/hooks/fixtures/stop_guard_no_assistant_message_docs.json",
     "seed_state": "test/hooks/fixtures/state_stop_guard_docs_required.json",
     "expect_exit": 0,
-    "stdout_jq": ".decision == \"block\" and (.reason | contains(\"Docs status:\")) and (.reason | contains(\"`\") | not) and (.errorDetails | contains(\"- [FAIL] Docs status line\")) and (.errorDetails | contains(\"### Workflow Gates\"))"
+    "stdout_jq": ".decision == \"block\" and (.reason | contains(\"no assistant summary message\")) and (.errorDetails | contains(\"- [FAIL] Docs status line\")) and (.errorDetails | contains(\"### Workflow Gates\")) and (.errorDetails | contains(\"### Minimal Valid Template\"))"
   },
   {
     "name": "stop_guard_allows_with_docs_status",

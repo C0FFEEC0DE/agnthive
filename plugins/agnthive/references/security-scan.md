@@ -6,9 +6,9 @@ Check repository for private/sensitive data before publishing publicly.
 ## Steps
 
 ### 1. Create Plan
-```
-@m create a plan to scan for private data (API keys, passwords, tokens, secrets)
-```
+Plan the scan in the root session (`/manager` is a root orchestration procedure,
+not an agent dispatch). State the scope: which directories, which pattern
+families, and what counts as a finding.
 
 ### 2. Scan Files
 ```
@@ -23,8 +23,10 @@ Check repository for private/sensitive data before publishing publicly.
 ```
 
 ### 3. Search Patterns
+Run the pattern search in the root session; the Code Reviewer owns the static
+pattern pass over a diff:
 ```
-@bugbuster search for sensitive patterns in code:
+search for sensitive patterns in code:
 - API keys: sk-[a-zA-Z0-9]{20,}, AKIA[0-9A-Z]{16}
 - Passwords: (?i)password\s*=\s*
 - Private keys: -----BEGIN.*PRIVATE KEY-----
@@ -37,20 +39,18 @@ Check repository for private/sensitive data before publishing publicly.
 ```
 
 ### 4. Analyze Results
-```
-@m analyze results and give verdict:
+In the root session, analyze the results and give a verdict:
 - Is the repository safe to publish?
 - What needs to be fixed?
-```
 
 ## Commands
 
 **Get plan:**
 ```
-@m check repo for private data
+/manager check repo for private data
 ```
 
-Manager creates the plan; Claude runs the scan steps directly.
+The `/manager` entry creates the plan; Claude runs the scan steps directly.
 
 ## Categories to Check
 

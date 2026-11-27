@@ -1,9 +1,9 @@
 {
   "session_id": "scenario-dispatch-enforced",
-  "agent_id": "arch1",
+  "agent_id": "cr1",
   "agentType": "general-purpose",
   "tool_input": {
-    "subagentType": "Architect",
-    "description": "Extract duplicated strip+uppercase normalization into a shared helper"
+    "subagentType": "Code Reviewer",
+    "description": "Review the extracted strip+uppercase normalization helper"
   }
 }

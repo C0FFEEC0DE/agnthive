@@ -8,19 +8,95 @@ profile (the `claudecfg/` layout installed via `./install.sh`) to a distributabl
 Node.js ESM plugin runtime. The repository-root `CHANGELOG.md` covers the older
 profile history; entries here begin with the plugin.
 
-## [Unreleased]
+## [0.6.0] - 2026-11-27
 
-Work in progress after 0.4.0 (2026-10-19). **Nothing in this section has
-shipped**: the items below are in the working tree or still in progress, and
-no release has been cut from them. The `lean` profile is still
-**experimental** and `legacy` is still the default — the ADR 0012 outcome
-gate has not been exercised to completion (no full live matrix run exists),
-so the default flip did not happen.
+Standing context is now budgeted, the review is two-stage, and the last
+compatibility labels are gone. `/review` simplifies the change in the root,
+re-verifies it, then dispatches the read-only Code Reviewer; `/simplify` ships
+as a standalone command. Only `@cr`, `@e`, and `@dbg` resolve.
 
 ### Added
 
-- **Benchmark arm × repetition execution loops (ADR 0012) — landed in the
-  working tree.** The outcome suite declares the arms `native` (no plugin),
+- `/simplify` — a root procedure for behavior-preserving cleanups
+  (duplication, dead code, one-use abstractions, needless parameters and
+  config), followed by re-verification.
+- `/review` — a two-stage root procedure: stage 1 runs the `/simplify` pass,
+  stage 2 dispatches `@cr` in a read-only subagent on the simplified diff
+  ([ADR 0015](../../docs/adr/0015-two-stage-review-and-alias-label-removal.md)).
+- `references/workflow-shapes.md` — the one reference describing the feature,
+  bugfix, and refactor shapes; it replaces `bugfix.md`, `new-feature.md`, and
+  `refactor.md`.
+
+### Changed
+
+- Standing context is budgeted and CI-enforced ([ADR
+  0014](../../docs/adr/0014-standing-context-budgets-and-single-source-contract.md)):
+  `scripts/validate.mjs` fails when the output style, skill descriptions, agent
+  descriptions, a skill body, or an agent prompt exceeds its budget.
+- `UserPromptSubmit` context dropped from 617-814 to about 160 chars and is
+  emitted only on a new task, a task transition, or a category/profile change.
+- Stop blocks report the failed check and the template without echoing the
+  assistant's own message.
+- `PostToolUse` edits and `SubagentStart` no longer inject reminder text; the
+  state record is the evidence, and the handoff contract is stated once.
+- Output style 3,293 → 1,600 bytes; skill bodies −26%; agent prompts −42%;
+  `bugfix.md`, `new-feature.md`, and `refactor.md` merged into
+  `references/workflow-shapes.md`. The style now says what the hooks actually
+  enforce (verification evidence and the `@cr` gate) and treats the footer
+  lines as reporting guidance.
+- Session state is written as one batch per hook process, snapshotted after 50
+  replayed events, and trimmed to the newest 500.
+- The event sequence allocator floors at the snapshot's last seq, so an append
+  after a fully trimmed log is replayed instead of being silently skipped.
+- The `PreToolUse` dispatch-contract guard only enforces roles that still ship:
+  a stale contract naming a removed agent (`@a`, `@t`, `@bug`) can no longer
+  block every root edit. The completion gate applies the same filter.
+- The context-budget check measures YAML block-scalar descriptions in full
+  instead of counting the `>`/`|` indicator, and has its own validator test.
+- Benchmark runs default to and record `lean`, and the state reader counts
+  parseable event files (not records) so a batch file cannot hide corruption.
+- `/review` is a root two-stage procedure ([ADR
+  0015](../../docs/adr/0015-two-stage-review-and-alias-label-removal.md)):
+  stage 1 runs the new `/simplify` pass and re-verifies, stage 2 dispatches a
+  read-only `@cr`. No skill forks any more, and a skill-load line is no longer
+  read as role evidence.
+- The Stop guard has no manager-backgrounded passthrough: a review task still
+  blocks until a shipped specialist is started, and the removed `@m` role can
+  no longer open a bypass.
+
+### Removed
+
+- Version and plan-task provenance narration from skills, references, and
+  injected messages; it lives in the ADRs and this changelog.
+- The five compatibility alias labels (`a`, `bug`, `t`, `doc`, `m`) and their
+  persona nicknames from the alias map and the transcript patterns; only `@cr`,
+  `@e`, and `@dbg` resolve.
+- The dead `transcript_indicates_backgrounded_agent` helper and its fixture;
+  its only consumer was the manager-backgrounded Stop bypass.
+- The five compatibility benchmark smoke tasks (`subagent-architect-*`,
+  `subagent-bugbuster-*`, `subagent-docwriter-*`, `subagent-manager-*`,
+  `subagent-tester-*`); one canary per shipped alias remains.
+
+## [0.5.0] - 2026-10-22
+
+The compatibility window closed: the plugin now ships **one** SDLC engine —
+root orchestration plus three specialists. This release removes the `legacy`
+profile and the five compatibility agents (Manager, Architect, Tester,
+Docwriter, Bugbuster) — plan task 16, the last task of the
+[2026-10-19 harness modernization plan](../../docs/plans/2026-10-19-harness-modernization-and-simplification.md).
+It also ships the benchmark arm x repetition execution loop and the runner
+fixes the ADR-0012 rollout gate needed, and records the lean default flip.
+
+**Migration.** A session that still names the `legacy` profile (an old
+`userConfig.workflow_profile`, or `AGNTHIVE_WORKFLOW_PROFILE=legacy`) now runs
+the root-orchestration profile and prints an explicit migration note on
+stderr — never a silent switch. The alias map keeps the removed labels so
+historical benchmark evidence reads the same way.
+
+### Added
+
+- **Benchmark arm × repetition execution loops (ADR 0012) — shipped in
+  0.5.0.** The outcome suite declares the arms `native` (no plugin),
   `legacy` and `lean` and a floor of `MIN_LIVE_REPS` (3) paired repetitions
   per task, and the ADR 0012 rollout gate consumes exactly those
   per-(arm, task, rep) records. `scripts/run-benchmark.mjs` now executes that
@@ -36,9 +112,9 @@ so the default flip did not happen.
   the `native` arm registers 0 plugin hooks and finds no plugin state (a
   genuine no-plugin baseline), the `legacy` arm reads `evidence_source:
   plugin_state` from the host's inline data root, and the suite emitter
-  reports `reps=1` with `outcome_pass_rate=1.000`. The gate still reports
-  `available: false` — a full matrix run (all three arms, three repetitions
-  each, live) has not been executed, so the lean default flip stays blocked.
+  reports `reps=1` with `outcome_pass_rate=1.000`. The full matrix run (all
+  three arms, three repetitions each, live) has since been executed — see
+  *Changed* below — and the gate reported `available: true`.
   Covered by `test/bench/run-benchmark-arms.test.mjs`.
 
 ### Changed
@@ -51,10 +127,11 @@ so the default flip did not happen.
   **legacy** (the incumbent default): 0 new false completions, 0 lost material
   findings, 27 paired cells. Against **native** (no plugin): -1 new false
   completions, 0 lost material findings, 21 paired cells. `workflow_profile`
-  now defaults to `lean`; `legacy` stays selectable for one transition release
-  (plan task 16) and keeps its byte-stable gate shape. An invalid
-  `workflow_profile` value still falls back to `legacy` — the STRICTER profile
-  — so a misconfiguration can never relax the gates below the default. A
+  now defaults to `lean`. Since 0.5.0 `lean` is the ONLY profile: the
+  `legacy` profile was removed when the compatibility window closed, and a
+  session that still names it runs `lean` with an explicit migration note
+  instead of a silent switch. An invalid `workflow_profile` value also runs
+  `lean` with a stderr note, so a misconfiguration is never silent. A
   session that already carries a state keeps the profile it was started with:
   the default switch does not change a running session's gates.
 
@@ -75,10 +152,33 @@ so the default flip did not happen.
   difference has the opposite sign in the previous run ($2.68 vs $3.77), so
   the overhead difference is also inside run-to-run variance.
 
+### Removed
+
+- **The `legacy` profile and the five compatibility agents (plan task 16).**
+  The compatibility window closed, so the plugin no longer ships a second SDLC
+  engine. Removed: the `legacy` workflow profile and its mandatory-role /
+  Manager-idle / blocking-footer gate shape, and the agent definitions
+  `manager.md`, `architect.md`, `tester.md`, `docwriter.md`, `bugbuster.md` —
+  `plugins/agnthive/agents/` now holds three real definitions
+  (`code-reviewer.md`, `explorer.md`, `debugger.md`).
+
+  What replaces them is not a thinner feature set but a different shape: the
+  root session owns design, implementation, verification, and documentation
+  (`/design`, `/test`, `/docs`, `/refactor`, `/bug` are root procedures), and
+  it delegates to a specialist only when the work earns isolation. Completion
+  is decided by evidence — the append-only `verification[]` records scoped to
+  the current change revision plus `review_results[]` — not by role quotas or
+  footer text (ADR 0008/0009).
+
+  A session that still names `legacy` runs the root-orchestration profile and
+  prints an explicit migration note on stderr; the alias map keeps the removed
+  labels so historical benchmark evidence reads the same way. The
+  `native` / `legacy` / `lean` arm set stays in the benchmark harness for
+  historical report comparison, not as a live runtime profile.
+
 ### Fixed
 
-- **Plugin enablement and plugin data root in the benchmark runner — in the
-  working tree, not yet released.** Measured on CLI 2.1.303: with the plugin
+- **Plugin enablement and plugin data root in the benchmark runner — shipped in 0.5.0.** Measured on CLI 2.1.303: with the plugin
   loaded via `--plugin-dir` and `defaultEnabled: false`, the host registered
   **0 hooks** (`Registered 0 hooks from 3 plugins`), so the plugin's own hooks
   never ran in benchmark sessions and every evidence layer silently degraded;
@@ -95,8 +195,7 @@ so the default flip did not happen.
   `test/bench/bench_runner_plugin_enablement.test.mjs` and
   `test/bench/bench_runner_plugin_evidence.test.mjs`.
 
-- **Benchmark task id used as a directory name — in the working tree, not yet
-  released.** A task id comes from a task file and becomes a directory name
+- **Benchmark task id used as a directory name — shipped in 0.5.0.** A task id comes from a task file and becomes a directory name
   under the run output, and two hazards followed, both silent. An id carrying
   path separators (for example `../../elsewhere`) made the artifacts land
   OUTSIDE the run directory, so a task could write into an arbitrary
@@ -111,8 +210,7 @@ so the default flip did not happen.
   — `summary.json` and `result.json` still name the task that actually ran.
   Covered by `test/bench/run-benchmark-arms.test.mjs`.
 
-- **Benchmark runner ignored the task's declared budget class — in the working
-  tree, not yet released.** The outcome suite writes every task with a
+- **Benchmark runner ignored the task's declared budget class — shipped in 0.5.0.** The outcome suite writes every task with a
   `budget_class` and the suite schema maps that class to the turn and
   wall-clock budget the task was designed for (`small` 12 turns / 240s,
   `medium` 24 turns / 400s, `large` 40 turns / 800s), but the runner applied
@@ -128,8 +226,7 @@ so the default flip did not happen.
   measurement can be read back with the budget it ran under. Covered by
   `test/bench/bench_runner_claude_code.test.mjs`.
 
-- **The ADR-0012 rollout gate measured the wrong thing — in the working tree, not
-  yet released.** The gate is the only thing that authorizes the lean default
+- **The ADR-0012 rollout gate measured the wrong thing — shipped in 0.5.0.** The gate is the only thing that authorizes the lean default
   flip, and the first full live matrix run showed it reporting deltas the
   suite's own contract does not define. Two defects, both invisible to the
   existing (symmetric) fixtures: (1) `new_false_completions` and
@@ -150,8 +247,7 @@ so the default flip did not happen.
   regression". The metrics document version is bumped to `1.1` — the gate
   semantics changed. Covered by `test/validators/outcome-suite.test.mjs`.
 
-- **A read-only outcome task was graded as a failure — in the working tree, not
-  yet released.** The runner's task-level heuristic is "a task that changed
+- **A read-only outcome task was graded as a failure — shipped in 0.5.0.** The runner's task-level heuristic is "a task that changed
   nothing did not complete", which is wrong for a task that must NOT change
   anything: `outcome-review-flawed-ingest` allows no path (its scope
   predicate has an empty allow list) and its success criteria say "no file is

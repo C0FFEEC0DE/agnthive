@@ -4,14 +4,14 @@
 // and hook-output.mjs.
 //
 // The workflow_profile selector (plan task 11) is resolved by
-// plugin-config.mjs (env > plugin.json userConfig > default 'legacy'); this
-// module applies its deltas to the classification and exposes the lean /
-// legacy gate flags a dispatcher consults at the summary-contract/verify gate
-// call sites. ADR 0012: lean is experimental this release — the default stays
-// 'legacy' and nothing here performs the default flip. Ported from claudecfg/hooks/user-prompt-submit.sh and
+// plugin-config.mjs (env > plugin.json userConfig > default 'lean'); plan task
+// 16 removed the 'legacy' profile when the compatibility window closed, so
+// this module applies the single root-orchestration shape to the
+// classification and no longer exposes a per-profile gate flag set for the
+// dispatcher to consult. Ported from claudecfg/hooks/user-prompt-submit.sh and
 // the lib.sh functions task_type_requires_implementation_summary,
 // task_type_requires_specialist_handoffs, record_loop_block, clear_loop_block,
-// loop_block_count, session_background_manager_pending.
+// loop_block_count.
 //
 // Regexes use the 'iu' flags so [[:alpha:]] -> \p{L}, [[:space:]] -> \s,
 // [[:punct:]] -> \p{P} behave like grep -Ei in a UTF-8 locale (case-insensitive
@@ -19,7 +19,9 @@
 
 const STOP_SAFE_HINT = ' If a later reply in the same session makes no additional changes, still report the actual verification, review, changed files, docs status when relevant, and remaining risks instead of using a no-change shortcut after code or config changes.';
 
-const RE_MANAGER_ORCHESTRATE = /(^|\s)(@m|@manager|\/manager)($|[\s\p{P}])/iu;
+// ADR 0015: only the /manager command activates orchestration; the removed
+// @m/@manager alias labels no longer mean anything.
+const RE_MANAGER_ORCHESTRATE = /(^|\s)(\/manager)($|[\s\p{P}])/iu;
 const RE_PLAN_ONLY = /(plan only|only plan|plan-only|только план|только спланиру|только составь план|сделай план,? но не выполняй|без выполнения|без реализации)/iu;
 const RE_OVERRIDE = /workflow override: treat this as a (feature|bugfix|refactor|review|docs|support|other) workflow/i;
 const RE_WORKFLOW_CATEGORY = /workflow_category:\s*(feature|bugfix|refactor|review|docs|support|other)/i;
@@ -40,122 +42,40 @@ const RE_DISPATCH_CONTRACT = /BENCHMARK_DISPATCH_CONTRACT: (root_only; )?mode=(o
 // resolveWorkflowProfile and re-exported here so gate code has one surface:
 // AGNTHIVE_WORKFLOW_PROFILE (env override) >
 // CLAUDE_PLUGIN_OPTION_WORKFLOW_PROFILE (the plugin.json userConfig bridge) >
-// default 'legacy'. Validation in the resolver (enum + stderr note); the
+// default 'lean'. Validation in the resolver (enum + stderr note); the
 // profile is a workflow-shape knob only — it never changes a permission
-// decision or a failure class (ADR 0011). ADR 0012: lean is experimental in
-// this release — the default stays 'legacy' in the manifest, in the state
-// schema, and in the resolver; the default flip is task 16 and is gated on the
-// ADR 0012 outcome-benchmark evidence (plan task 10). Nothing here performs
-// that switch.
+// decision or a failure class (ADR 0011). Plan task 16 removed the 'legacy'
+// profile after the compatibility window: 'lean' is the only profile, and the
+// manifest, the state schema, and the resolver all agree on it. A session
+// that still names 'legacy' runs 'lean' and prints an explicit migration
+// note — never a silent switch.
 export { WORKFLOW_PROFILES, DEFAULT_WORKFLOW_PROFILE } from './plugin-config.mjs';
 
+
 /**
- * Validate an already-resolved profile value (defensive: the env/userConfig
- * enum check is resolveWorkflowProfile's job, while session state and explicit
- * wiring-side values are validated here). Trimmed, lowercased; anything that
- * is not exactly 'legacy' or 'lean' falls back to 'legacy' — a documented
- * fallback, not an error.
+ * The root-orchestration context message: `base` is the per-category lead-in
+ * ("Treat this as a <k> workflow."), followed by the completion requirement the
+ * Stop gate actually enforces. Kept short so it adds minimal context.
  */
-function validProfileValue(v) {
-  const s = typeof v === 'string' ? v.trim().toLowerCase() : '';
-  return s === 'legacy' || s === 'lean' ? s : 'legacy';
+function buildRootContextMessage(base) {
+  // Says exactly what the gate does: for these task types @cr is recorded as
+  // required at classification time, so completion blocks until it has
+  // started — not "when the change is substantial".
+  return `${base} Completion requires current verification evidence; feature, bugfix, refactor, and review tasks also need a started @cr review.`;
 }
 
 /**
- * Lean-vs-legacy gate flags (plan task 11.2/11.4; ADR 0008/0009). Pure
- * projection the orchestrator consults at the summary-contract/verify gate
- * call sites — the Stop / TaskCompleted / TeammateIdle handlers in
- * hook-dispatcher.mjs (plus the SubagentStop footer contract, which is the
- * footer part of the same relaxations). The legacy branch pins today's
- * behavior exactly so the same wiring can serve both profiles without a second
- * code path; the lean branch marks the deltas. The flags never decide a
- * permission output and never change a failure class (ADR 0011: profile
- * handlers keep the failure classes of the events they serve; no new
- * enforce-class registrations).
- *
- * `profile` is the optional resolved profile ('legacy'|'lean'). When omitted,
- * the flags read session state's workflow_profile (the orchestrator persists
- * resolveWorkflowProfile().profile there — the wiring contract in the task
- * report), so an old/uninitialized state (schema default 'legacy') keeps the
- * legacy gates. An invalid value falls back to 'legacy' (a fallback, not an
- * error — the same rule the resolver applies to a non-empty invalid override).
- *
- *   legacy: lean=false, benchContractOnly=false, every gate flag on.
- *   lean:   benchContractOnly=true, enforceRoleQuotas=false,
- *           enforceManagerIdleGate=false, enforceFooterGates=false;
- *           review + verification gates stay on (ADR 0009).
+ * Plan-only wording: the session returns a plan and does not continue
+ * implementation or specialist handoffs.
  */
-export function leanProfileGates(state = null, profile = null) {
-  const resolved = validProfileValue(profile ?? state?.workflow_profile ?? null);
-  const lean = resolved === 'lean';
-  return {
-    profile: resolved,
-    lean,
-    // F03 / plan 05.9: in lean the BENCHMARK_DISPATCH_CONTRACT marker defines
-    // roles only in a benchmark test context; outside one it is a claim only.
-    benchContractOnly: lean,
-    // ADR 0009 (plan 11.2): mandatory role quotas and tester-as-proof stop
-    // gating (the t/doc/one-of quotas are dropped); @cr survives through the
-    // classification filter and enforceReviewGate.
-    enforceRoleQuotas: !lean,
-    // ADR 0008 (plan 11.2/12.1): specialists coordinate without a required
-    // root (Manager) role — the mandatory-Manager idle gate relaxes.
-    enforceManagerIdleGate: !lean,
-    // Kept in lean: substantial/security changes still require an independent
-    // review of the current diff (ADR 0008), and known failed checks must stay
-    // visible (ADR 0009).
-    enforceReviewGate: true,
-    enforceVerificationGate: true,
-    // ADR 0009 / plan 11.4: footer lines are reporting guidance in lean, not
-    // blocking syntax contracts; missing punctuation alone never continues a
-    // turn.
-    enforceFooterGates: !lean,
-  };
-}
-
-/**
- * The lean-enforced role requirement projected from state's recorded contract
- * (plan task 11.2): role quotas and tester-as-proof stop gating — the
- * t/doc/one-of requirements are dropped — while the @cr requirement survives
- * when the recorded category carries it. The orchestrator feeds this into
- * sessionAgentEnforcementReason under a lean profile, so a task classified (or
- * session state persisted) under legacy does not keep blocking lean completion
- * on @t/@doc/one-of roles after a mid-session profile change.
- */
-export function leanRequiredRoles(state = null) {
-  const required = Array.isArray(state?.required_subagents) ? state.required_subagents : [];
-  const cr = required.includes('cr');
-  return {
-    required: cr ? ['cr'] : [],
-    anyOf: [],
-    // docs_required is a decision flag, not a role quota (plan 11.6): the
-    // Docs status: line stays required-advisory when behavior changes and a
-    // not_required decision explains the skip.
-    docsRequired: state?.docs_required === true,
-  };
-}
-
-/**
- * The lean context message (plan task 11): root-led orchestration without
- * mandatory Manager/role quotas; verification evidence and @cr-when-substantial
- * stay; footers are reporting guidance. `base` is the per-category lead-in the
- * switch already produced ("Treat this as a <k> workflow."). Compact on
- * purpose — the per-category quota sentences remain in the legacy branch,
- * byte-identical.
- */
-function buildLeanContextMessage(taskType, base, managerMode) {
-  const reviewClause = taskType === 'review'
-    ? 'Completion still requires the independent @cr handoff'
-    : 'Completion still requires current verification evidence for the changes and the independent @cr review when the change is substantial or security-sensitive';
-  const parts = [
-    `${base} Lean profile (experimental; ADR 0008/0009/0012) is active: the root session orchestrates, no Manager dispatch and no role quotas are required.`,
-    `${reviewClause}; account for known failures and report an honest unresolved status for them.`,
-    `Summary/footer lines are reporting guidance, not blocking gates.${STOP_SAFE_HINT}`,
-  ];
-  if (managerMode === 'orchestrate') {
-    parts.push('The /manager entry stays a compatible root skill; it does not spawn a mandatory Manager agent.');
-  }
-  return parts.join(' ');
+function buildPlanOnlyContextMessage(taskType, base) {
+  const subject = taskType === 'feature' ? 'execution'
+    : taskType === 'bugfix' ? 'bugfix'
+      : taskType === 'refactor' ? 'refactor'
+        : taskType === 'review' ? 'review'
+          : taskType === 'docs' ? 'docs'
+            : 'diagnostic';
+  return `${base} Plan-only manager mode is active. Return a concrete ${subject} plan without continuing implementation or specialist handoffs in this session.`;
 }
 
 const RE_MODEL_TERMS = /(model|models|llm|ollama|openrouter|qwen|llama|deepseek|mistral|claude|gpt|gemini|command r|модел|модели|модель)/iu;
@@ -236,21 +156,21 @@ export function parseDispatchContractMarker(text) {
  * (or '' to emit nothing), and the workflow profile the classification
  * applied (plan task 11). Pure; no I/O.
  *
- * opts (optional; absent for every existing caller, which keeps the unchanged
- * legacy behavior):
- *   profile      — the resolved workflow profile ('legacy' when absent or
- *                  invalid: the documented fallback, so a misconfigured value
- *                  degrades rather than errors).
+ * opts (optional; absent for every existing caller):
+ *   profile      — accepted and ignored. Plan task 16 removed the profile
+ *                  selector: the root-orchestration shape is the only shape, so
+ *                  a stale caller keeps working unchanged.
  *   benchContext — true when this prompt arrived in a benchmark test context
  *                  (the orchestrator derives it from
- *                  command-policy.isBenchmarkCi(env)). Legacy ignores it; lean
- *                  uses it to scope the BENCHMARK_DISPATCH_CONTRACT (F03).
+ *                  command-policy.isBenchmarkCi(env)); it scopes the
+ *                  BENCHMARK_DISPATCH_CONTRACT (F03).
  */
 export function classifyPrompt(prompt, opts = {}) {
   const options = opts && typeof opts === 'object' ? opts : {};
-  // Defensive enum validation: an absent/invalid value keeps the documented
-  // default 'legacy', so existing single-argument callers are byte-identical.
-  const lean = validProfileValue(options.profile) === 'lean';
+  // Plan task 16 removed the profile selector: the root-orchestration shape is
+  // the only shape, so the classification has no profile branch any more. The
+  // `profile` option is still accepted (and ignored) so existing callers and
+  // the recorded session state stay compatible.
   const benchContext = options.benchContext === true;
   const text = typeof prompt === 'string' ? prompt : '';
   let taskType = 'other';
@@ -322,24 +242,21 @@ export function classifyPrompt(prompt, opts = {}) {
   switch (taskType) {
     case 'feature':
       if (managerMode !== 'plan_only') {
-        requiredSubagents = uniq([...requiredSubagents, 't', 'cr']);
-        requiredSubagentAnyOf = [['e', 'a']];
+        requiredSubagents = uniq([...requiredSubagents, 'cr']);
       }
       contextMessage = 'Treat this as a feature workflow.';
       docsRequired = true;
       break;
     case 'bugfix':
       if (managerMode !== 'plan_only') {
-        requiredSubagents = uniq([...requiredSubagents, 't', 'cr']);
-        requiredSubagentAnyOf = [['bug', 'e', 'dbg']];
+        requiredSubagents = uniq([...requiredSubagents, 'cr']);
       }
       contextMessage = 'Treat this as a bugfix workflow.';
       docsRequired = true;
       break;
     case 'refactor':
       if (managerMode !== 'plan_only') {
-        requiredSubagents = uniq([...requiredSubagents, 't', 'cr']);
-        requiredSubagentAnyOf = [['a', 'e']];
+        requiredSubagents = uniq([...requiredSubagents, 'cr']);
       }
       contextMessage = 'Treat this as a refactor workflow.';
       docsRequired = true;
@@ -351,9 +268,8 @@ export function classifyPrompt(prompt, opts = {}) {
       contextMessage = 'Treat this as a review workflow.';
       break;
     case 'docs':
-      if (managerMode !== 'plan_only') {
-        requiredSubagents = uniq([...requiredSubagents, 'doc']);
-      }
+      // No docs-persona quota: the author of a change updates the docs (the
+      // /docs root procedure), so a docs task requires no specialist handoff.
       contextMessage = 'Treat this as a docs workflow.';
       docsRequired = true;
       break;
@@ -364,35 +280,23 @@ export function classifyPrompt(prompt, opts = {}) {
       break;
   }
 
-  // Lean profile (plan task 11.2, ADR 0009): role quotas are advisory-first —
-  // drop the tester-as-proof and docs-persona quotas and the one-of groups,
-  // keep @cr only. Applied BEFORE the dispatch-contract override, so a
-  // benchmark contract honored in its test mode still defines the roles.
-  if (lean) {
-    requiredSubagents = requiredSubagents.filter((r) => r === 'cr');
-    requiredSubagentAnyOf = [];
-  }
-
   if (contextMessage) {
-    // plan task 11: the lean classification re-words the completion contract
-    // (root-led, no mandatory Manager/role quotas, @cr + verification evidence
-    // kept); plan-only and the non-gated support/other tasks keep the legacy
-    // wording.
-    contextMessage = lean && managerMode !== 'plan_only'
-      ? buildLeanContextMessage(taskType, contextMessage, managerMode)
-      : buildContextMessage(taskType, managerMode, contextMessage);
+    // Root-orchestration contract: verification evidence, plus @cr for the
+    // implementation task types. Plan-only keeps its own wording.
+    contextMessage = managerMode !== 'plan_only'
+      ? buildRootContextMessage(contextMessage)
+      : buildPlanOnlyContextMessage(taskType, contextMessage);
   }
 
   // A benchmark dispatch contract (root-only marker) overrides the
   // category-default required roles: require exactly the listed specialist(s)
   // and clear any-of groups, so runner and hook agree on a single contract.
   //
-  // F03 / plan 05.9 (lean delta): the marker is scoped to benchmark tests — it
-  // only drives the roles/mode when the caller signals a benchmark test
-  // context; outside one it is a claim only. Legacy applies the marker
-  // unconditionally (unchanged behavior).
+  // F03 / plan 05.9: the marker is scoped to benchmark tests — it only drives
+  // the roles/mode when the caller signals a benchmark test context; outside
+  // one it is a claim only.
   const dispatchContract = parseDispatchContractMarker(text);
-  const dispatchContractActive = Boolean(dispatchContract && (!lean || benchContext));
+  const dispatchContractActive = Boolean(dispatchContract && benchContext);
   if (dispatchContractActive) {
     requiredSubagents = dispatchContract.roles;
     requiredSubagentAnyOf = [];
@@ -421,11 +325,12 @@ export function classifyPrompt(prompt, opts = {}) {
     contextMessage,
     informationalModelQuery,
     overrideTaskType,
-    // Workflow profile applied by this classification (plan task 11): the
-    // validated value the caller passed; 'legacy' also covers an absent or
-    // invalid value (the documented fallback rule). The dispatcher persists it
-    // to session state so leanProfileGates(state) has a single state read.
-    profile: lean ? 'lean' : 'legacy',
+    // Workflow profile applied by this classification (plan task 11). Plan task
+    // 16 removed the profile selector: the root-orchestration profile is the
+    // only one, so the value is constant. The dispatcher still persists it to
+    // session state so old sessions and the recorded evidence keep a
+    // readable profile field.
+    profile: 'lean',
     // Benchmark dispatch-contract mode from the BENCHMARK_DISPATCH_CONTRACT
     // marker ('' when absent, or scoped out in lean outside a benchmark test
     // context). Persisted to session state so the PreToolUse EditWrite guard
@@ -438,37 +343,6 @@ export function classifyPrompt(prompt, opts = {}) {
   };
 }
 
-function buildContextMessage(taskType, managerMode, base) {
-  const orchestrate = managerMode === 'orchestrate';
-  const planOnly = managerMode === 'plan_only';
-  switch (taskType) {
-    case 'feature':
-      if (orchestrate) return `${base} Manager-led orchestration is active. Required before completion: successful verification or @t, plus @cr and one of @e/@a. Start the first required specialist handoff early instead of spending multiple turns in manager-only exploration. Keep the workflow moving through implementation, verification, review, and docs when behavior changes.${STOP_SAFE_HINT}`;
-      if (planOnly) return `${base} Plan-only manager mode is active. Return a concrete execution plan without continuing implementation or specialist handoffs in this session.`;
-      return `${base} Required before completion: successful verification or @t, plus @cr and one of @e/@a. Finish implementation, run verification successfully, address review findings, and update docs when behavior changes. release/deploy remains out of scope.${STOP_SAFE_HINT}`;
-    case 'bugfix':
-      if (orchestrate) return `${base} Manager-led orchestration is active. Required before completion: successful verification or @t, plus @cr and one of @bug/@e/@dbg. Start the first required specialist handoff early instead of spending multiple turns in manager-only exploration. Reproduce or describe the failure mode, implement the fix, execute regression verification, and update docs if behavior changed.${STOP_SAFE_HINT}`;
-      if (planOnly) return `${base} Plan-only manager mode is active. Return a concrete bugfix plan without continuing implementation or specialist handoffs in this session.`;
-      return `${base} Required before completion: successful verification or @t, plus @cr and one of @bug/@e/@dbg. Reproduce or describe the failure mode, implement the fix, execute regression verification, and update docs if behavior changed.${STOP_SAFE_HINT}`;
-    case 'refactor':
-      if (orchestrate) return `${base} Manager-led orchestration is active. Required before completion: successful verification or @t, plus @cr and one of @a/@e. Start the first required specialist handoff early instead of spending multiple turns in manager-only exploration. Keep scope to structure and maintainability, preserve behavior, run verification after changes, and decide whether docs need updates.${STOP_SAFE_HINT}`;
-      if (planOnly) return `${base} Plan-only manager mode is active. Return a concrete refactor plan without continuing implementation or specialist handoffs in this session.`;
-      return `${base} Required before completion: successful verification or @t, plus @cr and one of @a/@e. Keep scope to structure and maintainability, preserve behavior, run verification after changes, and summarize risks plus changed files before stopping.${STOP_SAFE_HINT}`;
-    case 'review':
-      if (orchestrate) return `${base} Manager-led orchestration is active. Required specialist handoff before completion: @cr. Start the code-reviewer handoff early instead of extending manager-only analysis. Focus on findings first, call out residual risks or testing gaps, and keep implementation out of scope unless the user explicitly asks for fixes.${STOP_SAFE_HINT}`;
-      if (planOnly) return `${base} Plan-only manager mode is active. Return the review plan without continuing specialist handoffs in this session.`;
-      return `${base} Required subagent handoff before completion: @cr. Focus on findings first, call out residual risks or testing gaps, and keep implementation out of scope unless the user explicitly asks for fixes.${STOP_SAFE_HINT}`;
-    case 'docs':
-      if (orchestrate) return `${base} Manager-led orchestration is active. Required specialist handoff before completion: @doc. Start the docwriter handoff early instead of extending manager-only analysis. Keep documentation accurate to current behavior, include examples when they materially help, and note any remaining drift or missing verification.${STOP_SAFE_HINT}`;
-      if (planOnly) return `${base} Plan-only manager mode is active. Return the docs plan without continuing specialist handoffs in this session.`;
-      return `${base} Required subagent handoff before completion: @doc. Keep documentation accurate to current behavior, include examples when they materially help, and note any remaining drift or missing verification.${STOP_SAFE_HINT}`;
-    case 'support':
-      if (planOnly) return `${base} Plan-only manager mode is active. Return the diagnostic plan without implementation or specialist handoffs in this session.`;
-      return `${base} Keep this in advisory or troubleshooting mode unless the user explicitly requests repository changes. No workflow-specific specialist handoffs are required before completion.`;
-    default:
-      return base;
-  }
-}
 
 /** task_type_requires_implementation_summary: feature|bugfix|refactor|review|docs. */
 export function taskTypeRequiresImplementationSummary(taskType) {
@@ -635,21 +509,6 @@ export function userPromptResetPatch() {
     },
     mapClears: ['subagent_stop_blocks'],
   };
-}
-
-/**
- * session_background_manager_pending: true only when a gated task is in
- * orchestrate mode with no code change yet, a backgrounded agent is in flight,
- * and the manager role has started. Pure; the dispatcher supplies the
- * transcript-derived `backgroundedAgent` flag and `startedRoles` list.
- */
-export function sessionBackgroundManagerPending({ taskType, managerMode, codeChanged, backgroundedAgent, startedRoles }) {
-  if (!taskTypeRequiresImplementationSummary(taskType)) return false;
-  if (managerMode !== 'orchestrate') return false;
-  if (codeChanged === true) return false;
-  if (!backgroundedAgent) return false;
-  if (!Array.isArray(startedRoles) || !startedRoles.includes('m')) return false;
-  return true;
 }
 
 export { STOP_SAFE_HINT, TASK_TYPES };

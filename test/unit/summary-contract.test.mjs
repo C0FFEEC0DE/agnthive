@@ -22,7 +22,6 @@ import {
   messageMentionsConcreteOutcome,
   messageReportsNoChanges,
   sessionAgentEnforcementReason,
-  sessionManagerIdleReason,
   stopSafeNoChangeFooterHint,
   emitLoopAwareBlock,
 } from '../../plugins/agnthive/modules/summary-contract.mjs';
@@ -203,15 +202,25 @@ describe('sessionAgentEnforcementReason', () => {
   });
 
   it('allows when all required roles and one-of groups are satisfied', () => {
-    const state = { task_type: 'feature', required_subagents: ['cr'], required_subagent_any_of: [['e', 'a']] };
+    const state = { task_type: 'feature', required_subagents: ['cr'], required_subagent_any_of: [['e', 'dbg']] };
     assert.equal(sessionAgentEnforcementReason(state, ['cr', 'e']), null);
   });
 
   it('blocks when a one-of group is unsatisfied', () => {
-    const state = { task_type: 'feature', required_subagents: ['cr'], required_subagent_any_of: [['e', 'a']] };
+    const state = { task_type: 'feature', required_subagents: ['cr'], required_subagent_any_of: [['e', 'dbg']] };
     const reason = sessionAgentEnforcementReason(state, ['cr']);
     assert.ok(reason);
-    assert.match(reason, /Missing one-of groups: @e\/@a/);
+    assert.match(reason, /Missing one-of groups: @e\/@dbg/);
+  });
+
+  it('plan task 16: a recorded legacy role is migrated away, never demanded', () => {
+    // The removed agents (a/bug/t/doc/m) cannot be dispatched any more, so a
+    // state recorded under the legacy profile must not block on them.
+    const state = { task_type: 'feature', required_subagents: ['t', 'cr'], required_subagent_any_of: [['e', 'a']] };
+    const reason = sessionAgentEnforcementReason(state, ['cr', 'e']);
+    assert.equal(reason, null, 'the legacy @t quota and the @a half of the group are dropped');
+    const legacyOnly = { task_type: 'feature', required_subagents: ['t'] };
+    assert.equal(sessionAgentEnforcementReason(legacyOnly, []), null, 'a state that only requires a removed role never blocks');
   });
 
   it('blocks a review task without @cr', () => {
@@ -235,17 +244,11 @@ describe('sessionAgentEnforcementReason', () => {
     assert.equal(sessionAgentEnforcementReason({ task_type: 'other' }, []), null);
   });
 
-  it('skips a required @t when verification already succeeded', () => {
-    // @t requirement is satisfied by a successful test run, so it must not block.
-    const state = { task_type: 'feature', required_subagents: ['t'], tests_ok: true };
-    assert.equal(sessionAgentEnforcementReason(state, []), null);
-  });
-
-  it('still requires @t when verification has not succeeded', () => {
-    const state = { task_type: 'feature', required_subagents: ['t'] };
-    const reason = sessionAgentEnforcementReason(state, []);
-    assert.ok(reason);
-    assert.match(reason, /Missing required roles: @t/);
+  it('never blocks on a removed @t role, verified or not', () => {
+    // No test run stands in for @t any more: the role is dropped before the
+    // gate looks at started roles, so neither branch can block.
+    assert.equal(sessionAgentEnforcementReason({ task_type: 'feature', required_subagents: ['t'] }, []), null);
+    assert.equal(sessionAgentEnforcementReason({ task_type: 'feature', required_subagents: ['t'], tests_ok: true }, []), null);
   });
 
   it('notes manager-led orchestration in the reason', () => {
@@ -257,40 +260,6 @@ describe('sessionAgentEnforcementReason', () => {
   it('falls back to state.subagents_started when startedRoles is omitted', () => {
     const state = { task_type: 'feature', required_subagents: ['cr'], subagents_started: ['cr'] };
     assert.equal(sessionAgentEnforcementReason(state), null);
-  });
-});
-
-// --- session_manager_idle_reason ------------------------------------------
-
-describe('sessionManagerIdleReason', () => {
-  it('reports an idle manager that has not handed off to any specialist', () => {
-    const state = { task_type: 'feature', manager_mode: 'orchestrate' };
-    const reason = sessionManagerIdleReason(state, []);
-    assert.ok(reason);
-    assert.match(reason, /not handed off to any specialist/);
-  });
-
-  it('returns null once a specialist handoff has occurred', () => {
-    const state = { task_type: 'feature', manager_mode: 'orchestrate' };
-    assert.equal(sessionManagerIdleReason(state, ['m', 'cr']), null);
-  });
-
-  it('returns null outside orchestrate mode', () => {
-    const state = { task_type: 'feature', manager_mode: 'none' };
-    assert.equal(sessionManagerIdleReason(state, []), null);
-  });
-
-  it('returns null for task types that do not require an implementation summary', () => {
-    const state = { task_type: 'other', manager_mode: 'orchestrate' };
-    assert.equal(sessionManagerIdleReason(state, []), null);
-  });
-
-  it('does not count the manager itself as a specialist', () => {
-    // Only @m started (no specialist) should still be treated as idle.
-    const state = { task_type: 'feature', manager_mode: 'orchestrate' };
-    const reason = sessionManagerIdleReason(state, ['m']);
-    assert.ok(reason);
-    assert.match(reason, /not handed off to any specialist/);
   });
 });
 
@@ -402,5 +371,33 @@ describe('emitLoopAwareBlock', () => {
     const state = { stop_block_count: 1, stop_block_reason: 'r', stop_block_message: 'm' };
     const { perKey } = emitLoopAwareBlock(state, 'stop', 'r', 'm');
     assert.equal(perKey, null);
+  });
+});
+
+// --- block reason: actionable content, no echoed response -----------------
+
+describe('block checklist content', () => {
+  it('keeps the checklist, prefix hints, and template without echoing the response (stop)', () => {
+    const message = 'ECHOED_RESPONSE_SENTINEL: I changed the parser but did not run tests.';
+    const state = { code_changed: true, task_type: 'feature', docs_required: true, required_subagents: ['cr'], subagents_started: [] };
+    const { output } = emitLoopAwareBlock(state, 'stop', 'missing verification evidence', message);
+    assert.equal(output.decision, 'block');
+    assert.equal(output.reason, 'missing verification evidence');
+    const text = output.errorDetails;
+    assert.match(text, /### Requirement Checklist/);
+    assert.match(text, /Accepted prefixes: `Verification status:`/);
+    assert.match(text, /### Minimal Valid Template/);
+    assert.match(text, /Verification status: passed\|failed\|not run/);
+    assert.doesNotMatch(text, /### Your Current Response/);
+    assert.equal(text.includes('ECHOED_RESPONSE_SENTINEL'), false, 'the assistant response text is not echoed');
+  });
+
+  it('does not echo the response for a subagent_stop block either', () => {
+    const message = 'ECHOED_RESPONSE_SENTINEL: outcome pending.';
+    const state = { subagent_stop_blocks: {} };
+    const { output } = emitLoopAwareBlock(state, 'subagent_stop', 'missing summary', message, 'agent-a');
+    assert.equal(output.decision, 'block');
+    assert.match(output.errorDetails, /### Minimal Valid Template/);
+    assert.equal(output.errorDetails.includes('ECHOED_RESPONSE_SENTINEL'), false);
   });
 });

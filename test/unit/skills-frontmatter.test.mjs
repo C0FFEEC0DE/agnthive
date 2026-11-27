@@ -1,29 +1,20 @@
 // Validates YAML frontmatter contract for plugin slash skills under
 // plugins/agnthive/skills/<name>/SKILL.md.
 //
-// Skill shapes under ADR 0008 (root orchestration and three specialists;
-// modernization plan task 12) — migrated explicitly from the old two-shape
-// contract, never silently:
-//  - Forked specialist skill: exactly one — `review`. Full dispatch frontmatter
-//    (name, description, agent, context: fork, disable-model-invocation: true,
-//    non-empty allowed-tools, non-empty paths). Independent judgment is the
-//    point of the review, so it stays a fork. The `agent` value must match a
-//    known plugin agent name or alias.
+// Skill shapes after ADR 0015 — every skill is a root procedure:
 //  - Root-procedure skills (bug, debug, design, docs, explore, manager,
-//    refactor, test): name + description (+ optional argument-hint). They run
-//    in the root session, may mention delegation in their body, and must NOT
-//    declare agent/context/disable-model-invocation/allowed-tools/paths — a
-//    root procedure must not auto-fork an agent.
-//  - The five deprecated agents (manager, architect, tester, docwriter,
-//    bugbuster) stay as agent definitions for explicit legacy use; no root
-//    skill auto-dispatches them.
-//
-// Known delta (absorbed by the task-13 validator wave): scripts/validate.mjs
-// still expects the OLD set of six agent-backed skills
-// (bug/design/docs/refactor/review/test), so its agent-backed-skill inventory
-// check will list exactly this file-set mismatch until task 13 lands. This
-// test files and the validator target the same new contract; do not "fix" the
-// skills back to satisfy the old inventory check.
+//    refactor, review, simplify, test): name + description (+ optional
+//    argument-hint). They run in the root session, may dispatch a specialist
+//    from their body (the `/review` pattern), and must NOT declare
+//    agent/context/disable-model-invocation/allowed-tools/paths — a root
+//    procedure must not auto-fork an agent.
+//  - Forked specialist skills: none ship since ADR 0015 made `/review` a
+//    two-stage root procedure. FORKED_SKILLS stays as the seam: any future
+//    forked skill must carry the full dispatch frontmatter and match a known
+//    plugin agent name or alias.
+//  - The five removed compatibility agents (manager, architect, tester,
+//    docwriter, bugbuster) are gone from both the agent definitions and the
+//    alias map.
 //
 // For every skill, the `name` field must equal its directory name.
 import { test } from 'node:test';
@@ -36,11 +27,12 @@ const PLUGIN_ROOT = join(REPO, 'plugins', 'agnthive');
 const SKILLS_DIR = join(PLUGIN_ROOT, 'skills');
 const AGENT_DIR = join(PLUGIN_ROOT, 'agents');
 
-// The one slash skill that still forks a specialist (ADR 0008).
-const FORKED_SKILLS = ['review'];
+// Slash skills that fork a specialist. Empty since ADR 0015; the seam stays
+// so a future forked skill is still forced through the dispatch contract.
+const FORKED_SKILLS = [];
 // Slash skills that are root procedures (run in the root session, delegation
-// by need). Complete inventory of the nine shipped skills.
-const ROOT_PROCEDURE_SKILLS = ['bug', 'debug', 'design', 'docs', 'explore', 'manager', 'refactor', 'test'];
+// by need). Complete inventory of the ten shipped skills.
+const ROOT_PROCEDURE_SKILLS = ['bug', 'debug', 'design', 'docs', 'explore', 'manager', 'refactor', 'review', 'simplify', 'test'];
 const EXPECTED_SKILLS = [...FORKED_SKILLS, ...ROOT_PROCEDURE_SKILLS].sort();
 
 // readdirSync on a directory, returning sorted child directory names
@@ -50,12 +42,6 @@ function listSkillDirs(dir) {
     .filter((f) => {
       try { return statSync(join(dir, f)).isDirectory(); } catch { return false; }
     })
-    .sort();
-}
-
-function listMd(dir) {
-  return readdirSync(dir).filter((f) => f.endsWith('.md')).map((f) => join(dir, f))
-    .filter((p) => { try { return statSync(p).isFile(); } catch { return false; } })
     .sort();
 }
 
@@ -105,19 +91,6 @@ function extractList(fm, field) {
   return items;
 }
 
-// Build the set of known agent names/aliases from plugin agents/*.md.
-function knownAgents() {
-  const known = new Set();
-  for (const af of listMd(AGENT_DIR)) {
-    const fm = extractFrontmatter(af);
-    const name = extractScalar(fm, 'name');
-    const alias = extractScalar(fm, 'alias');
-    if (name) known.add(name);
-    if (alias) known.add(alias);
-  }
-  return known;
-}
-
 // Collect all skill SKILL.md paths (nested shape: skills/<name>/SKILL.md).
 function listSkillFiles() {
   const files = [];
@@ -146,7 +119,7 @@ test('every skill has name + description, and name equals its directory', () => 
   }
 });
 
-test('skill inventory is exactly the forked review skill plus the root procedures', () => {
+test('skill inventory is exactly the root procedures (no forked skill)', () => {
   const files = listSkillFiles();
   const dirs = files.map((sf) => basename(join(sf, '..'))).sort();
   assert.deepEqual(dirs, EXPECTED_SKILLS, `skills/ directory must be exactly ${JSON.stringify(EXPECTED_SKILLS)}`);
@@ -159,9 +132,23 @@ test('skill inventory is exactly the forked review skill plus the root procedure
   }
 });
 
-test('the forked specialist skill (review) carries the full dispatch contract and references a known primary agent', () => {
-  const known = knownAgents();
-  assert.ok(known.size, `No agents found under ${AGENT_DIR}`);
+test('the /review skill is a root procedure naming both stages (ADR 0015)', () => {
+  const review = join(SKILLS_DIR, 'review', 'SKILL.md');
+  const text = readFileSync(review, 'utf-8');
+  const body = text.split('---').slice(2).join('---');
+  assert.ok(/simplify/i.test(body), '/review body must name the simplify stage');
+  assert.ok(/@cr\b|Code Reviewer/.test(body), '/review body must name the Code Reviewer stage');
+});
+
+test('any forked specialist skill carries the full dispatch contract and a known agent', () => {
+  const known = new Set();
+  for (const af of readdirSync(AGENT_DIR).filter((f) => f.endsWith('.md'))) {
+    const fm = extractFrontmatter(join(AGENT_DIR, af));
+    for (const field of ['name', 'alias']) {
+      const v = extractScalar(fm, field);
+      if (v) known.add(v);
+    }
+  }
   for (const sf of listSkillFiles()) {
     const dir = basename(join(sf, '..'));
     if (!FORKED_SKILLS.includes(dir)) continue;

@@ -116,7 +116,8 @@ the Node port factors a single input parser used by both).
 ### workflow.mjs — classification, manager modes, docs/role requirements, stop-loop
 `task_type_requires_implementation_summary`,
 `task_type_requires_specialist_handoffs`, `record_loop_block`,
-`clear_loop_block`, `loop_block_count`, `session_background_manager_pending`.
+`clear_loop_block`, `loop_block_count` (`session_background_manager_pending`
+was ported too, then removed with the manager-backgrounded bypass in ADR 0015).
 
 ### verification.mjs — test/lint/build discovery and outcome tracking
 `detect_node_script`, `detect_make_target`, `detect_test_cmd`,
@@ -158,8 +159,8 @@ PermissionDenied event).
 ### transcripts.mjs — transcript parsing, last-message extraction
 `tail_jsonl_lines`, `extract_last_assistant_message_from_jsonl_stream`,
 `extract_last_assistant_message_from_transcript`,
-`resolved_last_assistant_message`,
-`transcript_indicates_backgrounded_agent`.
+`resolved_last_assistant_message` (`transcript_indicates_backgrounded_agent`
+was ported too, then removed with the manager-backgrounded bypass in ADR 0015).
 
 ### agents.mjs — role inference, alias normalization, subagent labeling
 `extract_subagent_label`, `extract_subagent_scope`,

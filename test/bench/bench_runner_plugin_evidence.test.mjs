@@ -444,7 +444,7 @@ test('main(): plugin state becomes the evidence source; isolated data root passe
     seedSessionStore(dataRoot, 'sess-bench-1', [
       ['init', { session_id: 'sess-bench-1', cwd: workdir, transcript_path: '' }],
       ['set', { field: 'revision', value: 2 }],
-      ['append_unique', { field: 'subagents_started', value: 't' }],
+      ['append_unique', { field: 'subagents_started', value: 'e' }],
       ['append', { field: 'verification', value: { id: 'v1', status: 'passed', startedRevision: 2, completedRevision: 2, cwd: workdir } }],
     ]);
     const spawnCalls = [];
@@ -477,10 +477,10 @@ test('main(): plugin state becomes the evidence source; isolated data root passe
       assert.equal(result.evidence_provenance, 'bench_isolated');
       assert.equal(result.plugin_state.found, true);
       assert.equal(result.verification_evidence.current, true);
-      assert.ok(result.state_agent_roles.includes('t'), JSON.stringify(result.state_agent_roles));
+      assert.ok(result.state_agent_roles.includes('e'), JSON.stringify(result.state_agent_roles));
       assert.equal(result.observed_agent_aliases_source, 'plugin_state');
-      assert.ok(result.observed_agent_aliases.includes('t'));
-      assert.ok(result.agent_evidence_by_alias.t.state === true);
+      assert.ok(result.observed_agent_aliases.includes('e'));
+      assert.ok(result.agent_evidence_by_alias.e.state === true);
       // The child env carried the per-run evidence index.
       const claudeCall = spawnCalls.find((c) => c.bin === 'claude');
       assert.equal(claudeCall.opts.env.CLAUDE_PLUGIN_DATA, join(outputDir, 'plugin-data'));
@@ -702,7 +702,7 @@ test('main(): outcome pass-through keys from payload + seeded state; mock e2e', 
     writeFileSync(join(workdir, 'package.json'), JSON.stringify({ scripts: { test: 'jest' } }));
     writeFileSync(taskFile, JSON.stringify(baseTask({
       id: 'outcome-passthrough', verification_required: true,
-      required_used_agent_groups: [{ any_of: ['t'] }],
+      required_used_agent_groups: [{ any_of: ['e'] }],
     })));
     const fakeResultText =
       'Did the work.\n\nVerification status: passed - npm run test completed successfully.\n' +
@@ -717,7 +717,7 @@ test('main(): outcome pass-through keys from payload + seeded state; mock e2e', 
     seedSessionStore(join(outputDir, 'plugin-data'), 'sess-bench-1', [
       ['init', { session_id: 'sess-bench-1', cwd: workdir, transcript_path: '' }],
       ['increment', { field: 'subagent_start_count' }],
-      ['append_unique', { field: 'subagents_started', value: 't' }],
+      ['append_unique', { field: 'subagents_started', value: 'e' }],
       ['append', { field: 'verification', value: { id: 'v1', status: 'passed', startedRevision: 0, completedRevision: 0 } }],
     ]);
     const spawnCalls = [];
@@ -757,7 +757,7 @@ test('main(): outcome pass-through keys from payload + seeded state; mock e2e', 
       // non-outcome task: predicate/findings keys stay null (honest absence)
       assert.equal(result.predicate_results, null);
       assert.equal(result.findings_evidence, null);
-      assert.ok(result.agent_evidence_by_alias.t.state === true);
+      assert.ok(result.agent_evidence_by_alias.e.state === true);
       // BENCH_ARM/BENCH_REP: arm stays transparent (emitter reads it); rep recorded
       assert.ok(!('arm' in result));
       assert.ok(result.notes.includes('Evidence source: plugin_state.'));
@@ -863,7 +863,9 @@ test('commands_pass: real child sees no scrubbed secret and bounds are real', ()
     mkdirSync(workdir, { recursive: true });
     const hold = join(workdir, 'hold.js'); // workdir-relative: backslash-free, charset-safe on win32
     const spew = join(workdir, 'spew.js');
-    writeFileSync(hold, 'const t = Date.now(); while (Date.now() - t < 30000) { /* spin */ } process.exit(0);\n');
+    // Outlives the spawn bound below; the bound itself is generous enough that
+    // node startup is not what the scrub predicate measures.
+    writeFileSync(hold, 'const t = Date.now(); while (Date.now() - t < 10000) { /* spin */ } process.exit(0);\n');
     writeFileSync(spew, 'process.stdout.write("x".repeat(4096));\n');
     prevProbe = process.env.AGT_E2E_PROBE;
     process.env.AGT_E2E_PROBE = 'leak-if-visible';
@@ -875,7 +877,7 @@ test('commands_pass: real child sees no scrubbed secret and bounds are real', ()
         { id: 'cmd-buf', kind: 'commands_pass', evaluate_in: 'live', commands: ['node spew.js'] },
       ] },
     }, {
-      repoRoot: tmp, workdir, spawnTimeoutMs: 400, spawnMaxBufferBytes: 2048,
+      repoRoot: tmp, workdir, spawnTimeoutMs: 3000, spawnMaxBufferBytes: 2048,
     });
     const byId = Object.fromEntries(ev.results.map((r) => [r.id, r]));
     assert.equal(byId['cmd-tmo'].result, 'failed');

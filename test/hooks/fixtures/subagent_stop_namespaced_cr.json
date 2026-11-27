@@ -1,6 +1,6 @@
 {
   "session_id": "case-subagent-stop-namespaced",
   "agent_type": "agnthive:Code Reviewer",
-  "agent_id": "agent-ns",
+  "agent_id": "agentNS",
   "last_assistant_message": "Outcome: reviewed the diff."
 }

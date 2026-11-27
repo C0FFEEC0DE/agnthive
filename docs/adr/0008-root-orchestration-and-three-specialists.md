@@ -1,6 +1,6 @@
 # ADR 0008: Root orchestration and three specialist agents
 
-- **Status:** Accepted; implemented in 0.4.0 (working tree); host canaries pending (plan task 14); legacy removal deferred to the compatibility window (plan task 16).
+- **Status:** Accepted; implemented in 0.4.0 (working tree); host canaries pending (plan task 14); legacy removal LANDED in 0.5.0 (plan task 16) — the `legacy` profile and the five compatibility agent definitions were removed.
 - **Date:** 2026-10-19.
 - **Decides:** The main session owns orchestration. The standard specialist set is Code Reviewer, Explorer, and Debugger; there is no mandatory Manager agent.
 - **Basis:** [Harness review and design](../specs/2026-10-19-harness-review-and-simplification-design.md), agent-role assessment and findings F04/F06/F08.
@@ -36,6 +36,10 @@ Independent review is required for substantial changes, including security/permi
 - Immediately delete all old definitions: breaks explicit legacy workflows before a migration path exists.
 
 ## Consequences and transition
+
+Amended by [ADR 0015](0015-two-stage-review-and-alias-label-removal.md): `/review`
+is a root-run two-stage procedure (simplify, then `@cr`), no skill is forked, and
+the alias map no longer carries the removed labels.
 
 Less role-specific prompting and manager state is expected, but cost and quality improvements must be measured, not asserted. An autonomous coordinator for a large subtask remains possible if justified; it is not part of the standard chain.
 

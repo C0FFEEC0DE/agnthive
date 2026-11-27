@@ -1,4 +1,4 @@
 {
   "session_id": "case-models-manager-plan-only",
-  "prompt": "@manager only plan: add OpenRouter fallback and model selection for Ollama"
+  "prompt": "/manager only plan: add OpenRouter fallback and model selection for Ollama"
 }

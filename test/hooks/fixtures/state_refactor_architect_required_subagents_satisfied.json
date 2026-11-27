@@ -25,15 +25,9 @@
     "cr"
   ],
   "required_subagents": [
-    "t",
     "cr"
   ],
-  "required_subagent_any_of": [
-    [
-      "a",
-      "e"
-    ]
-  ],
+  "required_subagent_any_of": [],
   "stop_block_count": 0,
   "stop_block_reason": "",
   "stop_block_message": "",

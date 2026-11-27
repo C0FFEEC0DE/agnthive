@@ -88,10 +88,12 @@ installation is non-destructive and nothing leaks into your global config.
 
 The four tunable knobs (`workflow_profile`, `enforcement_mode`, `log_max_bytes`,
 `ledger_max_bytes`) are each declared as a `userConfig` key in
-`.claude-plugin/plugin.json` and read by the runtime with a fixed three-tier precedence, highest first:
+`.claude-plugin/plugin.json` and read by the runtime in this precedence, highest first:
 
 1. **`AGNTHIVE_*`** — the explicit env var (e.g. `AGNTHIVE_POLICY`, `AGNTHIVE_WORKFLOW_PROFILE`).
-2. **`CLAUDE_CREW_*`** — the legacy alias, still honored for existing setups (log/ledger knobs only).
+2. **`CLAUDE_CREW_*`** — the legacy alias, honored for `enforcement_mode`, the
+   log/ledger knobs, and the progress file. `workflow_profile` has no legacy
+   alias: its only tiers are `AGNTHIVE_WORKFLOW_PROFILE` and the userConfig bridge.
 3. **`CLAUDE_PLUGIN_OPTION_*`** — the userConfig bridge. The runtime exports each
    `userConfig` key as `CLAUDE_PLUGIN_OPTION_<KEY_UPPERCASED>`, so a value set in
    the plugin's `userConfig` flows in here as the lowest-priority fallback.
@@ -123,7 +125,7 @@ workflow shape only, never a permission decision or a failure class
 
 | Knob | Default | Effect |
 |---|---|---|
-| `AGNTHIVE_WORKFLOW_PROFILE` (or the `workflow_profile` userConfig) | `lean` | `lean` (default since the ADR 0012 rollout gate passed) is the root-orchestration profile (ADR 0008/0009): no mandatory Manager dispatch, mandatory role quotas relax, footer lines become reporting guidance, and the benchmark dispatch contract applies only in a benchmark test context — while the current-verification and independent-review gates stay. `legacy` keeps the full specialist-handoff, Manager-idle, footer, and summary gates and stays selectable for one transition release. An invalid value falls back to `legacy` — the stricter profile — with a stderr note, so a misconfiguration can never relax the gates below the default. |
+| `AGNTHIVE_WORKFLOW_PROFILE` (or the `workflow_profile` userConfig) | `lean` | `lean` is the only profile since 0.5.0: the root-orchestration profile (ADR 0008/0009) with no mandatory Manager dispatch, no mandatory role quotas, footer lines as reporting guidance, and the benchmark dispatch contract scoped to a benchmark test context — while the current-verification and independent-review gates stay. The `legacy` profile was removed after the compatibility window closed; a session that still names it runs `lean` and prints an explicit migration note on stderr. An invalid value runs `lean` with a stderr note. |
 
 ### Log rotation and ledger size
 
@@ -173,7 +175,7 @@ per running subagent), and the helper prints one JSON line per task:
 
 The body is `<alias> <role name> · <status> · <effort> · <humanized tokens> ·
 <context usage %>`. The helper maps each subagent's type to its canonical alias
-(`@cr`, `@e`, `@a`, …), humanizes token counts, and computes context-window
+(`@cr`, `@e`, `@dbg`, …), humanizes token counts, and computes context-window
 usage when `contextWindowSize` is present. It degrades gracefully: an empty task
 list produces no output, and a row missing fields falls back to a neutral label
 rather than crashing. Node standard library only.

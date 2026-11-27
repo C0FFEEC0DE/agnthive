@@ -42,7 +42,7 @@ test('UserPromptSubmit feature: emits workflow context and persists classificati
   assert.equal(res.status, 0);
   const out = parseOut(res);
   assert.equal(out.hookSpecificOutput.hookEventName, 'UserPromptSubmit');
-  assert.ok(out.hookSpecificOutput.additionalContext.includes('successful'));
+  assert.ok(out.hookSpecificOutput.additionalContext.includes('verification evidence'));
   assert.ok(out.hookSpecificOutput.additionalContext.includes('feature workflow'));
 
   const fixture = JSON.parse(readFileSync(join(fixtures, 'user_prompt_feature.json'), 'utf8'));
@@ -50,8 +50,8 @@ test('UserPromptSubmit feature: emits workflow context and persists classificati
   assert.equal(state.task_type, 'feature');
   assert.equal(state.manager_mode, 'none');
   assert.equal(state.docs_required, true);
-  assert.deepEqual(state.required_subagents, ['t', 'cr']);
-  assert.deepEqual(state.required_subagent_any_of, [['e', 'a']]);
+  assert.deepEqual(state.required_subagents, ['cr'], 'plan task 16: no mandatory role quotas');
+  assert.deepEqual(state.required_subagent_any_of, []);
   // stop-loop reset applied
   assert.equal(state.stop_block_count, 0);
   assert.equal(state.stalled_by_policy, false);
@@ -64,11 +64,12 @@ test('UserPromptSubmit review: context mentions @cr', () => {
   assert.ok(out.hookSpecificOutput.additionalContext.includes('@cr'));
 });
 
-test('UserPromptSubmit docs: context mentions @doc', () => {
+test('UserPromptSubmit docs: context is the docs workflow (no @doc quota since 0.5.0)', () => {
   const res = runDispatcher('UserPromptSubmit', 'user_prompt_docs', dataRoot);
   assert.equal(res.status, 0);
   const out = parseOut(res);
-  assert.ok(out.hookSpecificOutput.additionalContext.includes('@doc'));
+  assert.ok(out.hookSpecificOutput.additionalContext.includes('docs workflow'));
+  assert.ok(!out.hookSpecificOutput.additionalContext.includes('@doc'), 'the docs-persona quota is gone');
 });
 
 test('UserPromptSubmit support: tech-support reclassification with bug word', () => {
@@ -122,8 +123,8 @@ test('UserPromptSubmit override: benchmark refactor override wins', () => {
   const fixture = JSON.parse(readFileSync(join(fixtures, 'user_prompt_benchmark_refactor_override.json'), 'utf8'));
   const state = loadState(statePaths(dataRoot, fixture.session_id));
   assert.equal(state.task_type, 'refactor');
-  assert.deepEqual(state.required_subagents, ['t', 'cr']);
-  assert.deepEqual(state.required_subagent_any_of, [['a', 'e']]);
+  assert.deepEqual(state.required_subagents, ['cr'], 'plan task 16: no mandatory role quotas');
+  assert.deepEqual(state.required_subagent_any_of, []);
 });
 
 // --- plan 05 integration: slash routing through the real dispatcher ---------
@@ -150,10 +151,10 @@ test('UserPromptSubmit namespaced /agnthive:manager routes to manager orchestrat
   const state = loadState(statePaths(dataRoot, 'upslash-own'));
   assert.equal(state.manager_mode, 'orchestrate');
   assert.equal(state.task_type, 'feature');
-  assert.deepEqual(state.required_subagents, ['t', 'cr']);
+  assert.deepEqual(state.required_subagents, ['cr'], 'plan task 16: no mandatory role quotas');
 });
 
-test('UserPromptSubmit plain /manager keeps legacy routing and args classification', () => {
+test('UserPromptSubmit plain /manager keeps the routing and the args classification', () => {
   const res = runPromptInline('/manager run the review and docs pass', 'upslash-plain');
   assert.equal(res.status, 0);
   const state = loadState(statePaths(dataRoot, 'upslash-plain'));
@@ -211,7 +212,7 @@ test('lifecycle composition: two different tasks in one session reset role satis
   assert.equal(s1.state.prompt_seq, 1);
   assert.equal(s1.state.last_prompt_id, 'p1');
   assert.equal(s1.cls.taskType, 'docs');
-  assert.deepEqual(s1.state.required_subagents, ['doc']);
+  assert.deepEqual(s1.state.required_subagents, [], 'plan task 16: no docs-persona quota');
   assert.notEqual(s1.state.active_task, null);
   assert.equal(s1.state.active_task.status, 'open');
   // the role counts map starts empty on task 1
@@ -231,8 +232,8 @@ test('lifecycle composition: two different tasks in one session reset role satis
   assert.equal(s2.state.task_id, 'task-2');
   assert.equal(s2.state.last_task_id, 'task-1');
   assert.equal(s2.cls.taskType, 'bugfix');
-  assert.deepEqual(s2.state.required_subagents, ['t', 'cr']);
-  assert.deepEqual(s2.state.required_subagent_any_of, [['bug', 'e', 'dbg']]);
+  assert.deepEqual(s2.state.required_subagents, ['cr'], 'plan task 16: no mandatory role quotas');
+  assert.deepEqual(s2.state.required_subagent_any_of, []);
   assert.equal(s2.state.task_type, 'bugfix');
   assert.equal(s2.state.prompt_seq, 2);
   assert.notStrictEqual(s2.state.active_task, released.active_task);

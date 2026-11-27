@@ -1,0 +1,5 @@
+{
+  "session_id": "case-review-agent-stop",
+  "transcript_path": "test/hooks/fixtures/transcripts/review_backgrounded_text_no_specialist.jsonl",
+  "last_assistant_message": "Review outcome: completed. Changed files: no files changed. Verification status: N/A - review only. Remaining risks: none."
+}

@@ -277,6 +277,18 @@ test('trimEvents removes captured events; loadState stays correct via snapshot',
   assert.equal(loaded.c, 5, 'state preserved via snapshot after trimming');
 });
 
+test('an append after a full trim is replayed, not skipped', () => {
+  const p = statePaths(root, 'trim-2');
+  appendEvent(p, 'init', { session_id: 'trim-2' });
+  for (let i = 0; i < 5; i++) appendEvent(p, 'increment', { field: 'c', by: 1 });
+  writeSnapshot(p, reducer(readEvents(p)));
+  trimEvents(p, readSnapshot(p).state._last_seq);
+  assert.equal(readdirSync(p.eventsDir).length, 0, 'all events trimmed');
+  const seq = appendEvent(p, 'increment', { field: 'c', by: 1 });
+  assert.equal(seq, 7, 'seq floors at the snapshot, not at an empty events dir');
+  assert.equal(loadState(p).c, 6, 'the post-trim event is replayed into state');
+});
+
 // --- parallel writer stress test (no lost updates) ------------------------
 
 test('parallel writers: no lost updates, unique monotonic seqs', async () => {

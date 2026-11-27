@@ -141,15 +141,11 @@ function loadAliasesJson(repoRoot) {
     }
   } else {
     // Fallback for benchmark unit tests that run with a dummy repo root.
+    // Mirrors the shipped alias map (ADR 0015: three specialists only).
     Object.assign(mapping, {
-      a: 'a', architect: 'a', 'the-architect': 'a', design: 'a', plan: 'a',
-      e: 'e', explorer: 'e', explore: 'e', nerd: 'e',
-      bug: 'bug', bugbuster: 'bug', 'bug-pattern-hunter': 'bug', 'bug-pattern': 'bug',
-      dbg: 'dbg', debugger: 'dbg', 'debugging-specialist': 'dbg',
-      t: 't', tester: 't', testing: 't', paranoid: 't',
-      cr: 'cr', 'code-reviewer': 'cr', 'code-review': 'cr', reviewer: 'cr', 'toxic-senior': 'cr',
-      doc: 'doc', docwriter: 'doc', 'documentation-writer': 'doc', 'docs-writer': 'doc', docs: 'doc',
-      m: 'm', manager: 'm', 'big-boss': 'm',
+      e: 'e', explorer: 'e', explore: 'e',
+      dbg: 'dbg', debugger: 'dbg', debug: 'dbg',
+      cr: 'cr', 'code-reviewer': 'cr', 'code-review': 'cr', reviewer: 'cr',
     });
   }
   return mapping;
@@ -705,11 +701,6 @@ export function buildPrompt(task, verificationLabel, options = {}) {
       sequenceNote =
         `\n- Every required role must be launched as a real handoff in this order: ${ordered}\n` +
         '- A prose summary that claims a handoff happened does not count as the handoff itself.';
-      if (requiredUsedAgentList[0] === 'm' && requiredUsedAgentList.length > 1) {
-        const downstream = requiredUsedAgentList.slice(1).map((a) => `@${a}`).join(' -> ');
-        sequenceNote +=
-          `\n- For this manager-led run, launch @m first. Then the manager must launch the remaining required roles in order: ${downstream}.`;
-      }
     }
     if (requiredUsedAgentList[requiredUsedAgentList.length - 1] === 'cr') {
       completionDisciplineNote =
@@ -730,7 +721,7 @@ export function buildPrompt(task, verificationLabel, options = {}) {
       `- Make that handoff before doing the substantive work yourself.${sequenceNote}${ownershipNote}${completionDisciplineNote}\n` +
       `- Before the required footer, report the completed real handoff as: Handoff evidence: ${requiredUsedAgents} <what the specialist did>.`;
     requiredUsedAgentNote +=
-      '\n- Prefer direct alias handoffs like @doc, @a, or @cr instead of slash skills such as /docs, /design, or /review unless the task explicitly asks for the slash command.\n' +
+      '\n- Prefer a direct alias handoff (@cr, @e, or @dbg) instead of relying on a slash skill unless the task explicitly asks for the slash command.\n' +
       '- Do not burn turns probing avoidable skill path/tool restrictions before the required alias handoff lands.';
   }
   let transcriptContractNote = '';
@@ -1159,11 +1150,26 @@ export function readSessionPluginState(sessionId, { roots = null } = {}) {
       rawEventFiles = readdirSync(paths.eventsDir).filter((f) => f.endsWith('.json')).length;
     } catch { rawEventFiles = 0; }
     if (!hasSnapshot && rawEventFiles === 0) continue;
-    let parsedEvents = rawEventFiles;
+    // Corrupt files are counted as FILES, not record-vs-file: one batch file
+    // holds many events, so a record count can exceed the file count and hide
+    // a genuinely corrupt file. parsed_events stays the record count.
+    let parsedEventFiles = rawEventFiles;
+    let parsedEvents = 0;
     if (rawEventFiles > 0) {
-      try { parsedEvents = readEvents(paths).length; } catch { parsedEvents = 0; }
+      try {
+        parsedEventFiles = 0;
+        for (const f of readdirSync(paths.eventsDir).filter((n) => n.endsWith('.json'))) {
+          try {
+            const parsed = JSON.parse(readFileSync(join(paths.eventsDir, f), 'utf8'));
+            // Same shape predicate as readEvents: a scalar or null is not an
+            // event record, so its file is just as unreadable as broken JSON.
+            if (parsed && typeof parsed === 'object') parsedEventFiles++;
+          } catch { /* corrupt */ }
+        }
+        parsedEvents = readEvents(paths).length;
+      } catch { parsedEventFiles = 0; parsedEvents = 0; }
     }
-    const truncatedEvents = rawEventFiles - parsedEvents;
+    const truncatedEvents = rawEventFiles - parsedEventFiles;
     const state = loadState(paths);
     const stateSid = String((state && state.session_id) || '').trim();
     if (stateSid !== sid) {
@@ -1751,24 +1757,12 @@ export function inferUsedAgentAliasesFromTranscript(payload, labelMap) {
   const [scanned, entries] = transcriptTextEntries(payload);
   if (!scanned) return [];
   const text = entries.map(([, e]) => e).join('\n').toLowerCase();
+  // ADR 0015: only a shipped-specialist launch line counts; a skill load is a
+  // root-procedure step, not a dispatch, and the removed roles are gone.
   const detections = [
-    ['m', /skill\(\/manager\)/],
-    ['cr', /skill\(\/review\)/],
-    ['t', /skill\(\/test\)/],
-    ['e', /skill\(\/explore\)/],
-    ['a', /skill\(\/design\)/],
-    ['bug', /skill\(\/bug\)/],
-    ['dbg', /skill\(\/debug\)/],
-    ['doc', /skill\(\/docs\)/],
-    ['a', /skill\(\/refactor\)/],
-    ['m', /(^|[\s])manager\(/],
     ['cr', /(^|[\s])code reviewer\(/],
-    ['t', /(^|[\s])tester\(/],
     ['e', /(^|[\s])explorer\(/],
-    ['a', /(^|[\s])architect\(/],
-    ['bug', /(^|[\s])bugbuster\(/],
     ['dbg', /(^|[\s])debugger\(/],
-    ['doc', /(^|[\s])docwriter\(/],
   ];
   const aliases = [];
   const seen = new Set();
@@ -1778,7 +1772,7 @@ export function inferUsedAgentAliasesFromTranscript(payload, labelMap) {
       aliases.push(alias);
     }
   }
-  const aliasPattern = /@(m|e|a|t|cr|bug|dbg|doc|manager|explorer|architect|tester|code-reviewer|code-review|reviewer|bugbuster|debugger|docwriter|big-boss|nerd|toxic-senior|paranoid|the-architect|wiki-wiki)(?:$|[^a-z0-9-])/gi;
+  const aliasPattern = /@(cr|e|dbg|explorer|code-reviewer|code-review|reviewer|debugger)(?:$|[^a-z0-9-])/gi;
   let m;
   while ((m = aliasPattern.exec(text)) !== null) {
     const rawLabel = m[1];
@@ -2250,17 +2244,11 @@ export function changedFilesLine(changedFiles) {
   return 'No files changed: benchmark task completed without workspace edits.';
 }
 
-export function synthesizedOutcomeLine(task, changedFiles) {
+export function synthesizedOutcomeLine(task) {
   const alias = String(task.agent_alias || '').trim();
-  if (alias === 'doc') {
-    const scope = changedFiles.length ? changedFiles.join(', ') : 'the requested docs';
-    return `Outcome: clarified the requested documentation in ${scope}.`;
-  }
-  if (alias === 'bug') return 'Outcome: confirmed and fixed the scoped bug, then documented and verified the change.';
   if (alias === 'cr') return 'Outcome: captured the review findings and documented the review outcome.';
   if (alias === 'dbg') return 'Outcome: isolated the failing behavior and documented the root cause.';
   if (alias === 'e') return 'Outcome: mapped the requested code paths and recorded the relevant locations.';
-  if (alias === 't') return 'Outcome: verified the scoped behavior and captured the remaining gaps.';
   return 'Outcome: completed the scoped benchmark task.';
 }
 
@@ -2306,7 +2294,7 @@ export function synthesizeRequiredTranscriptLines(task, args) {
     } else if (pattern.includes('Gaps:')) {
       lines.push('Gaps: no additional gaps were identified beyond the scoped benchmark task.');
     } else if (pattern.includes('Outcome:|Fix:') || pattern.trim() === 'Outcome:') {
-      lines.push(synthesizedOutcomeLine(task, args.changedFiles));
+      lines.push(synthesizedOutcomeLine(task));
     } else if (pattern.includes('Changed files:|No files changed:')) {
       lines.push(changedFilesLine(args.changedFiles));
     } else if (pattern.trim() === 'Changed files:' && args.changedFiles.length) {
@@ -2975,7 +2963,7 @@ export function main() {
     plugin_id: pluginEnabled ? pluginId : null,
     enable_mechanism: pluginEnabled ? 'settings-file:enabledPlugins' : 'disabled:BENCH_DISABLE_PLUGIN',
     default_enabled_manifest: false,
-    workflow_profile: String(process.env.AGNTHIVE_WORKFLOW_PROFILE || '').trim() || 'legacy',
+    workflow_profile: String(process.env.AGNTHIVE_WORKFLOW_PROFILE || '').trim() || 'lean',
     bench_arm: String(process.env.BENCH_ARM || '').trim() || null,
     bench_rep: /^\d+$/.test(String(process.env.BENCH_REP ?? '').trim())
       ? Number(String(process.env.BENCH_REP).trim())

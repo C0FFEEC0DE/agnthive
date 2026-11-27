@@ -7,6 +7,7 @@
 // session_manager_idle_reason, is_docs_path. Pure module: operates on a state
 // object and message string; the dispatcher supplies transcript-derived inputs.
 import { taskTypeRequiresImplementationSummary } from './workflow.mjs';
+import { CURRENT_AGENT_ALIASES } from './agents.mjs';
 import { recordLoopBlock, loopBlockFields } from './workflow.mjs';
 import { formatSubagentList, formatSubagentGroup } from './agents.mjs';
 import { currentRevision } from './verification.mjs';
@@ -172,7 +173,6 @@ export function buildBlockChecklist(prefix, finalReason, message, state) {
   out += blockChecklistSummaryRequirements(prefix, message, state);
   out += blockChecklistGateRequirements(prefix, state);
   out += blockChecklistFixTemplate(prefix);
-  out += '\n### Your Current Response\n\n```text\n' + message + '\n```\n';
   out += '\n---\n';
   out += `**Decision:** block\n`;
   out += `**Reason:** ${finalReason}\n`;
@@ -281,8 +281,16 @@ export function sessionAgentEnforcementReason(state, startedRoles = null) {
   const managerMode = state?.manager_mode ?? 'none';
   const started = Array.isArray(startedRoles) ? startedRoles
     : (Array.isArray(state?.subagents_started) ? state.subagents_started : []);
-  const required = Array.isArray(state?.required_subagents) ? state.required_subagents : [];
-  const anyOfGroups = Array.isArray(state?.required_subagent_any_of) ? state.required_subagent_any_of : [];
+  // Plan task 16: a gate never demands a role the plugin can no longer
+  // produce. A session state recorded under the legacy profile (e.g.
+  // required_subagents ['t','cr']) is migrated explicitly to the roles that
+  // still ship (cr/e/dbg) — the removed agents can never be dispatched, so
+  // requiring them would block the session forever.
+  const required = (Array.isArray(state?.required_subagents) ? state.required_subagents : [])
+    .filter((alias) => CURRENT_AGENT_ALIASES.includes(alias));
+  const anyOfGroups = (Array.isArray(state?.required_subagent_any_of) ? state.required_subagent_any_of : [])
+    .map((group) => (Array.isArray(group) ? group.filter((alias) => CURRENT_AGENT_ALIASES.includes(alias)) : group))
+    .filter((group) => Array.isArray(group) && group.length > 0);
 
   const missingGroups = [];
   for (const group of anyOfGroups) {
@@ -293,10 +301,8 @@ export function sessionAgentEnforcementReason(state, startedRoles = null) {
 
   if (required.length === 0 && missingGroups.length === 0) return null;
 
-  const succVer = successfulVerification(state);
   const missing = [];
   for (const alias of required) {
-    if (alias === 't' && succVer) continue;
     if (!started.includes(alias)) missing.push(alias);
   }
 
@@ -308,20 +314,6 @@ export function sessionAgentEnforcementReason(state, startedRoles = null) {
   if (missingGroups.length > 0) msg += ` Missing one-of groups: ${missingGroups.join(', ')}.`;
   msg += ` Used so far: ${formatSubagentList(started)}.`;
   return msg;
-}
-
-export function sessionManagerIdleReason(state, startedRoles = null) {
-  const taskType = state?.task_type ?? 'other';
-  const managerMode = state?.manager_mode ?? 'none';
-  if (!taskTypeRequiresImplementationSummary(taskType)) return null;
-  if (managerMode !== 'orchestrate') return null;
-  const started = Array.isArray(startedRoles) ? startedRoles
-    : (Array.isArray(state?.subagents_started) ? state.subagents_started : []);
-  const specialistCount = started.filter((r) => r && r !== 'm').length;
-  if (specialistCount === 0) {
-    return 'Manager-led orchestration has not handed off to any specialist yet. Start the first required specialist handoff before going idle.';
-  }
-  return null;
 }
 
 // --- loop-aware block (output + state patch) ------------------------------

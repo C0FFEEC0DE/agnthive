@@ -15,12 +15,11 @@ import { readFileSync } from 'node:fs';
 import { parseHookInput, readStdin } from './hook-input.mjs';
 import { additionalContext, passthrough, serialize, terminalCancel, pretoolPermission, permissionRequestDeny, permissionDeniedResult, blockReason, eventClass } from './hook-output.mjs';
 import { resolveDataRoot, resolveSessionId, resolveLogRoot, resolveProjectDir } from './util.mjs';
-import { statePaths, appendEvent, loadState } from './state.mjs';
+import { statePaths, queueEvent, flushEvents, loadState } from './state.mjs';
 import {
-  classifyPrompt, userPromptResetPatch, sessionBackgroundManagerPending,
-  clearLoopBlockPatch, agentLoopKey, hasPriorStopBlock, taskTypeRequiresImplementationSummary,
+  classifyPrompt, userPromptResetPatch,
+  clearLoopBlockPatch, agentLoopKey, hasPriorStopBlock,
   promptCorrelationPatch, taskTransition, loopBlockResetKeys,
-  leanProfileGates, leanRequiredRoles,
 } from './workflow.mjs';
 import { resolveWorkflowProfile, reportWorkflowProfileNote } from './plugin-config.mjs';
 import {
@@ -31,18 +30,15 @@ import {
 } from './verification.mjs';
 import {
   extractSubagentLabel, extractSubagentScope, loadAliases, effectiveStartedRoles,
-  shouldEnforceSubagentFooter, isGenericType, isAliasesLoaded,
+  shouldEnforceSubagentFooter, isGenericType, isAliasesLoaded, CURRENT_AGENT_ALIASES,
   upsertAgent, startedRolesFromRegistry, isForeignOrForkType, isAgntHiveSpecialistRole,
 } from './agents.mjs';
 import {
-  resolvedLastAssistantMessage, transcriptIndicatesBackgroundedAgent, resolveSubagentReport,
+  resolvedLastAssistantMessage, resolveSubagentReport,
 } from './transcripts.mjs';
 import {
-  sessionBlockReason, sessionAgentEnforcementReason, sessionManagerIdleReason,
+  sessionBlockReason, sessionAgentEnforcementReason,
   emitLoopAwareBlock, isDocsPath, messageReportsNoChanges,
-  messageMentionsVerificationStatus, messageMentionsReviewOutcome,
-  messageMentionsChangedFiles, messageMentionsRemainingRisks,
-  messageMentionsDocsStatus, messageMentionsConcreteOutcome, messageMentionsNextStep,
   stopSafeNoChangeFooterHint, exitBlock,
 } from './summary-contract.mjs';
 import {
@@ -101,13 +97,14 @@ function handleUserPromptSubmit(parsed) {
     workflow_profile: prof.profile,
     ...corr.fields,
   } });
+  let tt = null;
   if (!corr.dedupe) {
     // ADR-0010 task identity (plan 05.3-05.5): the classification persists
     // through the task transition only — start/new_task/plan_only/complete
     // carry it in tt.fields, so a continuing turn cannot overwrite an open
     // contract's required roles / dispatch mode (anti-F02). `completed` is
     // only ever evidenced by the registry, never from report text (F02).
-    const tt = taskTransition(state, cls, {
+    tt = taskTransition(state, cls, {
       promptId: parsed.promptId ?? '',
       prompt,
       dedupe: corr.dedupe,
@@ -153,7 +150,25 @@ function handleUserPromptSubmit(parsed) {
   // Recorded AFTER the task transition so a transition cannot reset the
   // freshly written evidence flags.
   const background = notification ? recordBackgroundVerificationCompletion(parsed, paths, state) : null;
-  if (cls.contextMessage) return additionalContext(cls.contextMessage, 'UserPromptSubmit');
+  // Emit the workflow context only when it carries new information: a new
+  // task, a task transition, or a changed workflow category/profile. The
+  // signature is persisted so dedupe survives process boundaries; a repeat
+  // prompt for the same open task emits nothing. The background-completion
+  // message path is never suppressed.
+  if (cls.contextMessage) {
+    const transitioned = tt !== null && (tt.isNewTask || tt.transition !== 'continue');
+    const signature = [
+      tt ? tt.task_id : (state?.task_id ?? ''),
+      cls.taskType ?? 'other',
+      cls.managerMode ?? 'none',
+      prof.profile,
+    ].join('|');
+    const lastSignature = typeof state?.last_context_signature === 'string' ? state.last_context_signature : '';
+    if (transitioned || signature !== lastSignature) {
+      safeAppend(paths, 'set_many', { fields: { last_context_signature: signature } });
+      return additionalContext(cls.contextMessage, 'UserPromptSubmit');
+    }
+  }
   if (background && background.message) return additionalContext(background.message, 'UserPromptSubmit');
   return passthrough();
 }
@@ -233,7 +248,11 @@ function enforceDispatchContract(parsed) {
   const state = loadStateFor(parsed);
   if (!state) return passthrough();
   if (state.dispatch_contract_mode !== 'enforced') return passthrough();
-  const required = Array.isArray(state.required_subagents) ? state.required_subagents : [];
+  // Only roles the plugin can still produce: a stale contract naming a removed
+  // agent (e.g. @a from an old profile) would otherwise deny every edit with
+  // no way to satisfy it.
+  const required = (Array.isArray(state.required_subagents) ? state.required_subagents : [])
+    .filter((alias) => CURRENT_AGENT_ALIASES.includes(alias));
   if (!required.length) return passthrough();
   const started = new Set(Array.isArray(state.subagents_started) ? state.subagents_started : []);
   const satisfied = required.some((role) => started.has(role));
@@ -354,7 +373,6 @@ function handlePostToolUseEditWrite(parsed) {
     // verification records stop counting toward the current gate. Set (not
     // increment), so the hint overtakes an already-higher revision counter.
     safeAppend(statePathsFor(parsed), 'set_many', { fields: { fs_revision_hint: nextRevisionValue(state) } });
-    return additionalContext('Recorded a code/config change in session state. This session now requires verification before completion.', 'PostToolUse');
   }
   return passthrough();
 }
@@ -393,10 +411,28 @@ function handlePostToolUseFailure(parsed) {
 // Append an event record, swallowing write failures to stderr so a state-write
 // fault never blocks the hook runtime. Shared by every state-mutation call site
 // (set_many patches, per-key map_set/map_delete events, the SubagentStart batch).
+// ADR 0014: events are queued per process and written as one batch at the end
+// of the event, so a hook that records several fields lists the state directory
+// once instead of once per field. Handlers load state before they append, so no
+// handler observes a half-written batch.
+const pendingStateByDir = new Map();
+
 function safeAppend(paths, type, payload) {
-  try { appendEvent(paths, type, payload); } catch (e) {
+  try {
+    queueEvent(paths, type, payload);
+    pendingStateByDir.set(paths.eventsDir, paths);
+  } catch (e) {
     process.stderr.write(`hook-dispatcher: state write failed: ${e?.message ?? e}\n`);
   }
+}
+
+function flushPendingState() {
+  for (const paths of pendingStateByDir.values()) {
+    try { flushEvents(paths); } catch (e) {
+      process.stderr.write(`hook-dispatcher: state flush failed: ${e?.message ?? e}\n`);
+    }
+  }
+  pendingStateByDir.clear();
 }
 
 // Persist a state patch as a set_many event for the parsed input's session.
@@ -467,10 +503,7 @@ function handleSubagentStart(parsed) {
   if (record.starts === 1 && record.role) {
     safeAppend(paths, 'role_increment', { mapField: 'subagent_instance_count_by_role', key: record.role, by: 1 });
   }
-  const message = label
-    ? `Recorded subagent handoff: @${label}. Parallel same-role handoffs are allowed when they have distinct scopes. Return outcome, changed files or 'no changes', verification status, and remaining risks or next step. If you edit code, run or request verification before stopping.`
-    : `Subagent handoff contract: return outcome, changed files or 'no changes', verification status, and remaining risks or next step. If you edit code, run or request verification before stopping.`;
-  return additionalContext(message, 'SubagentStart');
+  return passthrough();
 }
 
 // Read the full transcript text for role inference (Stop fires once at session
@@ -492,15 +525,6 @@ function startedRolesUnion(state, transcriptText) {
 // Load the session state for a parsed input, or null on error / no session.
 function loadStateFor(parsed) {
   try { return loadState(statePathsFor(parsed)); } catch { return null; }
-}
-
-// Lean profile projection (plan task 11.2): the enforcement gate reads the open
-// contract narrowed by leanRequiredRoles — the t/doc/one-of role quotas are
-// dropped while a recorded @cr requirement survives. Legacy passes the state
-// through unmodified, so the gate stays byte-identical.
-function leanProjectedState(state) {
-  const projected = leanRequiredRoles(state);
-  return { ...state, required_subagents: projected.required, required_subagent_any_of: projected.anyOf };
 }
 
 // Persist a loop-aware block: record the block + policy-stall patch, then emit
@@ -537,11 +561,9 @@ function emitBlock(parsed, state, prefix, reason, message, agentId = null) {
 function handleStop(parsed) {
   const state = loadStateFor(parsed);
   if (!state) return passthrough();
-  // ADR 0012 / plan task 11: workflow profile gates resolve once per handler
-  // call — legacy keeps every gate; lean narrows role quotas and makes the
-  // footer lines advisory while sessionBlockReason always stays blocking.
-  const prof = resolveWorkflowProfile(process.env);
-  const gates = leanProfileGates(state, prof.profile);
+  // ADR 0008 / ADR 0009 / plan task 16: the single root-orchestration shape
+  // applies — no role quotas, no Manager-idle gate, footer lines are
+  // reporting guidance — while sessionBlockReason always stays blocking.
   // ADR 0003: when the runtime signals stop_hook_active, it is re-invoking the
   // Stop hook after our own previous block — yield (clear loop state and pass
   // through) instead of re-blocking, honoring the standard loop-prevention
@@ -573,18 +595,7 @@ function handleStop(parsed) {
   let reason = sessionBlockReason(state);
   if (reason) return emitBlock(parsed, state, 'stop', reason, lastMessage);
 
-  if (sessionBackgroundManagerPending({
-    taskType: state.task_type, managerMode: state.manager_mode,
-    codeChanged: state.code_changed, backgroundedAgent: transcriptIndicatesBackgroundedAgent(transcriptPath),
-    startedRoles,
-  })) {
-    persistPatch(parsed, clearLoopBlockPatch('stop'));
-    return passthrough();
-  }
-
-  reason = gates.enforceRoleQuotas
-    ? sessionAgentEnforcementReason(state, startedRoles)
-    : sessionAgentEnforcementReason(leanProjectedState(state), startedRoles);
+  reason = sessionAgentEnforcementReason(state, startedRoles);
   if (reason) return emitBlock(parsed, state, 'stop', reason, lastMessage);
 
   if (state.code_changed === true) {
@@ -596,26 +607,9 @@ function handleStop(parsed) {
     }
   }
 
-  // ADR 0012: in lean the footer lines are reporting guidance, not blocking
-  // syntax contracts — the five footer-line blocks are advisory (skipped);
-  // the code_changed no-summary / false-no-changes checks above still block.
-  if (gates.enforceFooterGates && state.code_changed === true && taskTypeRequiresImplementationSummary(state.task_type || 'other')) {
-    if (!messageMentionsVerificationStatus(lastMessage)) {
-      return emitBlock(parsed, state, 'stop', `Final response must include a Verification status: line after code or config changes.${hint}`, lastMessage);
-    }
-    if (!messageMentionsReviewOutcome(lastMessage)) {
-      return emitBlock(parsed, state, 'stop', `Final response must include a Review outcome: line after code or config changes.${hint}`, lastMessage);
-    }
-    if (!messageMentionsChangedFiles(lastMessage)) {
-      return emitBlock(parsed, state, 'stop', `Final response must include a Changed files: or No files changed: line after code or config changes.${hint}`, lastMessage);
-    }
-    if (!messageMentionsRemainingRisks(lastMessage)) {
-      return emitBlock(parsed, state, 'stop', `Final response must include a Remaining risks: line after code or config changes.${hint}`, lastMessage);
-    }
-    if (docsRequired && !messageMentionsDocsStatus(lastMessage)) {
-      return emitBlock(parsed, state, 'stop', `Final response must include a Docs status: line when behavior changes require documentation updates.${hint}`, lastMessage);
-    }
-  }
+  // ADR 0009 / plan task 11.4: the footer lines are REPORTING GUIDANCE, not a
+  // blocking syntax contract — a missing footer line never continues a turn.
+  // (The legacy profile blocked on them; plan task 16 removed that branch.)
 
   persistPatch(parsed, clearLoopBlockPatch('stop'));
   return passthrough();
@@ -640,10 +634,6 @@ function handleSubagentStop(parsed) {
   if (isGenericType(parsed.agentType)) return passthrough();
   const label = extractSubagentLabel(parsed.data, ALIASES);
   if (!shouldEnforceSubagentFooter(label, parsed.agentType, ALIASES, ALIASES_LOADED)) return passthrough();
-  // ADR 0012 (plan task 11): resolve the workflow profile gates once per call;
-  // in lean the footer-line blocks below become advisory.
-  const prof = resolveWorkflowProfile(process.env);
-  const gates = leanProfileGates(state, prof.profile);
   const transcriptPath = parsed.transcriptPath ?? state.transcript_path ?? '';
   // ADR-0010 report ownership (plan 06.3): resolve the subagent's report from
   // its own delivered payload / its own transcript first; the parent
@@ -654,22 +644,10 @@ function handleSubagentStop(parsed) {
   if (!lastMessage) {
     return emitBlock(parsed, state, 'subagent_stop', 'No assistant summary message was found for this subagent stop event.', lastMessage, parsed.agentId);
   }
-  // ADR 0012: in lean the footer-line blocks are advisory (skipped); the
-  // no-summary gate above and the completion path below still apply.
-  if (gates.enforceFooterGates) {
-    if (!messageMentionsConcreteOutcome(lastMessage)) {
-      return emitBlock(parsed, state, 'subagent_stop', 'Subagent output must include a concrete outcome line (e.g. Outcome: <result>).', lastMessage, parsed.agentId);
-    }
-    if (!messageMentionsChangedFiles(lastMessage)) {
-      return emitBlock(parsed, state, 'subagent_stop', 'Subagent output must include a Changed files: or No files changed: line.', lastMessage, parsed.agentId);
-    }
-    if (!messageMentionsVerificationStatus(lastMessage)) {
-      return emitBlock(parsed, state, 'subagent_stop', 'Subagent output must include a Verification status: line.', lastMessage, parsed.agentId);
-    }
-    if (!messageMentionsRemainingRisks(lastMessage) && !messageMentionsNextStep(lastMessage)) {
-      return emitBlock(parsed, state, 'subagent_stop', 'Subagent output must include a Remaining risks: or Next step: line.', lastMessage, parsed.agentId);
-    }
-  }
+  // ADR 0009 / plan task 11.4: the subagent footer lines are reporting
+  // guidance, not a blocking contract; the no-summary gate above and the
+  // completion path below still apply. (The legacy profile blocked on them;
+  // plan task 16 removed that branch.)
   // ADR-0010: the subagent's registry record completes on a gate-passing stop
   // (a block leaves the status 'running'); role/scope/taskId are preserved by
   // the upsert. The registry map is mutated only via per-key map_set.
@@ -690,15 +668,11 @@ function handleSubagentStop(parsed) {
 function handleTaskCompleted(parsed) {
   const state = loadStateFor(parsed);
   if (!state) return null;
-  const prof = resolveWorkflowProfile(process.env);
-  const gates = leanProfileGates(state, prof.profile);
   const transcriptText = readTranscriptText(parsed.transcriptPath ?? state.transcript_path ?? '');
   const startedRoles = startedRolesUnion(state, transcriptText);
   let reason = sessionBlockReason(state);
   if (reason) return exitBlock(`Task cannot be completed yet: ${reason}`);
-  reason = gates.enforceRoleQuotas
-    ? sessionAgentEnforcementReason(state, startedRoles)
-    : sessionAgentEnforcementReason(leanProjectedState(state), startedRoles);
+  reason = sessionAgentEnforcementReason(state, startedRoles);
   if (reason) return exitBlock(`Task cannot be completed yet: ${reason}`);
   // CR BLOCK 1 (minimal honest completion evidence): every gate passed and
   // a task is open - arm the single-shot pending-completion flag; the next
@@ -717,20 +691,13 @@ function handleTaskCompleted(parsed) {
 function handleTeammateIdle(parsed) {
   const state = loadStateFor(parsed);
   if (!state) return null;
-  const prof = resolveWorkflowProfile(process.env);
-  const gates = leanProfileGates(state, prof.profile);
   const transcriptText = readTranscriptText(parsed.transcriptPath ?? state.transcript_path ?? '');
   const startedRoles = startedRolesUnion(state, transcriptText);
   let reason = sessionBlockReason(state);
   if (reason) return exitBlock(`Do not go idle yet: ${reason}`);
-  // ADR 0012: the mandatory-Manager idle gate relaxes in lean.
-  if (gates.enforceManagerIdleGate) {
-    reason = sessionManagerIdleReason(state, startedRoles);
-    if (reason) return exitBlock(`Do not go idle yet: ${reason}`);
-  }
-  reason = gates.enforceRoleQuotas
-    ? sessionAgentEnforcementReason(state, startedRoles)
-    : sessionAgentEnforcementReason(leanProjectedState(state), startedRoles);
+  // ADR 0008 / plan task 16: the mandatory-Manager idle gate is gone with the
+  // legacy profile — the root session coordinates directly.
+  reason = sessionAgentEnforcementReason(state, startedRoles);
   if (reason) return exitBlock(`Do not go idle yet: ${reason}`);
   return null;
 }
@@ -897,6 +864,16 @@ export function __setHandlerForTest(event, fn) {
  * the runtime moving with a stderr note. (unit-testable via the seam below)
  */
 export function dispatch(event, parsed, matcher = null) {
+  try {
+    return dispatchEvent(event, parsed, matcher);
+  } finally {
+    // ADR 0014: one batched write for everything this event recorded, on every
+    // exit path including a thrown handler.
+    flushPendingState();
+  }
+}
+
+function dispatchEvent(event, parsed, matcher) {
   const fn = handlers[event];
   if (typeof fn !== 'function') return passthrough();
   try {
@@ -991,6 +968,7 @@ if (isMain) {
     // A fatal crash must never fail the hook runtime. Emit a terminal
     // diagnostic to stderr and exit 0 so Claude Code is not blocked.
     process.stderr.write(`hook-dispatcher fatal: ${err?.message ?? err}\n`);
+    flushPendingState();
     process.stdout.write(serialize(terminalCancel(`hook dispatcher fatal error`)));
     process.exit(0);
   });

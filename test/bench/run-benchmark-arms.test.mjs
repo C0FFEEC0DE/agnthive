@@ -135,7 +135,7 @@ test('parseRepsFlag accepts a positive integer and rejects the rest', () => {
 
 test('parseArmProfileFlag accepts legacy|lean only', () => {
   assert.equal(parseArmProfileFlag('lean').profile, 'lean');
-  assert.equal(parseArmProfileFlag('').profile, 'legacy');
+  assert.equal(parseArmProfileFlag('').profile, 'lean', 'lean is the only profile a run can report by default');
   assert.equal(parseArmProfileFlag('native').ok, false);
 });
 

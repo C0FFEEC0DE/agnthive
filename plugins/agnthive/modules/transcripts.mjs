@@ -1,8 +1,8 @@
 // transcripts.mjs — transcript JSONL parsing and last-assistant-message
 // extraction. Ported from lib.sh: tail_jsonl_lines,
 // extract_last_assistant_message_from_jsonl_stream,
-// extract_last_assistant_message_from_transcript, resolved_last_assistant_message,
-// transcript_indicates_backgrounded_agent. Node standard library only.
+// extract_last_assistant_message_from_transcript, resolved_last_assistant_message.
+// Node standard library only.
 import { readFileSync, statSync } from 'node:fs';
 
 function fileExists(p) {
@@ -122,17 +122,6 @@ export function resolvedLastAssistantMessage(hookInput, transcriptPath) {
   return extractLastAssistantMessageFromTranscript(transcriptPath);
 }
 
-/** True if the transcript mentions a backgrounded agent (case-insensitive). */
-export function transcriptIndicatesBackgroundedAgent(transcriptPath) {
-  if (!transcriptPath || !fileExists(transcriptPath)) return false;
-  let content;
-  try { content = readFileSync(transcriptPath, 'utf8'); } catch { return false; }
-  if (!content) return false;
-  // tail-first like the bash (tail 400 then full file); for a single read the
-  // full-file check covers both, but keep the tail-scan for parity on huge files
-  const tail = tailJsonlLines(transcriptPath, 400);
-  return /backgrounded agent/i.test(tail) || /backgrounded agent/i.test(content);
-}
 // --- ADR-0010 subagent report ownership (plan 06.3) -------------------------
 
 /** First non-empty string among the given values (null when none). */

@@ -248,7 +248,7 @@
       "plan_item": "02.2 real agent dispatch",
       "description": "A real agent dispatch. Captured live on 2.1.303: the host sends session_id, transcript_path, cwd, prompt_id, agent_id, agent_type and hook_event_name — the agent identity is agent_id + agent_type (no agent_alias field).",
       "payload_path": "payloads/compat_subagent_start_dispatch.json",
-      "expected_class": "subagent_start_context",
+      "expected_class": "subagent_start_state_only",
       "captured_at": "2026-10-21",
       "capture_method": "Live `claude -p` session on CLI 2.1.303 (local ollama provider, model glm-5.2:cloud). The plugin was loaded from an instrumented COPY in /tmp whose hook registration tees the raw hook stdin to a file; the plugin runtime modules were not modified. The payload is the observed stdin, redacted (ids and paths replaced by synthetic placeholders, free text truncated).",
       "capture_note": "The agent_type value is host-assigned (\"Explore\" in this run, \"agnthive:Explorer\" in a run that used the plugin agent namespace) — it is not a plugin alias, so the runtime must not read it as an alias."

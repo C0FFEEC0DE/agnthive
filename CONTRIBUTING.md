@@ -17,7 +17,7 @@ Thank you for your interest in contributing!
 ```
 plugins/agnthive/   # The distributable Claude Code plugin
 ├── agents/         # Agent definitions (*.md, flat)
-├── skills/         # Skills (nested <name>/SKILL.md): agent-backed + command skills
+├── skills/         # Skills (nested <name>/SKILL.md): root procedures today
 ├── references/     # Workflow + reference docs
 ├── modules/        # Node ESM hook runtime (hook-dispatcher, state, policy, ...)
 ├── hooks/hooks.json  # Hook event → command manifest
@@ -47,14 +47,17 @@ type: AgentType
 ...
 ```
 
-3. Update `plugins/agnthive/agents/manager.md` to include new agent
-4. Update README.md agent table
+3. Add its alias to `plugins/agnthive/assets/aliases.json` and
+   `CURRENT_AGENT_ALIASES` in `plugins/agnthive/modules/agents.mjs`
+4. Update README.md agent table and `plugins/agnthive/references/agent-contracts.md`
 
 ## Adding a New Command
 
-1. Create `plugins/agnthive/skills/[command]/SKILL.md`. For an
-   agent-backed command (one that dispatches a specialist), use the full
-   agent-dispatch frontmatter:
+1. Create `plugins/agnthive/skills/[command]/SKILL.md`. Default to the root
+   procedure shape: `name`, `description`, optional `argument-hint`, and a body
+   that dispatches a specialist through the Agent tool when it needs one (the
+   `/review` pattern since ADR 0015). Only a skill that must run *as* a
+   specialist in a forked context needs the full agent-dispatch frontmatter:
 
 ```yaml
 ---
@@ -69,7 +72,9 @@ paths:
 ---
 ```
 
-   For a minimal command skill (no agent dispatch), use only `name` + `description`.
+   A forked skill must also be listed in `AGENT_BACKED_SKILLS` in
+   `scripts/validate.mjs`; a root-procedure skill must not declare any of
+   those fields.
 2. Update CLAUDE.md commands list
 
 ## Code Style

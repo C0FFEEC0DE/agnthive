@@ -25,11 +25,11 @@ flowchart TD
 - `hooks/hooks.json` maps Claude Code events to `node` and the dispatcher.
 - `modules/hook-dispatcher.mjs` parses the event and routes to the focused
   state, workflow, verification, transcript, policy, and output modules.
-- `agents/` contains the eight specialist prompts; `skills/*/SKILL.md`
+- `agents/` contains the three specialist prompts; `skills/*/SKILL.md`
   contains slash-command workflows.
 - `assets/aliases.json` maps accepted role names to canonical aliases.
 - `references/` contains all documentation agents need while the plugin is
-  installed.
+  installed, including [workflow shapes](workflow-shapes.md).
 
 ## State and telemetry
 

@@ -9,6 +9,15 @@ import { join } from 'node:path';
 /** Generic Task tool dispatch types, filtered from role enforcement. */
 export const GENERIC_TYPES = ['general-purpose', 'workflow-subagent'];
 
+/**
+ * The aliases of the agents the plugin SHIPS (ADR 0008/0015). The alias map and
+ * the transcript patterns carry only these; a gate must never demand a role the
+ * plugin can no longer produce, and a session state recorded under the removed
+ * legacy profile (required_subagents ['t','cr']) is migrated explicitly to the
+ * roles that still exist.
+ */
+export const CURRENT_AGENT_ALIASES = Object.freeze(['cr', 'e', 'dbg']);
+
 /** True if `x` is a generic Task tool dispatch type (not an agent role). */
 export function isGenericType(x) {
   return typeof x === 'string' && GENERIC_TYPES.includes(x);
@@ -110,22 +119,19 @@ export function extractSubagentScope(hookInput) {
   return '';
 }
 
-// skill(...) / Name(...) launch-line patterns -> role. Order matters: longer
-// alternatives first so "code reviewer(" is matched before "reviewer(".
-const LAUNCH_RE = /skill\(\/(manager|review|test|explore|design|bug|debug|docs|refactor)\)|manager\(|code reviewer\(|tester\(|explorer\(|architect\(|bugbuster\(|debugger\(|docwriter\(/gi;
+// Launch-line patterns for the three shipped specialists -> role. A skill-load
+// line is NOT dispatch evidence: since ADR 0015 every skill (including review and
+// simplify) is a root procedure, so only an explicit specialist launch counts.
+// Order matters: longer alternatives first.
+const LAUNCH_RE = /code reviewer\(|explorer\(|debugger\(/gi;
 
-const ALIAS_RE = /@(m|e|a|t|cr|bug|dbg|doc|manager|explorer|architect|tester|code-reviewer|code-review|reviewer|bugbuster|debugger|docwriter|big-boss|nerd|toxic-senior|paranoid|the-architect|wiki-wiki)($|[^a-z0-9-])/gi;
+const ALIAS_RE = /@(e|cr|dbg|explorer|code-reviewer|code-review|reviewer|debugger)($|[^a-z0-9-])/gi;
 
 function roleFromLaunch(match) {
   const m = match.toLowerCase();
-  if (m === 'skill(/manager)' || m === 'manager(') return 'm';
-  if (m === 'skill(/review)' || m === 'code reviewer(') return 'cr';
-  if (m === 'skill(/test)' || m === 'tester(') return 't';
-  if (m === 'skill(/explore)' || m === 'explorer(') return 'e';
-  if (m === 'skill(/design)' || m === 'skill(/refactor)' || m === 'architect(') return 'a';
-  if (m === 'skill(/bug)' || m === 'bugbuster(') return 'bug';
-  if (m === 'skill(/debug)' || m === 'debugger(') return 'dbg';
-  if (m === 'skill(/docs)' || m === 'docwriter(') return 'doc';
+  if (m === 'code reviewer(') return 'cr';
+  if (m === 'explorer(') return 'e';
+  if (m === 'debugger(') return 'dbg';
   return null;
 }
 
@@ -167,8 +173,8 @@ export function effectiveStartedRoles(state, transcriptText, aliases = {}) {
 
 /**
  * isAgntHiveSpecialistRole: true iff `label` is a non-empty string that is a
- * key of `aliases` — i.e. one of the recognized canonical roles
- * (a | e | bug | dbg | t | cr | doc | m). Generic dispatch types and
+ * key of `aliases` — i.e. one of the shipped canonical roles (cr | e | dbg;
+ * ADR 0015 removed the legacy labels). Generic dispatch types and
  * unrecognized labels return false so footer enforcement can pass them through.
  */
 export function isAgntHiveSpecialistRole(label, aliases = {}) {

@@ -1,3 +1,3 @@
-{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"@nerd no-op verify · 2 tool uses · 15.5k tokens\n  Done"}]}}
-{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"@toxic-senior no-op confirm · 0 tool uses\n  Done"}]}}
-{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"@paranoid no-op confirm · 0 tool uses\n  Done"}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"@explorer no-op verify · 2 tool uses · 15.5k tokens\n  Done"}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"@code-reviewer no-op confirm · 0 tool uses\n  Done"}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"@debugger no-op confirm · 0 tool uses\n  Done"}]}}

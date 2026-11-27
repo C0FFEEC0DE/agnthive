@@ -110,12 +110,15 @@ for (const c of relevant) {
 test('regression: repeated identical Stop block escalates to terminal hardStop', () => {
   const dataRoot = mkdtempSync(join(tmpdir(), 'sc-esc-'));
   try {
-    const seed = JSON.parse(readFileSync(join(fixtures, 'state_stop_guard_repeated_review_block.json'), 'utf8'));
-    const stdin = readFileSync(join(fixtures, 'stop_guard_missing_review.json'), 'utf8');
+    // Plan task 16 removed the legacy footer gate, so the repeated block is
+    // now the verification-evidence gate (the one Stop gate that still
+    // blocks): the same reason repeated escalates to the terminal hardStop.
+    const seed = JSON.parse(readFileSync(join(fixtures, 'state_stop_guard_repeated_verification_block.json'), 'utf8'));
+    const stdin = readFileSync(join(fixtures, 'stop_guard_missing_verification.json'), 'utf8');
     appendEvent(statePaths(dataRoot, 'case-stop-guard'), 'set_many', { fields: seed });
     const res = spawnSync(process.execPath, [dispatcher, '--event', 'Stop'], {
       input: stdin, encoding: 'utf8',
-      env: { ...process.env, CLAUDE_PLUGIN_DATA: dataRoot, AGNTHIVE_WORKFLOW_PROFILE: 'legacy' }, cwd: root,
+      env: { ...process.env, CLAUDE_PLUGIN_DATA: dataRoot }, cwd: root,
     });
     assert.equal(res.status, 0);
     const out = JSON.parse(res.stdout);

@@ -1,6 +1,6 @@
 # ADR 0012: Versioned harness contracts and outcome benchmarks
 
-- **Status:** Accepted; implemented in 0.4.0 (working tree): compatibility matrix, contract fixtures, plugin-state bench evidence, outcome suite. The lean default flip HAPPENED on 2026-10-22: the ADR 0012 rollout gate was exercised to completion on a live arm x repetition matrix (75 cells) and passed. Legacy removal stays deferred (plan task 16).
+- **Status:** Accepted; implemented in 0.4.0 (working tree): compatibility matrix, contract fixtures, plugin-state bench evidence, outcome suite. The lean default flip HAPPENED on 2026-10-22: the ADR 0012 rollout gate was exercised to completion on a live arm x repetition matrix (75 cells) and passed. Legacy removal LANDED in 0.5.0 (plan task 16) after the compatibility window closed.
 - **Date:** 2026-10-19.
 - **Decides:** Pin the tested harness contract and measure task outcomes separately from role-dispatch compliance.
 - **Basis:** [Review](../specs/2026-10-19-harness-review-and-simplification-design.md), F03/F10 and agent-role assessment.

@@ -38,15 +38,15 @@
         "script": "user-prompt-submit.sh",
         "stdin": "test/hooks/fixtures/user_prompt_feature.json",
         "expect_exit": 0,
-        "stdout_jq": ".hookSpecificOutput.hookEventName == \"UserPromptSubmit\" and (.hookSpecificOutput.additionalContext | contains(\"successful verification or @t\"))",
-        "state_jq": ".task_type == \"feature\" and ((.required_subagents | sort) == [\"cr\", \"t\"]) and .required_subagent_any_of == [[\"e\", \"a\"]]"
+        "stdout_jq": ".hookSpecificOutput.hookEventName == \"UserPromptSubmit\" and (.hookSpecificOutput.additionalContext | contains(\"Treat this as a feature workflow.\")) and (.hookSpecificOutput.additionalContext | contains(\"Completion requires current verification evidence\"))",
+        "state_jq": ".task_type == \"feature\" and .required_subagents == [\"cr\"] and .required_subagent_any_of == []"
       },
       {
         "name": "post_edit_write_marks_code_change",
         "script": "post-edit-write.sh",
         "stdin": "test/hooks/fixtures/post_edit_write_code.json",
         "expect_exit": 0,
-        "stdout_jq": ".hookSpecificOutput.hookEventName == \"PostToolUse\" and (.hookSpecificOutput.additionalContext | contains(\"requires verification\"))",
+        "stdout_jq": ".hookSpecificOutput == null",
         "state_jq": ".edited == true and .code_changed == true and .docs_changed == false and ((.files | index(\"src/app.py\")) != null)"
       },
       {
@@ -69,7 +69,7 @@
         "script": "subagent-start.sh",
         "stdin": "test/hooks/fixtures/subagent_start_code_reviewer.json",
         "expect_exit": 0,
-        "stdout_jq": ".hookSpecificOutput.hookEventName == \"SubagentStart\" and (.hookSpecificOutput.additionalContext | contains(\"@cr\"))",
+        "stdout_jq": ".hookSpecificOutput == null",
         "state_jq": ".subagent_start_count == 1 and .subagents_started == [\"cr\"] and .agents.cr1.status == \"running\" and .agents.cr1.role == \"cr\""
       },
       {
@@ -77,7 +77,7 @@
         "script": "subagent-start.sh",
         "stdin": "test/hooks/fixtures/subagent_start_second_explorer_scope.json",
         "expect_exit": 0,
-        "stdout_jq": ".hookSpecificOutput.hookEventName == \"SubagentStart\" and (.hookSpecificOutput.additionalContext | contains(\"Parallel same-role handoffs are allowed\"))",
+        "stdout_jq": ".hookSpecificOutput == null",
         "state_jq": ".subagent_start_count == 2 and (.subagents_started | sort) == [\"cr\", \"e\"] and .subagent_instance_count_by_role.cr == 1 and .subagent_instance_count_by_role.e == 1 and (.subagent_events | length) == 2 and .agents.cr1.status == \"running\" and .agents.e2.role == \"e\""
       },
       {
@@ -225,22 +225,25 @@
         "name": "user_prompt_submit_persists_enforced_mode",
         "script": "user-prompt-submit.sh",
         "stdin": "test/hooks/fixtures/user_prompt_dispatch_enforced.json",
+        "env": {
+          "BENCH_TASK_ID": "scenario-dispatch-enforced"
+        },
         "expect_exit": 0,
-        "state_jq": ".dispatch_contract_mode == \"enforced\" and .required_subagents == [\"a\"] and .required_subagent_any_of == []"
+        "state_jq": ".dispatch_contract_mode == \"enforced\" and .required_subagents == [\"cr\"] and .required_subagent_any_of == []"
       },
       {
         "name": "pre_tool_use_edit_denied_before_dispatch",
         "script": "pre-tool-use.sh",
         "stdin": "test/hooks/fixtures/pre_tool_use_edit_dispatch.json",
         "expect_exit": 0,
-        "stdout_jq": ".hookSpecificOutput.permissionDecision == \"deny\" and (.hookSpecificOutput.permissionDecisionReason | contains(\"Dispatch contract enforced\")) and (.hookSpecificOutput.permissionDecisionReason | contains(\"@a\"))"
+        "stdout_jq": ".hookSpecificOutput.permissionDecision == \"deny\" and (.hookSpecificOutput.permissionDecisionReason | contains(\"Dispatch contract enforced\")) and (.hookSpecificOutput.permissionDecisionReason | contains(\"@cr\"))"
       },
       {
-        "name": "subagent_start_records_architect",
+        "name": "subagent_start_records_reviewer",
         "script": "subagent-start.sh",
         "stdin": "test/hooks/fixtures/subagent_start_architect.json",
         "expect_exit": 0,
-        "state_jq": ".subagents_started == [\"a\"] and .subagent_start_count == 1"
+        "state_jq": ".subagents_started == [\"cr\"] and .subagent_start_count == 1"
       },
       {
         "name": "pre_tool_use_edit_allowed_after_dispatch",

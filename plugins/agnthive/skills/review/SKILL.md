@@ -1,65 +1,44 @@
 ---
 name: review
-description: Use before committing or merging, or for PR/security/architecture review of changes — dispatches the Code Reviewer in an isolated read-only forked subagent.
+description: Two-stage review of a change — simplify first, then an independent Code Reviewer pass; use before committing, merging, or shipping a substantial diff.
 argument-hint: "<path, PR, or change scope to review>"
-agent: Code Reviewer
-context: fork
-disable-model-invocation: true
-allowed-tools:
-  - Read
-  - Glob
-  - Grep
-paths:
-  - "**/*.mjs"
-  - "**/*.js"
-  - "**/*.ts"
-  - "**/*.sh"
-  - "**/*.md"
 ---
 
 # /review
 
-**This command is now a skill that invokes @code-reviewer agent.**
+Two stages, in order. Stage 1 edits; stage 2 does not.
 
-Run code review with the Code Reviewer agent. This is the one skill that still
-forks a specialist, because independent judgment requires a separate context.
+## Stage 1 — simplify (root)
 
-## When to use
-- Substantial changes before committing or merging — security/permission boundaries, migrations, concurrency, public APIs, multiple subsystems
-- PR review
-- Security check
-- Architecture review
+Run the `/simplify` procedure on the change scope:
 
-Trivial and docs-only work may skip the separate reviewer with an explicit
-rationale in the report ([ADR
-0008](../../../../docs/adr/0008-root-orchestration-and-three-specialists.md)).
+- Remove duplication, dead code, and one-use abstractions; inline what only one
+  call site uses; drop parameters, options, and config nothing reads.
+- Keep behavior identical. Public APIs, security/permission boundaries, and
+  migrations are not simplified without an explicit request.
+- Re-run the detected tests/lint/build after the edits. A simplification that
+  breaks a test is reverted, not "adjusted" by weakening the test.
 
-## Usage
-```
-/review [what to review]
-```
+Record the reductions made (and the verification that still passes). Skip
+stage 1 only for a diff with nothing mechanical to remove.
 
-## Agent Actions
-The @code-reviewer agent will — from its read-only toolset (`Read`, `Glob`,
-`Grep`) and the review scope the root hands it:
-1. Check for bugs and security issues
-2. Review architecture and readability
-3. Check whether tests exist and cover the change, and report verification gaps
-4. Suggest specific solutions, not just problems
+## Stage 2 — independent review
 
-## Review Scope Policy
-- Small localized reviews can stay `@cr`-only
-- Broad workflow, subsystem, or multi-file reviews: the **root** dispatches
-  `@e` first and passes the Explorer map into the review dispatch. The
-  reviewer is read-only and cannot dispatch agents; it does not run discovery
-  for itself, and should say what context was supplied when finalizing findings
+Dispatch the Code Reviewer via the Agent tool in read-only mode, passing the
+simplified diff or its scope. It must not edit; it reports:
+
+1. Correctness bugs and security issues
+2. Architecture and readability problems the simplification left behind
+3. Test coverage gaps — reported, never filled by the reviewer
+4. Specific fixes, not just findings
+
+For broad, multi-file work, map the change with the Explorer first and pass that
+map into the review dispatch. Report the reviewer's findings first, then your
+`Review outcome:` line.
 
 ## Checklist
-- [ ] No obvious bugs
-- [ ] Names are clear
-- [ ] Functions short (<50 lines)
-- [ ] Error handling exists
-- [ ] Tests exist and cover the change; gaps reported, not run by the reviewer
-- [ ] No sensitive data in logs
-- This is the documented entry point for the required `@cr` review used by substantial `feature`, `bugfix`, `refactor`, and `review` work
-- Review handoffs should also include `Review outcome:` plus the stop-safe footer fields: `Outcome:`, `Changed files:` or `No files changed:`, `Verification status:`, and either `Remaining risks:` or `Next step:`
+
+- [ ] Stage 1 applied or explicitly skipped with a reason
+- [ ] Verification re-run after stage 1
+- [ ] `@cr` started (SubagentStart) and its findings reported
+- [ ] No findings suppressed; remaining risks stated

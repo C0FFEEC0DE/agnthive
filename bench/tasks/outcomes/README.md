@@ -17,17 +17,22 @@ Layout:
 
 ## Arms and repetitions
 
-At most three arms: `native` (no plugin loaded), `legacy` (current plugin
-profile), `lean` (candidate slimmed profile). A task declares the arms it runs
-on (its `arms` array); lifecycle scenarios and evidence-flag predicates only
-apply to plugin arms, so `native` never carries evidence flags. Each task runs
-at least MIN_LIVE_REPS = 3 paired repetitions per arm in the RUNNER CONFIG for
-gate-eligible live runs; the suite declares the floor, the runner (plan task
-09) owns the actual rep loop. Smaller-than-floor runs are exploratory and are
-excluded from gate inputs by the emitter.
+At most three arms: `native` (no plugin loaded), `legacy` (the pre-0.5.0
+plugin profile), `lean` (the current root-orchestration profile). Since 0.5.0
+the plugin ships ONE profile, so the `legacy` arm is a HISTORICAL comparison
+arm — it compares old reports, it does not select a live runtime profile. A
+task declares the arms it runs on (its `arms` array); lifecycle scenarios and
+evidence-flag predicates only apply to plugin arms, so `native` never carries
+evidence flags. Each task runs at least MIN_LIVE_REPS = 3 paired repetitions
+per arm in the RUNNER CONFIG for gate-eligible live runs; the suite declares
+the floor, the runner (plan task 09) owns the actual rep loop.
+Smaller-than-floor runs are exploratory and are excluded from gate inputs by
+the emitter.
 
-Orchestrator ablation (Manager vs root) is declared per task through the
-`ablation` field; one ablation task ships (two independent subtasks).
+Orchestrator ablation (the historical `manager` orchestrator vs `root`) is
+declared per task through the `ablation` field; one ablation task ships (two
+independent subtasks). The `manager` variant names the pre-0.5.0 manager
+orchestration — a comparison label for the harness, not a live agent dispatch.
 
 ## Mock-first
 

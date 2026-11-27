@@ -1,6 +1,5 @@
 {
   "session_id": "case-subagent-stop-per-agent",
   "agent_alias": "cr",
-  "agent_id": "agent-B",
-  "last_assistant_message": "Outcome: implemented the parser. Verification status: not run. Remaining risks: none."
+  "agent_id": "agentB"
 }

@@ -121,50 +121,49 @@ test('buildPrompt follows the arm: the no-plugin session is not told to use a pl
 });
 
 test('buildPrompt emits required specialist handoff block for required agents', () => {
-  const prompt = buildPrompt(baseTask({ required_used_agents: ['m', 'cr'] }), 'verification');
+  const prompt = buildPrompt(baseTask({ required_used_agents: ['e', 'cr'] }), 'verification');
   assert.ok(prompt.includes('Required specialist handoff:'));
-  assert.ok(prompt.includes('@m -> @cr'));
-  assert.ok(prompt.includes('launch @m first'));
-  assert.ok(prompt.includes('Handoff evidence: @m, @cr <what the specialist did>'));
+  assert.ok(prompt.includes('@e -> @cr'));
+  assert.ok(prompt.includes('handoff in this order: @e -> @cr'));
+  assert.ok(prompt.includes('Handoff evidence: @e, @cr <what the specialist did>'));
 });
 
 test('extractUsedAgentAliases accepts explicit and established handoff evidence', () => {
   const labelMap = {
-    a: 'a', architect: 'a', dbg: 'dbg', debugger: 'dbg',
-    doc: 'doc', docwriter: 'doc', m: 'm', manager: 'm',
+    e: 'e', explorer: 'e', dbg: 'dbg', debugger: 'dbg',
+    cr: 'cr', 'code-reviewer': 'cr', reviewer: 'cr',
   };
   const resultText = [
-    'Handoff evidence: @architect separated the normalization design.',
+    'Handoff evidence: @explorer mapped the normalization surface.',
     '@dbg reproduced the failing divide call.',
-    '@doc added the Quickstart section.',
-    '@m coordinated the documentation update.',
-    'Review outcome: done - design note added per @a handoff.',
+    '@code-reviewer confirmed the fix.',
+    'Review outcome: done - design note added per @e handoff.',
   ].join('\n');
   assert.deepEqual(
     extractUsedAgentAliases('', null, { resultText }, labelMap).sort(),
-    ['a', 'dbg', 'doc', 'm'],
+    ['cr', 'dbg', 'e'],
   );
 });
 
 test('extractUsedAgentEvidence separates real dispatch (hook) from prose claims', () => {
-  const labelMap = { bug: 'bug', bugbuster: 'bug', t: 't', tester: 't' };
+  const labelMap = { cr: 'cr', 'code-reviewer': 'cr', e: 'e', explorer: 'e' };
   // No SubagentStart in the debug log — only a prose "Handoff evidence:" claim.
   const debugLogText = '';
-  const resultText = 'Handoff evidence: @bug fixed divide-by-zero.\nVerification status: passed';
+  const resultText = 'Handoff evidence: @cr confirmed the fix.\nVerification status: passed';
   const evidence = extractUsedAgentEvidence(debugLogText, null, { resultText }, labelMap);
   // Strict observed source must be empty: no real SubagentStart fired.
   assert.deepEqual(evidence.hook, []);
   // The prose claim is still captured as a diagnostic, not as dispatch proof.
-  assert.deepEqual(evidence.claimed.sort(), ['bug']);
-  assert.equal(evidence.byAlias.bug.hook, false);
-  assert.equal(evidence.byAlias.bug.claimed, true);
+  assert.deepEqual(evidence.claimed.sort(), ['cr']);
+  assert.equal(evidence.byAlias.cr.hook, false);
+  assert.equal(evidence.byAlias.cr.claimed, true);
 
   // A real SubagentStart in the debug log populates the hook source only.
-  const debugWithHook = 'Hook SubagentStart:bug (scope: fix division)';
+  const debugWithHook = 'Hook SubagentStart:cr (scope: review the fix)';
   const evidence2 = extractUsedAgentEvidence(debugWithHook, null, { resultText }, labelMap);
-  assert.deepEqual(evidence2.hook, ['bug']);
-  assert.equal(evidence2.byAlias.bug.hook, true);
-  assert.equal(evidence2.byAlias.bug.claimed, true);
+  assert.deepEqual(evidence2.hook, ['cr']);
+  assert.equal(evidence2.byAlias.cr.hook, true);
+  assert.equal(evidence2.byAlias.cr.claimed, true);
 
   // dispatch_contract selects the benchmark dispatch mode; absent = standard.
   assert.equal(resolveDispatchMode({}), 'standard');
@@ -173,34 +172,34 @@ test('extractUsedAgentEvidence separates real dispatch (hook) from prose claims'
 });
 
 test('mergePluginStateAgentEvidence mirrors main() wiring: state is observed, text tiers are claimed', () => {
-  const labelMap = { bug: 'bug', bugbuster: 'bug', t: 't', tester: 't' };
-  // Legacy debug-log hook echo + prose claims; plugin state observed @bug.
-  const debugLogText = 'Hook SubagentStart:bug (scope: fix division)';
-  const resultText = 'Handoff evidence: @bug fixed it.\n@t verified the regression.';
+  const labelMap = { cr: 'cr', 'code-reviewer': 'cr', e: 'e', explorer: 'e' };
+  // Legacy debug-log hook echo + prose claims; plugin state observed @cr.
+  const debugLogText = 'Hook SubagentStart:cr (scope: review the fix)';
+  const resultText = 'Handoff evidence: @cr confirmed it.\n@e verified the surface.';
   const evidence = extractUsedAgentEvidence(debugLogText, null, { resultText }, labelMap);
-  const merged = mergePluginStateAgentEvidence(evidence, ['bug'], true);
+  const merged = mergePluginStateAgentEvidence(evidence, ['cr'], true);
   // Observed = structured plugin-state roles only (real SubagentStart).
-  assert.deepEqual(merged.observed, ['bug']);
+  assert.deepEqual(merged.observed, ['cr']);
   // A state-observed alias must NOT leak into claimed (the union-dup bug).
-  assert.ok(!merged.claimed.includes('bug'), 'state alias leaked into claimed');
+  assert.ok(!merged.claimed.includes('cr'), 'state alias leaked into claimed');
   // A prose-only alias is captured as claimed.
-  assert.ok(merged.claimed.includes('t'), 'prose-only alias missing from claimed');
+  assert.ok(merged.claimed.includes('e'), 'prose-only alias missing from claimed');
   // observed + claimed == used (clean partition, no double-counting).
   assert.deepEqual(
     [...merged.observed, ...merged.claimed].sort(),
     merged.used,
   );
   assert.equal(merged.source, 'plugin_state');
-  assert.equal(merged.byAlias.bug.state, true);
-  assert.equal(merged.byAlias.bug.hook, true);
-  assert.equal(merged.byAlias.t.state, false);
+  assert.equal(merged.byAlias.cr.state, true);
+  assert.equal(merged.byAlias.cr.hook, true);
+  assert.equal(merged.byAlias.e.state, false);
 
   // Without plugin state the legacy debug-log tier is demoted to claimed
   // (ADR-0012: planted or truncated debug text never fabricates observed
   // evidence) and the observed tier stays empty.
   const mergedNoState = mergePluginStateAgentEvidence(evidence, [], false);
   assert.deepEqual(mergedNoState.observed, []);
-  assert.ok(mergedNoState.claimed.includes('bug'), 'debug-log alias must be claimed without state');
+  assert.ok(mergedNoState.claimed.includes('cr'), 'debug-log alias must be claimed without state');
   assert.equal(mergedNoState.source, 'none');
   assert.deepEqual(
     [...mergedNoState.observed, ...mergedNoState.claimed].sort(),
@@ -210,10 +209,10 @@ test('mergePluginStateAgentEvidence mirrors main() wiring: state is observed, te
 
 test('dispatchContractMarker builds the root-only contract line', () => {
   assert.equal(dispatchContractMarker({}), '');
-  assert.equal(dispatchContractMarker({ dispatch_contract: { mode: 'bogus', required_agents: ['bug'] } }), '');
+  assert.equal(dispatchContractMarker({ dispatch_contract: { mode: 'bogus', required_agents: ['cr'] } }), '');
   assert.equal(
-    dispatchContractMarker({ dispatch_contract: { mode: 'observed', required_agents: ['bug'], root_only: true } }),
-    'BENCHMARK_DISPATCH_CONTRACT: root_only; mode=observed; roles=bug',
+    dispatchContractMarker({ dispatch_contract: { mode: 'observed', required_agents: ['cr'], root_only: true } }),
+    'BENCHMARK_DISPATCH_CONTRACT: root_only; mode=observed; roles=cr',
   );
   // root_only defaults to true when omitted.
   assert.equal(
@@ -277,15 +276,17 @@ test('strict observed mode rejects claimed-only dispatch and accepts a real hook
 
 test('buildAgentLabelMap reads plugin agents into an alias map', () => {
   const map = buildAgentLabelMap(REPO);
-  // alias keys from plugin agents (architect->a, tester->t, code-reviewer->cr ...)
-  assert.equal(map.a, 'a');
-  assert.equal(map.t, 't');
+  // alias keys from the three shipped plugin agents (ADR 0015)
+  assert.deepEqual([...new Set(Object.values(map))].sort(), ['cr', 'dbg', 'e']);
   assert.equal(map.cr, 'cr');
-  assert.equal(map.architect, 'a');
-  assert.equal(map.tester, 't');
+  assert.equal(map.e, 'e');
+  assert.equal(map.dbg, 'dbg');
+  assert.equal(map.explorer, 'e');
+  assert.equal(map.debugger, 'dbg');
   assert.equal(map['code-reviewer'], 'cr');
-  assert.equal(map.manager, 'm');
-  assert.equal(map.docwriter, 'doc');
+  for (const removed of ['a', 't', 'm', 'doc', 'bug', 'architect', 'tester', 'manager', 'docwriter']) {
+    assert.equal(map[removed], undefined, `removed label '${removed}' must not be in the label map`);
+  }
 });
 
 test('buildAgentLabelMap works with a temp agents dir', () => {
@@ -310,11 +311,13 @@ test('buildAgentLabelMap works with a temp agents dir', () => {
 });
 
 test('frontmatterField reads alias/name/type from a plugin agent file', () => {
-  const architect = join(PLUGIN_AGENTS, 'architect.md');
-  assert.equal(frontmatterField(architect, 'alias'), 'a');
-  assert.equal(frontmatterField(architect, 'name'), 'Architect');
-  assert.ok(['Plan', 'Plan/Architect', 'Architect'].includes(frontmatterField(architect, 'type')));
-  assert.equal(frontmatterField(architect, 'nonexistent'), null);
+  // Plan task 16 removed the compatibility agents; the reviewer is one of the
+  // three agents the plugin still ships.
+  const reviewer = join(PLUGIN_AGENTS, 'code-reviewer.md');
+  assert.equal(frontmatterField(reviewer, 'alias'), 'cr');
+  assert.equal(frontmatterField(reviewer, 'name'), 'Code Reviewer');
+  assert.ok(['Code Reviewer'].includes(frontmatterField(reviewer, 'type')));
+  assert.equal(frontmatterField(reviewer, 'nonexistent'), null);
 });
 
 test('normalizeSubagentKey strips @, lowercases, collapses separators', () => {

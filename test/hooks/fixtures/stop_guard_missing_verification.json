@@ -1,4 +1,4 @@
 {
   "session_id": "case-stop-guard",
-  "last_assistant_message": "Outcome: implemented the fix.\nChanged files: src/app.py.\nRemaining risks: none."
+  "last_assistant_message": "Verification status: not run.\nChanged files: src/app.mjs.\nRemaining risks: none."
 }

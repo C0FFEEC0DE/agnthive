@@ -50,14 +50,12 @@ test('dispatch: SubagentStop blocks when no assistant summary is present', () =>
 // Recognized AgntHive specialists are footer-enforced; generic dispatch types
 // and unidentified subagents pass through so structured output is not corrupted.
 
-test('dispatch: SubagentStop with agent_alias cr + incomplete footer -> block', () => {
-  // Footer blocking is a legacy-profile gate (lean keeps the footer as
-  // reporting guidance), so the profile is pinned here.
-  withProfile('legacy', () => {
-    const out = dispatch('SubagentStop', { ...parsed, data: { agent_alias: 'cr', last_assistant_message: 'Outcome: fixed the bug' } });
-    assert.equal(out.decision, 'block');
-    assert.match(out.reason, /Changed files:/);
-  });
+test('dispatch: SubagentStop with agent_alias cr + incomplete footer -> no block (footer is guidance)', () => {
+  // ADR 0009 / plan task 11.4: the footer lines are reporting guidance, not a
+  // blocking syntax contract. Plan task 16 removed the legacy branch that
+  // blocked on them, so an incomplete footer no longer blocks the stop.
+  const out = dispatch('SubagentStop', { ...parsed, data: { agent_alias: 'cr', last_assistant_message: 'Outcome: fixed the bug' } });
+  assert.deepEqual(out, {});
 });
 
 test('dispatch: SubagentStop with agent_type general-purpose -> passthrough', () => {
@@ -80,11 +78,8 @@ test('dispatch: SubagentStop with agent_type workflow-subagent -> passthrough', 
 // the order-of-operations regression: a too-broad colon strip would also
 // misrecognize foreign namespaces (mcp:tester) as specialists.
 test('dispatch: SubagentStop with agent_type agnthive:Code Reviewer + incomplete footer -> block', () => {
-  withProfile('legacy', () => {
-    const out = dispatch('SubagentStop', { ...parsed, data: { agent_type: 'agnthive:Code Reviewer', last_assistant_message: 'Outcome: fixed the bug' } });
-    assert.equal(out.decision, 'block');
-    assert.match(out.reason, /Changed files:/);
-  });
+  const out = dispatch('SubagentStop', { ...parsed, data: { agent_type: 'agnthive:Code Reviewer', last_assistant_message: 'Outcome: fixed the bug' } });
+  assert.deepEqual(out, {}, 'the footer lines are guidance, not a blocking gate');
 });
 
 // ADR-0004 over-match guard at the dispatcher level: a foreign namespace
@@ -465,6 +460,34 @@ test('UserPromptSubmit dedupe skips the reset and the task transition', () => {
   assert.deepEqual(s.active_task.refinements, [], 'duplicate delivery never re-appends a refinement');
 });
 
+test('UserPromptSubmit emits workflow context once per open task, again on a new task', () => {
+  const sid = 'ups-context-dedupe';
+  const paths = statePaths(dataRoot, sid);
+  const prompt = 'fix the failing tests in the parser module';
+  const first = dispatch('UserPromptSubmit', { ...parsed, sessionId: sid, data: { prompt, prompt_id: 'p-c1' }, promptId: 'p-c1' });
+  assert.match(first?.hookSpecificOutput?.additionalContext ?? '', /bugfix workflow/, 'a new task emits the workflow context');
+  const second = dispatch('UserPromptSubmit', { ...parsed, sessionId: sid, data: { prompt, prompt_id: 'p-c2' }, promptId: 'p-c2' });
+  assert.deepEqual(second, {}, 'a repeat prompt for the same open task emits no extra context');
+  assert.ok(loadState(paths).last_context_signature.length > 0, 'the emitted signature is persisted');
+  // Complete the open contract (verified TaskCompleted flag), then the next
+  // prompt opens a fresh task, which must emit again.
+  appendEvent(paths, 'set_many', { fields: { task_completed_pending: loadState(paths).task_id } });
+  dispatch('UserPromptSubmit', { ...parsed, sessionId: sid, data: { prompt, prompt_id: 'p-c3' }, promptId: 'p-c3' });
+  const fresh = dispatch('UserPromptSubmit', { ...parsed, sessionId: sid, data: { prompt, prompt_id: 'p-c4' }, promptId: 'p-c4' });
+  assert.match(fresh?.hookSpecificOutput?.additionalContext ?? '', /bugfix workflow/, 'a new task emits context again');
+});
+
+test('PostToolUse EditWrite records the change without emitting context', () => {
+  const sid = 'ptu-edit-silent';
+  const out = dispatch('PostToolUse', { ...parsed, sessionId: sid, toolInput: { file_path: '/repo/src/app.js' } }, 'EditWrite');
+  assert.deepEqual(out, {}, 'the state write no longer injects an additionalContext reminder');
+  const s = loadState(statePaths(dataRoot, sid));
+  assert.equal(s.edited, true);
+  assert.equal(s.code_changed, true);
+  assert.ok(s.files.includes('/repo/src/app.js'));
+  assert.ok(Number(s.fs_revision_hint) >= 1, 'the code/config revision hint still bumps');
+});
+
 test('UserPromptSubmit new task resets loop blocks per key and preserves a running sibling', () => {
   const sid = 'ups-boundary-reset';
   const paths = statePaths(dataRoot, sid);
@@ -505,7 +528,8 @@ test('UserPromptSubmit continue keeps the open contract and applies the legacy r
 test('SubagentStart upserts the agent registry; only the first start bumps the role', () => {
   const sid = 'ups-start-registry';
   const base = { ...parsed, event: 'SubagentStart', sessionId: sid, data: { agent_alias: 'cr' }, agentType: 'Code Reviewer', agentId: 'cr-9' };
-  dispatch('SubagentStart', base);
+  const out = dispatch('SubagentStart', base);
+  assert.deepEqual(out, {}, 'the handoff paragraph is no longer injected as additionalContext');
   let s = loadState(statePaths(dataRoot, sid));
   assert.equal(s.agents['cr-9'].role, 'cr');
   assert.equal(s.agents['cr-9'].status, 'running');
@@ -538,19 +562,18 @@ test('SubagentStart records a missing-id agent under _session without a role bum
 });
 
 test('SubagentStop gate pass completes the registry record and clears the loop key', () => {
-  withProfile('legacy', () => {
-    const sid = 'ups-stop-registry';
-    dispatch('SubagentStart', { ...parsed, event: 'SubagentStart', sessionId: sid, data: { agent_alias: 'cr' }, agentType: 'Code Reviewer', agentId: 'cr-3' });
-    // An incomplete footer blocks and leaves the record running.
-    const blocked = dispatch('SubagentStop', { ...parsed, event: 'SubagentStop', sessionId: sid, data: { agent_alias: 'cr', last_assistant_message: 'Outcome: partial work' }, agentType: 'Code Reviewer', agentId: 'cr-3' });
-    assert.equal(blocked.decision, 'block');
-    let s = loadState(statePaths(dataRoot, sid));
-    assert.equal(s.agents['cr-3'].status, 'running', 'a blocked stop leaves the record running');
-    assert.equal(s.subagent_stop_blocks['cr-3'].count, 1, 'the block seeds the per-agent loop key');
-    // A gate-passing stop completes the record and clears the per-agent key.
-    const out = dispatch('SubagentStop', { ...parsed, event: 'SubagentStop', sessionId: sid, data: { agent_alias: 'cr', last_assistant_message: FULL_FOOTER }, agentType: 'Code Reviewer', agentId: 'cr-3' });
-    assert.deepEqual(out, {});
-  });
+  const sid = 'ups-stop-registry';
+  dispatch('SubagentStart', { ...parsed, event: 'SubagentStart', sessionId: sid, data: { agent_alias: 'cr' }, agentType: 'Code Reviewer', agentId: 'cr-3' });
+  // A stop WITHOUT a summary message still blocks (the no-summary gate) and
+  // leaves the record running.
+  const blocked = dispatch('SubagentStop', { ...parsed, event: 'SubagentStop', sessionId: sid, data: { agent_alias: 'cr' }, agentType: 'Code Reviewer', agentId: 'cr-3' });
+  assert.equal(blocked.decision, 'block');
+  let s = loadState(statePaths(dataRoot, sid));
+  assert.equal(s.agents['cr-3'].status, 'running', 'a blocked stop leaves the record running');
+  assert.equal(s.subagent_stop_blocks['cr-3'].count, 1, 'the block seeds the per-agent loop key');
+  // A gate-passing stop completes the record and clears the per-agent key.
+  const out = dispatch('SubagentStop', { ...parsed, event: 'SubagentStop', sessionId: sid, data: { agent_alias: 'cr', last_assistant_message: FULL_FOOTER }, agentType: 'Code Reviewer', agentId: 'cr-3' });
+  assert.deepEqual(out, {});
 });
 
 test('SubagentStop resolves the report from the delivered handback payload first', () => {
@@ -582,16 +605,15 @@ function withProfile(value, fn) {
   }
 }
 
-test('workflow profile: legacy keeps the full gate shape byte-stable', () => {
+test('plan task 16: the removed legacy profile is an explicit migration, not a silent switch', () => {
   withProfile('legacy', () => {
-    const sid = 'prof-legacy-gates';
+    const sid = 'prof-legacy-removed';
     const paths = statePaths(dataRoot, sid);
     dispatch('UserPromptSubmit', { ...parsed, sessionId: sid, cwd: '/repo', data: { prompt: 'hello world', prompt_id: 'p-1' }, promptId: 'p-1' });
-    assert.equal(loadState(paths).workflow_profile, 'legacy', 'UPS persists the resolved profile');
+    assert.equal(loadState(paths).workflow_profile, 'lean', 'the removed profile resolves to the only profile');
     appendEvent(paths, 'set_many', { fields: { code_changed: true, task_type: 'bugfix', required_subagents: ['t'], subagents_started: ['t'] } });
     const stop = dispatch('Stop', { ...parsed, sessionId: sid, data: { last_assistant_message: 'all done, shipped' } });
-    assert.equal(stop.decision, 'block', 'legacy still blocks a missing Verification status line');
-    assert.match(stop.reason, /Verification status:/);
+    assert.deepEqual(stop, {}, 'the legacy footer gate is gone with the profile');
   });
 });
 
@@ -603,38 +625,26 @@ test('workflow profile: lean skips role quotas and footer lines, verification ga
     assert.equal(loadState(paths).workflow_profile, 'lean', 'UPS persists the resolved profile');
     appendEvent(paths, 'set_many', { fields: { code_changed: true, task_type: 'bugfix', required_subagents: ['t'], code_changed: true } });
     const stop = dispatch('Stop', { ...parsed, sessionId: sid, data: { last_assistant_message: 'lean completion report' } });
-    assert.deepEqual(stop, {}, 'the t quota and the footer lines do not block in lean');
+    assert.deepEqual(stop, {}, 'the t quota and the footer lines do not block');
     appendEvent(paths, 'set_many', { fields: { tests_failed: true } });
     const blocked = dispatch('Stop', { ...parsed, sessionId: sid, data: { last_assistant_message: FULL_FOOTER } });
     assert.equal(blocked.decision, 'block', 'sessionBlockReason (verification gate) still fires in lean');
   });
 });
 
-test('workflow profile: lean drops the t quota at TaskCompleted but keeps @cr', () => {
+test('plan task 16: the t quota is gone at TaskCompleted, a recorded @cr is still enforced', () => {
   const open = () => ({ id: 'task-1', kind: 'bugfix', status: 'open', required_subagents: [], required_subagent_any_of: [], dispatch_contract_mode: '', docs_required: false, revision: 0, refinements: [] });
   const seed = (sid, required) => appendEvent(statePaths(dataRoot, sid), 'set_many', { fields: { task_id: 'task-1', active_task: open(), task_type: 'bugfix', required_subagents: required, code_changed: false } });
-  withProfile('legacy', () => {
-    seed('prof-tc-legacy-t', ['t']);
-    assert.equal(dispatch('TaskCompleted', { ...parsed, sessionId: 'prof-tc-legacy-t' }).__exit, 2, 'legacy blocks a missing t quota');
-  });
-  withProfile('lean', () => {
-    seed('prof-tc-lean-t', ['t']);
-    assert.deepEqual(dispatch('TaskCompleted', { ...parsed, sessionId: 'prof-tc-lean-t' }), {}, 'lean drops the t quota');
-    seed('prof-tc-lean-cr', ['cr']);
-    assert.equal(dispatch('TaskCompleted', { ...parsed, sessionId: 'prof-tc-lean-cr' }).__exit, 2, 'lean still enforces a recorded @cr');
-  });
+  seed('prof-tc-t', ['t']);
+  assert.deepEqual(dispatch('TaskCompleted', { ...parsed, sessionId: 'prof-tc-t' }), {}, 'the t quota never blocks');
+  seed('prof-tc-cr', ['cr']);
+  assert.equal(dispatch('TaskCompleted', { ...parsed, sessionId: 'prof-tc-cr' }).__exit, 2, 'a recorded @cr is still enforced');
 });
 
-test('workflow profile: lean drops the mandatory-Manager idle gate', () => {
+test('plan task 16: the mandatory-Manager idle gate is gone', () => {
   const seed = (sid) => appendEvent(statePaths(dataRoot, sid), 'set_many', { fields: { task_type: 'bugfix', manager_mode: 'orchestrate', code_changed: false } });
-  withProfile('legacy', () => {
-    seed('prof-idle-legacy');
-    assert.equal(dispatch('TeammateIdle', { ...parsed, sessionId: 'prof-idle-legacy' }).__exit, 2, 'legacy blocks an idle manager without specialists');
-  });
-  withProfile('lean', () => {
-    seed('prof-idle-lean');
-    assert.deepEqual(dispatch('TeammateIdle', { ...parsed, sessionId: 'prof-idle-lean' }), {}, 'lean skips the manager idle gate');
-  });
+  seed('prof-idle');
+  assert.deepEqual(dispatch('TeammateIdle', { ...parsed, sessionId: 'prof-idle' }), {}, 'an idle manager never blocks');
 });
 
 // --- CR BLOCK 1: contract stickiness + honest completion evidence ----------
@@ -644,24 +654,21 @@ const b1Open = (kind, required, anyOf = [], mode = '', docs = false, revision = 
   required_subagent_any_of: anyOf, dispatch_contract_mode: mode, docs_required: docs, revision, refinements: [],
 });
 
-test('BLOCK 1: legacy continue re-persists the user classification (strengthen-only)', () => {
-  withProfile('legacy', () => {
-    const sid = 'b1-legacy-repersist';
-    const paths = statePaths(dataRoot, sid);
-    appendEvent(paths, 'set_many', { fields: { task_id: 'task-1', active_task: b1Open('other', []), task_type: 'other', manager_mode: 'none', docs_required: false, required_subagents: [], required_subagent_any_of: [], dispatch_contract_mode: '', prompt_seq: 0, last_prompt_id: 'p-0' } });
-    dispatch('UserPromptSubmit', { ...parsed, sessionId: sid, data: { prompt: 'quick question: how does the module loader resolve entries?', prompt_id: 'p-1' }, promptId: 'p-1' });
-    dispatch('UserPromptSubmit', { ...parsed, sessionId: sid, data: { prompt: 'fix the failing tests in the parser module', prompt_id: 'p-2' }, promptId: 'p-2' });
-    let s = loadState(paths);
-    assert.equal(s.task_type, 'bugfix', 'the implement prompt grew the open contract');
-    assert.deepEqual(s.required_subagents, ['t', 'cr']);
-    assert.equal(s.docs_required, true);
-    assert.equal(s.active_task.task_type, 'bugfix');
-    dispatch('UserPromptSubmit', { ...parsed, sessionId: sid, data: { prompt: 'quick question: how does the module loader resolve entries again?', prompt_id: 'p-3' }, promptId: 'p-3' });
-    s = loadState(paths);
-    assert.deepEqual(s.required_subagents, ['t', 'cr'], 'a later question prompt never weakens the recorded contract');
-    assert.equal(s.task_type, 'bugfix');
-    assert.equal(s.docs_required, true);
-  });
+test('BLOCK 1: the continue path never re-persists the classification (plan task 16 removed the legacy branch)', () => {
+  const sid = 'b1-legacy-repersist';
+  const paths = statePaths(dataRoot, sid);
+  appendEvent(paths, 'set_many', { fields: { task_id: 'task-1', active_task: b1Open('other', []), task_type: 'other', manager_mode: 'none', docs_required: false, required_subagents: [], required_subagent_any_of: [], dispatch_contract_mode: '', prompt_seq: 0, last_prompt_id: 'p-0' } });
+  dispatch('UserPromptSubmit', { ...parsed, sessionId: sid, data: { prompt: 'quick question: how does the module loader resolve entries?', prompt_id: 'p-1' }, promptId: 'p-1' });
+  dispatch('UserPromptSubmit', { ...parsed, sessionId: sid, data: { prompt: 'fix the failing tests in the parser module', prompt_id: 'p-2' }, promptId: 'p-2' });
+  let s = loadState(paths);
+  assert.equal(s.task_type, 'other', 'the open contract is kept as recorded (no legacy strengthen-only branch)');
+  assert.deepEqual(s.required_subagents, [], 'a later prompt never rewrites the recorded contract');
+  assert.equal(s.docs_required, false);
+  dispatch('UserPromptSubmit', { ...parsed, sessionId: sid, data: { prompt: 'quick question: how does the module loader resolve entries again?', prompt_id: 'p-3' }, promptId: 'p-3' });
+  s = loadState(paths);
+  assert.deepEqual(s.required_subagents, [], 'a later question prompt never weakens the recorded contract');
+  assert.equal(s.task_type, 'other');
+  assert.equal(s.docs_required, false);
 });
 
 test('BLOCK 1: TaskCompleted pass arms the pending flag; the next prompt completes', () => {
@@ -694,6 +701,23 @@ test('BLOCK 1: background/assistant deliverable text never completes (F02)', () 
   const s = loadState(paths);
   assert.equal(s.task_id, 'task-1', 'the task stays open; only TaskCompleted arms completion');
   assert.equal(s.active_task.status, 'open');
+});
+
+test('PreToolUse dispatch contract: a removed role never deadlocks root edits', () => {
+  const sid = 'dispatch-contract-legacy-role';
+  const paths = statePaths(dataRoot, sid);
+  const edit = { ...parsed, event: 'PreToolUse', sessionId: sid, matcher: 'EditWrite', toolName: 'Edit', toolInput: { file_path: 'src/a.mjs' } };
+  appendEvent(paths, 'set_many', { fields: { session_id: sid, dispatch_contract_mode: 'enforced', required_subagents: ['a'], subagents_started: [] } });
+  assert.deepEqual(dispatch('PreToolUse', edit, 'EditWrite'), {},
+    'a role the plugin can no longer dispatch is dropped, not enforced');
+
+  appendEvent(paths, 'set_many', { fields: { required_subagents: ['cr'] } });
+  const denied = dispatch('PreToolUse', edit, 'EditWrite');
+  assert.equal(denied.hookSpecificOutput.permissionDecision, 'deny', 'a shipped role is still enforced');
+  assert.match(denied.hookSpecificOutput.permissionDecisionReason, /@cr/);
+
+  appendEvent(paths, 'set_many', { fields: { subagents_started: ['cr'] } });
+  assert.deepEqual(dispatch('PreToolUse', edit, 'EditWrite'), {}, 'the same edit flows once @cr started');
 });
 
 test('BLOCK 1: lean continue keeps the recorded contract without re-persisting', () => {

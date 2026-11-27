@@ -140,8 +140,8 @@ test('PostToolUse Edit (no matcher) falls back to EditWrite via tool_name and re
     input: stdin, encoding: 'utf8', env: { ...process.env, CLAUDE_PLUGIN_DATA: dataRoot },
   });
   assert.equal(res.status, 0);
-  const out = JSON.parse(res.stdout);
-  assert.match(out.hookSpecificOutput.additionalContext, /Recorded a code\/config change/);
+  // ADR 0014: the edit is recorded as state, not re-announced in context.
+  assert.deepEqual(JSON.parse(res.stdout), {});
   const state = loadState(statePaths(dataRoot, 'case-edit'));
   assert.equal(state.edited, true);
   assert.equal(state.code_changed, true);

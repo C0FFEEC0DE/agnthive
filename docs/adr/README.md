@@ -12,38 +12,38 @@ Implementation status is stated separately. Baseline observations refer to
 `2cd40df` / plugin `0.3.0`. The 0.4.0 tree (commit `efabe5a`) implements
 ADR 0008–0013 and the 2026-10-19 plan tasks 01–15 (evidence model, lifecycle
 identity, failure policy, ledger restoration, outcome suite, lean profile
-shipped experimental with `legacy` still the default); host canaries on the
-pinned CLI remain pending (plan task 14), and removing legacy components
-requires the rollout gates in ADR 0012 (plan task 16, deferred to the
-compatibility window — the eight agent definitions still ship in
-`plugins/agnthive/agents/`).
+shipped experimental with `legacy` still the default). The 0.5.0 tree closes
+the compatibility debt (plan task 16): the `legacy` profile and the five
+compatibility agents are gone, so `plugins/agnthive/agents/` holds three real
+definitions and the runtime carries one SDLC engine. Host canaries on the
+pinned CLI remain pending (plan task 14).
 
 **Update (2026-10-22): the lean default flip has HAPPENED.** The ADR 0012
 rollout gate was exercised to completion on a live arm x repetition matrix
 (`native` / `legacy` / `lean`, three paired repetitions per task, nine tasks,
 75 cells) and reported `gate_inputs.available: true` with no new false
 completions, no permission regressions and no lost material findings against
-either baseline. `lean` is now the default workflow profile; `legacy` stays
-selectable for one transition release and its removal stays deferred to the
-compatibility window (plan task 16). The gate evidence and the two findings
-the matrix surfaced are recorded in `plugins/agnthive/CHANGELOG.md` and
-`docs/benchmarking.md`.
+either baseline. `lean` became the default workflow profile; `legacy` stayed
+selectable for one transition release, which is the window 0.5.0 closed.
 
-The lean **default** flip has **not** happened. ADR 0012 gates it on a live
-outcome-benchmark run, and the gate has not been exercised to completion:
-`gate_inputs` can only be reported as `available: true` for a live run that
-executed every involved arm (`native` / `legacy` / `lean`) with at least
-`MIN_LIVE_REPS` repetitions per task. The arm × repetition execution loop
-that produces those per-(arm, task, rep) records now exists
-(`scripts/run-benchmark.mjs --arms/--reps`, one summary per arm under
-`<output-dir>/arms/<arm>/`), and a live two-arm run on the pinned CLI
-confirms the path end to end — the `native` arm registers no plugin hooks and
-finds no plugin state, the `legacy` arm reads `evidence_source:
-plugin_state`, and the suite emitter reports `reps=1` with a real
-`outcome_pass_rate`. A full three-arm, three-repetition live matrix has not
-been run, so the gate still reports `available: false` with its reasons
-(`no lean-arm run present`, findings evidence missing). Lean therefore stays
-experimental and `legacy` stays the default. See
+**Update (0.5.0): the compatibility window closed and plan task 16 landed.**
+The `legacy` profile and the five compatibility agent definitions (Manager,
+Architect, Tester, Docwriter, Bugbuster) were removed, so there is one SDLC
+engine — root orchestration plus three specialists (`@e`, `@dbg`, `@cr`).
+A session that still names `legacy` runs the root-orchestration profile and
+prints an explicit migration note; [ADR 0015](0015-two-stage-review-and-alias-label-removal.md)
+deleted the removed labels, so historical transcripts keep their text but no
+longer canonicalize to a role. The gate evidence and the
+two findings the matrix surfaced are recorded in `plugins/agnthive/CHANGELOG.md`
+and `docs/benchmarking.md`.
+
+(Superseded history: an earlier revision of this file recorded the state
+before the dated update above — the gate had not been exercised to completion,
+`gate_inputs.available` was `false` for want of a full three-arm,
+three-repetition live matrix, and `legacy` was still the default. The
+`native` / `legacy` / `lean` arm set is kept in the benchmark harness so
+historical reports keep comparing like with like; it is not a live runtime
+profile.) See
 [`docs/benchmarking.md`](../benchmarking.md) ("Outcome Suite") and the
 [plan's execution status](../plans/2026-10-19-harness-modernization-and-simplification.md);
 the current cycle's work is tracked in the local progress ledger
@@ -52,6 +52,10 @@ the current cycle's work is tracked in the local progress ledger
 Dated amendments take precedence over historical snippets in the same ADR.
 A later decision replaces only the scope it names; per-agent isolation and
 plugin identity remain in force even when lean removes mandatory role gates.
+
+**Rule (ADR 0014): ADR first.** A change to a hook contract, an injected
+message, a standing-context budget, or the state shape is recorded as an ADR or
+an ADR amendment, and indexed here, before the code change lands.
 
 ## Index
 
@@ -64,12 +68,14 @@ plugin identity remain in force even when lean removes mandatory role gates.
 | [0005](0005-carry-per-key-loop-block-entry-explicitly.md) | Explicit per-key entries | Amended baseline implementation; retained |
 | [0006](0006-centralize-per-agent-loop-block-key.md) | Central agent key helper | Baseline implementation; retained |
 | [0007](0007-namespace-prefix-is-plugin-identity.md) | Fixed plugin namespace identity | Baseline behavior; retained; rename obligation recorded here |
-| [0008](0008-root-orchestration-and-three-specialists.md) | Root orchestration, three specialists, no mandatory Manager | Implemented in 0.4.0 (plan 10–13); host canaries (plan 14) pending; plan 16 deferred |
-| [0009](0009-completion-evidence-over-role-quotas.md) | Current completion evidence instead of role/footer quotas | Implemented in 0.4.0 (plan 04, 09, 11, 13); host canaries (plan 14) pending; plan 16 deferred |
-| [0010](0010-task-and-agent-lifecycle-identity.md) | Task/agent lifecycle and result ownership | Implemented in 0.4.0 (plan 02, 05–06, 09); host canaries (plan 14) pending |
-| [0011](0011-explicit-hook-failure-and-permission-policy.md) | Explicit enforcement/advisory/telemetry failures | Implemented in 0.4.0 (plan 01–03, 08); host canaries (plan 14) pending |
-| [0012](0012-versioned-harness-contracts-and-outcome-benchmarks.md) | Versioned contracts, outcome benchmarks, rollout gates | Implemented in 0.4.0 (plan 01–02, 09–10, 13); the lean default flip HAPPENED on 2026-10-22 — the outcome gate was exercised on a live 75-cell arm x repetition matrix and passed; plan 16 deferred |
+| [0008](0008-root-orchestration-and-three-specialists.md) | Root orchestration, three specialists, no mandatory Manager | Implemented in 0.4.0 (plan 10–13); plan 16 landed in 0.5.0 (compatibility agents removed); host canaries (plan 14) pending |
+| [0009](0009-completion-evidence-over-role-quotas.md) | Current completion evidence instead of role/footer quotas | Implemented in 0.4.0 (plan 04, 09, 11, 13); plan 16 landed in 0.5.0 (role quotas removed); host canaries (plan 14) pending |
+| [0010](0010-task-and-agent-lifecycle-identity.md) | Task/agent lifecycle and result ownership | Implemented in 0.4.0 (plan 02, 05–06, 09); plan 16 landed in 0.5.0; host canaries (plan 14) pending |
+| [0011](0011-explicit-hook-failure-and-permission-policy.md) | Explicit enforcement/advisory/telemetry failures | Implemented in 0.4.0 (plan 01–03, 08); plan 16 landed in 0.5.0; host canaries (plan 14) pending |
+| [0012](0012-versioned-harness-contracts-and-outcome-benchmarks.md) | Versioned contracts, outcome benchmarks, rollout gates | Implemented in 0.4.0 (plan 01–02, 09–10, 13); the lean default flip HAPPENED on 2026-10-22 — the outcome gate was exercised on a live 75-cell arm x repetition matrix and passed; plan 16 landed in 0.5.0 |
 | [0013](0013-ledger-restoration-and-minimal-telemetry.md) | Verified ledger restoration and bounded metadata | Implemented in 0.4.0 (plan 02, 07); host canaries (plan 14) pending |
+| [0014](0014-standing-context-budgets-and-single-source-contract.md) | Standing-context budgets, single-source handoff contract, bounded state I/O | Implemented 2026-11-26: `checkContextBudget`, deduplicated per-prompt context, no echoed Stop block, batched/trimmed state |
+| [0015](0015-two-stage-review-and-alias-label-removal.md) | Two-stage review (`/simplify` → `/review`), compatibility alias labels removed | Implemented 2026-11-27: root-run two-stage `/review`, standalone `/simplify`, alias map limited to `cr`/`e`/`dbg`, no forked skill |
 
 ## Historical correction
 

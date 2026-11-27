@@ -11,19 +11,13 @@ current change revision: launch the covering test here (or as a tracked
 background job and wait for its real result), and count only what finished
 ([ADR 0009](../../../../docs/adr/0009-completion-evidence-over-role-quotas.md)).
 Delegate to a focused subagent when the work is a large new test suite or a
-big verification sweep (in explicit legacy workflows that is the `@t`
-(Tester) agent, deprecated for new use).
+big verification sweep.
 
 ## When to use
 - Need to write tests
 - Check existing ones
 - Coverage dropped
 - Regression
-
-## Usage
-```
-/test [what to test]
-```
 
 ## Procedure
 1. Find what to test: the changed behavior and its likely regression paths
@@ -38,4 +32,3 @@ big verification sweep (in explicit legacy workflows that is the `@t`
 - If a fix changes behavior, add or extend a test that **fails without the fix** and passes with it
 - If tests were designed but not run, say `not-run`
 - 100% coverage is not the goal; important uncovered gaps must stay visible
-- The completion report carries the stop-safe footer fields: `Outcome:`, `Changed files:` or `No files changed:`, `Verification status:`, and either `Remaining risks:` or `Next step:`

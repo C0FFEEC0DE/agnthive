@@ -102,10 +102,35 @@ function extractFrontmatterLines(lines, filename) {
   return lines.slice(1, end);
 }
 
-function extractScalar(fm, field) {
+export function extractScalar(fm, field) {
   const prefix = `${field}:`;
-  for (const line of fm) {
-    if (line.startsWith(prefix)) return line.slice(prefix.length).trim();
+  for (let i = 0; i < fm.length; i++) {
+    const line = fm[i];
+    if (!line.startsWith(prefix)) continue;
+    const inline = line.slice(prefix.length).trim();
+    // YAML block scalar (`>`, `|`, `>-`, `|+`, `>2`): the value is the indented
+    // lines that follow. Returning only the indicator would let a multi-KB
+    // description ride under every standing-context budget.
+    if (/^[>|][+-]?\d*$/.test(inline)) {
+      const parts = [];
+      for (let j = i + 1; j < fm.length; j++) {
+        const line = fm[j];
+        if (/^\s*$/.test(line)) { parts.push(''); continue; } // blank line inside the block
+        if (!/^\s+\S/.test(line)) break; // first non-indented line ends the block
+        parts.push(line.trim());
+      }
+      return parts.join(' ').replace(/\s+/g, ' ').trim();
+    }
+    // A plain scalar can continue on indented lines too (`description: first` /
+    // `  continued`); fold them so the measurement is the whole value.
+    const parts = [inline];
+    for (let j = i + 1; j < fm.length; j++) {
+      const line = fm[j];
+      if (/^\s*$/.test(line)) { parts.push(''); continue; }
+      if (!/^\s+\S/.test(line)) break;
+      parts.push(line.trim());
+    }
+    return parts.join(' ').replace(/\s+/g, ' ').trim();
   }
   return '';
 }
@@ -189,16 +214,16 @@ function checkAgentFrontmatter() {
 // ---------- skill frontmatter (plugin two-shape model) ----------
 // The plugin ships skills as nested dirs: skills/<name>/SKILL.md. There are two
 // shapes, enforced here so they cannot silently drift:
-//   - Agent-backed (forked-specialist) skills — exactly one ships: review, the
-//     read-only Code Reviewer. Full dispatch contract: name, description,
-//     agent, context: fork, disable-model-invocation: true, non-empty
-//     allowed-tools, non-empty paths. The `agent` value must match a known
-//     plugin agent name or alias.
-//   - Root-procedure/command skills (bug, debug, design, docs, explore,
-//     manager, refactor, test) are name + description (+ argument-hint) only.
-//     They run in the root session; delegation stays body guidance. They must
-//     NOT carry agent/context/allowed-tools/paths (that would
-//     make them a third, ambiguous shape).
+//   - Agent-backed (forked-specialist) skills — none ship since ADR 0015
+//     (/review became a root two-stage procedure). Any future one keeps the
+//     full dispatch contract: name, description, agent, context: fork,
+//     disable-model-invocation: true, non-empty allowed-tools, non-empty
+//     paths. The `agent` value must match a known plugin agent name or alias.
+//   - Root-procedure/command skills (every current skill) are name +
+//     description (+ argument-hint) only. They run in the root session;
+//     delegation stays body guidance. They must NOT carry
+//     agent/context/allowed-tools/paths (that would make them a third,
+//     ambiguous shape).
 function checkSkillFrontmatter() {
   console.log('--- Checking skill frontmatter ---');
   const skillsDir = join(REPO_ROOT, 'plugins', 'agnthive', 'skills');
@@ -286,21 +311,49 @@ function checkSkillFrontmatter() {
 // skills/<name>/SKILL.md is invocable as /<name> (there is no separate
 // commands/ directory).
 export const SLASH_COMMAND_NAMES = [
-  'manager', 'explore', 'bug', 'debug', 'design', 'test', 'refactor', 'review', 'docs',
+  'manager', 'explore', 'bug', 'debug', 'design', 'test', 'refactor', 'review',
+  'simplify', 'docs',
 ];
-export const SLASH_COMMAND_ALIASES = ['m', 'e', 'bug', 'dbg', 'a', 't', 'a', 'cr', 'doc'];
-// The agent-backed (forked-specialist) skill inventory after ADR 0008 / plan
-// task 12: the canonical dispatch contract rides only /review; the other
-// agent-shaped commands are root procedures and must NOT declare
-// agent/context/allowed-tools/paths.
-export const AGENT_BACKED_SKILLS = ['review'];
+// Parallel to SLASH_COMMAND_NAMES: the specialist a command dispatches, or ''.
+// Only the three shipped roles (cr/e/dbg) are named; ADR 0015 removed the
+// legacy labels (m/a/t/doc/bug) the compatibility window carried.
+export const SLASH_COMMAND_ALIASES = ['', 'e', '', 'dbg', '', '', '', 'cr', '', ''];
+// The forked-specialist skill inventory. ADR 0015 made /review a root
+// two-stage procedure, so no skill declares `agent:`; the dispatch contract
+// above still governs any skill that does.
+export const AGENT_BACKED_SKILLS = [];
 
 export function collectSlashCommandInventoryErrors() {
   const checks = [];
   const errors = [];
   errors.push(...slashInventoryDirScanErrors(checks));
+  errors.push(...slashInventoryReviewStageErrors(checks));
   errors.push(...slashInventoryReadmeErrors(checks));
   return { checks, errors };
+}
+
+// ADR 0015: /review carries no frontmatter dispatch contract any more, so its
+// body is the only place the two stages exist. Require both names in the BODY:
+// the description in the frontmatter already names both stages, so matching the
+// raw file would pass even with the procedure deleted.
+export function reviewStageBodyErrors(raw, file = 'review/SKILL.md') {
+  const body = markdownBody(String(raw ?? ''));
+  const missing = [];
+  if (!/simplify/i.test(body)) missing.push('simplify stage');
+  if (!/@cr\b|Code Reviewer/.test(body)) missing.push('@cr stage');
+  return missing.length
+    ? [`/review two-stage body must name both stages: missing ${missing.join(' and ')} in ${file}`]
+    : [];
+}
+
+function slashInventoryReviewStageErrors(checks) {
+  const file = join(REPO_ROOT, 'plugins', 'agnthive', 'skills', 'review', 'SKILL.md');
+  const label = '/review two-stage body';
+  if (!existsSync(file)) return [`${label}: not found: ${file}`];
+  const errors = reviewStageBodyErrors(readFileSync(file, 'utf-8'), file);
+  if (errors.length) return errors;
+  checks.push(label);
+  return [];
 }
 
 function checkSlashCommandInventory() {
@@ -312,6 +365,11 @@ function checkSlashCommandInventory() {
 }
 function slashInventoryDirScanErrors(checks) {
   const errors = [];
+  // The alias list is positional; an out-of-range name would make aliasFor
+  // return undefined and silently skip the "specialist exists" check.
+  if (SLASH_COMMAND_ALIASES.length !== SLASH_COMMAND_NAMES.length) {
+    return [`SLASH_COMMAND_ALIASES must stay parallel to SLASH_COMMAND_NAMES (${SLASH_COMMAND_ALIASES.length} aliases for ${SLASH_COMMAND_NAMES.length} commands)`];
+  }
   const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
   const aliasFor = (name) => {
     const i = SLASH_COMMAND_NAMES.indexOf(name);
@@ -331,7 +389,7 @@ function slashInventoryDirScanErrors(checks) {
     else checks.push('plugin skills/ command inventory');
   }
   // Agent-backed (forked specialist) inventory: dirs whose SKILL.md declares
-  // `agent:` must be exactly the one dispatch-bearing skill.
+  // `agent:` must be exactly AGENT_BACKED_SKILLS (empty since ADR 0015).
   {
     const agentBacked = skillDirs.filter((n) => {
       const sf = join(skillsDir, n, 'SKILL.md');
@@ -357,7 +415,9 @@ function slashInventoryDirScanErrors(checks) {
       const afm = extractFrontmatterLines(readLines(af), basename(af));
       return afm ? extractScalar(afm, 'alias') === expectedAlias : false;
     });
-    if (!aliasPresent)
+    // Every command that names a specialist must name one the plugin ships
+    // (ADR 0015: only cr/e/dbg; the removed labels are gone, not tolerated).
+    if (expectedAlias && !aliasPresent)
       errors.push(`No plugin agent carries alias '${expectedAlias}' for slash command /${command}`);
   }
   return errors;
@@ -428,8 +488,9 @@ export const USER_CONFIG_CONTRACT_KEYS = [
   'enforcement_mode', 'log_max_bytes', 'ledger_max_bytes', 'workflow_profile',
 ];
 // Value domain of the workflow_profile userConfig key (task 11 / ADR 0012):
-// 'lean' is the default since the ADR 0012 rollout gate passed; 'legacy'
-// stays selectable for one transition release.
+// 'lean' is the only profile; 'legacy' is accepted as an input so an existing
+// install does not fail validation, and the runtime runs lean with a migration
+// note. It is never a default.
 export const WORKFLOW_PROFILE_VALUES = new Set(['legacy', 'lean']);
 export const DEFAULT_WORKFLOW_PROFILE = 'lean';
 export const ENFORCEMENT_MODE_VALUES = new Set(['advisory', 'enforce']);
@@ -662,8 +723,11 @@ export function validateUserConfigShape(userConfig) {
       if (def.type !== undefined && def.type !== 'string') {
         errors.push(`userConfig.workflow_profile type must be "string", got ${describeJsValue(def.type)}`);
       }
-      if ('default' in def && (typeof def.default !== 'string' || !WORKFLOW_PROFILE_VALUES.has(def.default))) {
-        errors.push(`userConfig.workflow_profile default must be one of legacy|lean, got ${describeJsValue(def.default)}`);
+      // The manifest default must be a profile that still exists. 'legacy' is
+      // tolerated as an installed-session INPUT (migration note), never as a
+      // packaged default.
+      if ('default' in def && def.default !== 'lean') {
+        errors.push(`userConfig.workflow_profile default must be lean, got ${describeJsValue(def.default)}`);
       }
     }
   });
@@ -841,7 +905,10 @@ function isArrayOfArrays(v) {
 
 function checkBenchmarkTasks() {
   console.log('--- Checking benchmark tasks ---');
-  const EXPECTED_SUBAGENT_ALIASES = ['m', 'e', 'a', 'bug', 'dbg', 't', 'cr', 'doc'];
+  // Plan task 16 removed the compatibility agents: the smoke suite must cover
+  // the agents the plugin SHIPS (the removed aliases keep their historical
+  // meaning in the alias map, but they have no definition to dispatch).
+  const EXPECTED_SUBAGENT_ALIASES = ['e', 'dbg', 'cr'];
   const SUBAGENT_REQUIRED_FOOTER_REGEXES = ['Outcome:', 'Changed files:|No files changed:', 'Verification status:', 'Remaining risks:|Next step:'];
   const taskFiles = walkGlob(join(REPO_ROOT, 'bench', 'tasks'), '.json').sort();
   const taskIds = [];
@@ -1024,6 +1091,69 @@ function checkPluginInstallSmoke() {
 }
 
 // ---------- main ----------
+// ---------- context budget ----------
+// Standing instruction surfaces are billed to every session (output style,
+// skill/agent descriptions) or to every dispatch (agent prompt bodies, skill
+// bodies). They are budgeted like code: a change that quietly grows them fails
+// validation instead of silently costing tokens.
+export const CONTEXT_BUDGETS = {
+  outputStyle: 1600,
+  skillDescriptions: 2400,
+  agentDescriptions: 600,
+  skillBody: 2800,
+  agentBody: 3000,
+};
+
+/** The always-resident text a skill/agent frontmatter contributes. */
+export function standingDescriptionText(fm) {
+  return `${extractScalar(fm, 'name')} ${extractScalar(fm, 'description')}`;
+}
+
+function markdownBody(raw) {
+  const m = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/.exec(raw);
+  return m ? raw.slice(m[0].length) : raw;
+}
+
+function checkContextBudget() {
+  console.log('--- Checking context budget ---');
+  const budget = (label, size, limit, where) => {
+    if (size > limit) reportError(`${label} is ${size} chars in ${where}, budget ${limit}`);
+    else console.log(`OK: ${label} ${size}/${limit} chars`);
+  };
+
+  const stylePath = join(REPO_ROOT, 'plugins', 'agnthive', 'output-styles', 'agnthive.md');
+  if (existsSync(stylePath)) {
+    budget('output style body', Buffer.byteLength(markdownBody(readFileSync(stylePath, 'utf-8')), 'utf-8'), CONTEXT_BUDGETS.outputStyle, stylePath);
+  }
+
+  let skillDescriptions = 0;
+  const skillsDir = join(REPO_ROOT, 'plugins', 'agnthive', 'skills');
+  if (existsSync(skillsDir)) {
+    for (const name of readdirSync(skillsDir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name).sort()) {
+      const f = join(skillsDir, name, 'SKILL.md');
+      if (!existsSync(f)) continue;
+      const raw = readFileSync(f, 'utf-8');
+      const fm = extractFrontmatterLines(readLines(f), `skills/${name}/SKILL.md`);
+      if (fm) skillDescriptions += Buffer.byteLength(standingDescriptionText(fm), 'utf-8');
+      budget(`skill body '${name}'`, Buffer.byteLength(markdownBody(raw), 'utf-8'), CONTEXT_BUDGETS.skillBody, f);
+    }
+  }
+  budget('skill description total', skillDescriptions, CONTEXT_BUDGETS.skillDescriptions, skillsDir);
+
+  let agentDescriptions = 0;
+  const agentsDir = join(REPO_ROOT, 'plugins', 'agnthive', 'agents');
+  if (existsSync(agentsDir)) {
+    for (const f of globDir(agentsDir, '.md').sort()) {
+      const raw = readFileSync(f, 'utf-8');
+      const fm = extractFrontmatterLines(readLines(f), basename(f));
+      if (fm) agentDescriptions += Buffer.byteLength(standingDescriptionText(fm), 'utf-8');
+      budget(`agent prompt '${basename(f)}'`, Buffer.byteLength(markdownBody(raw), 'utf-8'), CONTEXT_BUDGETS.agentBody, f);
+    }
+  }
+  budget('agent description total', agentDescriptions, CONTEXT_BUDGETS.agentDescriptions, agentsDir);
+  console.log('');
+}
+
 function main() {
   // Anchor the process at the repo root for anything that resolves relative
   // paths (imported test harnesses and fixture readers); pure validators take
@@ -1037,6 +1167,7 @@ function main() {
   checkWorkflowSyntax();
   checkAgentFrontmatter();
   checkSkillFrontmatter();
+  checkContextBudget();
    checkSlashCommandInventory();
   checkPluginManifestContract();
   checkWorkflowPolicy();

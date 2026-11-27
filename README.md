@@ -35,23 +35,22 @@ Full diagram and the pieces: [`plugins/agnthive/references/architecture.md`](plu
 
 ## Agents
 
-| Alias | Role | Purpose | Status (ADR 0008) |
-|-------|------|---------|-------------------|
-| `@m` | Manager | Orchestrates other agents | legacy compatibility — now a root procedure |
-| `@cr` | Code Reviewer | Code review + security | primary specialist |
-| `@t` | Tester | Verification + regression | legacy compatibility |
-| `@e` | Explorer | Codebase exploration | primary specialist |
-| `@a` | Architect | System design | legacy compatibility |
-| `@bug` | Bugbuster | Bug hunting | legacy compatibility |
-| `@dbg` | Debugger | Debugging issues | primary specialist |
-| `@doc` | Docwriter | Documentation | legacy compatibility |
+| Alias | Role | Purpose |
+|-------|------|---------|
+| `@cr` | Code Reviewer | Code review + security |
+| `@e` | Explorer | Codebase exploration |
+| `@dbg` | Debugger | Debugging issues |
 
-Full names work too: `@code-reviewer`, `@tester`, etc.
+Full names work too: `@code-reviewer`, `@explorer`, `@debugger`.
 
-All eight agent definitions ship; ADR 0008 (in 0.4.0) makes Code Reviewer,
-Explorer, and Debugger the primary specialists and marks Manager, Architect,
-Tester, Docwriter, and Bugbuster deprecated compatibility agents kept for
-explicit legacy workflows (removed after the compatibility window). See
+Those three are the agents the plugin ships. ADR 0008 made them the primary
+specialists; **0.5.0 removed the five compatibility agents** (Manager,
+Architect, Tester, Docwriter, Bugbuster) after the compatibility window closed,
+so there is no second SDLC engine in the runtime any more. The `/manager`,
+`/design`, `/test`, `/docs`, `/bug`, and `/refactor` root procedures stay —
+they are procedures the root session runs, not agents it spawns. The alias map
+carries only the three shipped labels; the removed labels were deleted in ADR
+0015, so old benchmark reports remain historical artifacts. See
 [`plugins/agnthive/references/agent-contracts.md`](plugins/agnthive/references/agent-contracts.md).
 
 ## Usage
@@ -59,8 +58,8 @@ explicit legacy workflows (removed after the compatibility window). See
 ```
 @e explore the auth module
 @cr review api.mjs
-@t write tests for utils
-@manager implement new feature: user authentication
+@dbg isolate the flaky auth test
+/manager implement new feature: user authentication
 ```
 
 ### Slash commands
@@ -72,7 +71,8 @@ explicit legacy workflows (removed after the compatibility window). See
 - `/test` — testing
 - `/design` — design
 - `/refactor` — refactoring
-- `/review` — code review
+- `/review` — two-stage review: simplify, then an independent `@cr` pass
+- `/simplify` — behavior-preserving reduction (stage 1 of `/review`, runnable alone)
 - `/docs` — documentation
 
 These are the documented entry points; the hooks enforce the actual handoff and stop gates. When a benchmark needs a visible role-usage marker, it may also require an explicit `Handoff evidence: @alias ...` line in the transcript.
@@ -81,20 +81,20 @@ These are the documented entry points; the hooks enforce the actual handoff and 
 
 | Type | Required |
 |------|----------|
-| feature | verification or `@t` + `@cr` + (`@e` or `@a`) |
-| bugfix | verification or `@t` + `@cr` + (`@bug` / `@e` / `@dbg`) |
-| refactor | verification or `@t` + `@cr` + (`@a` or `@e`) |
+| feature | current verification evidence + a started `@cr` review |
+| bugfix | current verification evidence + a started `@cr` review |
+| refactor | current verification evidence + a started `@cr` review |
 | review | `@cr` |
-| docs | `@doc` |
+| docs | current verification evidence when behavior changed |
 
-These are the **legacy-profile** gates (`workflow_profile=legacy`): completion
-counts current verification evidence plus started-and-completed specialist
-roles. The `lean` profile — the **default** since the ADR 0012 rollout gate
-passed on 2026-10-22 — drops the mandatory role quotas and the Manager-idle
-gate while keeping the current-verification and independent-review gates;
-completion evidence is read from the plugin's session state (`verification[]`
-records scoped to the current change revision and the agent registry), not
-from footer text. `legacy` stays selectable for one transition release.
+There are no mandatory role quotas: the root session orchestrates, and
+completion is decided by **evidence**, not by roles that were started. The
+evidence is read from the plugin's session state (`verification[]` records
+scoped to the current change revision and the agent registry), not from footer
+text; the footer lines are reporting guidance. The `legacy` profile (mandatory
+role quotas, the Manager-idle gate, blocking footer lines) was **removed in
+0.5.0** — a session that still names it runs the root-orchestration profile
+and prints an explicit migration note.
 
 ## Install
 
@@ -144,7 +144,7 @@ README.
 All configuration is **environment variables and the plugin-scoped `userConfig`**. The plugin never reads or writes `~/.claude/settings.json`, so installation is non-destructive.
 
 - **Command policy mode:** `userConfig.enforcement_mode` (default `advisory`) or the `AGNTHIVE_POLICY` env var (`advisory` fail-open vs `enforce` fail-closed on unparseable indirection). The legacy `CLAUDE_CREW_POLICY` alias is still honored.
-- **Workflow profile:** `userConfig.workflow_profile` (default `lean`) or the `AGNTHIVE_WORKFLOW_PROFILE` env var selects the SDLC gate shape. `lean` (root orchestration, no mandatory role quotas, verification + review evidence gates stay) is the default since the ADR 0012 rollout gate passed on 2026-10-22; `legacy` keeps the full specialist-handoff and footer gates and stays selectable for one transition release.
+- **Workflow profile:** `userConfig.workflow_profile` (default `lean`) or the `AGNTHIVE_WORKFLOW_PROFILE` env var selects the SDLC gate shape. `lean` (root orchestration, no mandatory role quotas, verification + review evidence gates stay) is the only profile since 0.5.0: the `legacy` profile was removed after the compatibility window closed, and a session that still names it runs `lean` with an explicit migration note on stderr.
 - **Log rotation / ledger size:** `userConfig.log_max_bytes` (1 MiB default) and `userConfig.ledger_max_bytes` (64 KiB default), overridable via `AGNTHIVE_LOG_MAX_BYTES` / `AGNTHIVE_LEDGER_MAX_BYTES` (with `CLAUDE_CREW_*` legacy aliases).
 - **Knob precedence:** every tunable knob reads `AGNTHIVE_*` (explicit) > `CLAUDE_CREW_*` (legacy alias) > `CLAUDE_PLUGIN_OPTION_*` (the `userConfig` bridge, lowest priority) — so a `userConfig` value always applies unless an explicit env var overrides it.
 - **Progress ledger:** `AGNTHIVE_PROGRESS_FILE` overrides the location; default `<projectDir>/.agnthive/progress.md` (gitignored).

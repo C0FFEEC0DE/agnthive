@@ -103,6 +103,15 @@ const OUTPUT_CLASSES = {
     allowed_hook_specific: ['additionalContext', 'hookEventName'],
     hook_event_name: 'SubagentStart',
   },
+  subagent_start_state_only: {
+    // ADR 0014: the handoff contract is not re-injected on dispatch; the
+    // SubagentStart record is the evidence, so the runtime answers with an
+    // empty envelope. The host payload pin (identity fields) is unchanged.
+    exit: 0,
+    allowed_top_level: [],
+    stdout_exact: '{}',
+    stderr: 'empty',
+  },
   subagent_start_context_pending: {
     // Pending sibling of subagent_start_context: the handoff contract envelope
     // is stable, but resume/idempotency semantics stay unpinned until capture.
@@ -450,11 +459,11 @@ function probeEnv(tmpDir) {
       HOME: home,
       CLAUDE_PLUGIN_ROOT: pluginRoot,
       CLAUDE_PLUGIN_DATA: join(home, '.claude'),
-      // The captured fixtures are legacy-profile sessions (the legacy
-      // compatibility window is still open, ADR 0012), and the default profile
-      // is 'lean' since the rollout gate passed — pin the profile so the probe
-      // classifies the way the capture did.
-      AGNTHIVE_WORKFLOW_PROFILE: 'legacy',
+      // Plan task 16 removed the legacy profile: the probe pins the only
+      // remaining profile so the classification is deterministic (the captured
+      // payloads were recorded under the legacy profile, but the INPUT shape
+      // is what the fixture pins).
+      AGNTHIVE_WORKFLOW_PROFILE: 'lean',
     },
     dir: tmpDir,
   };
@@ -595,7 +604,7 @@ test('compat[active] compat_user_prompt_submit_normal applies the classification
     const state = loadState(statePaths(probe.dataRoot, payload.session_id));
     assert.equal(state.task_type, 'feature', 'classification applied in state');
     assert.equal(state.manager_mode, 'none', 'normal prompt keeps manager mode none');
-    assert.deepEqual(state.required_subagents, ['t', 'cr'], 'feature role set persisted');
+    assert.deepEqual(state.required_subagents, ['cr'], 'the feature role set persisted (plan task 16: no role quotas)');
   } finally {
     probe.cleanup();
   }

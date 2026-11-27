@@ -1,4 +1,5 @@
 {
+  "session_id": "case-subagent-stop-missing-verification",
   "agent_alias": "cr",
   "last_assistant_message": "Outcome: implemented the parser.\nChanged files: src/parser.py.\nRemaining risks: none."
 }

@@ -1,5 +1,5 @@
 {
   "dispatch_contract_mode": "enforced",
-  "required_subagents": ["a"],
-  "subagents_started": ["a"]
+  "required_subagents": ["cr"],
+  "subagents_started": ["cr"]
 }

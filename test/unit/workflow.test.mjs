@@ -7,7 +7,7 @@ import {
   classifyPrompt, taskTypeRequiresImplementationSummary,
   taskTypeRequiresSpecialistHandoffs, loopBlockFields, loopBlockCount,
   recordLoopBlock, clearLoopBlockPatch, userPromptResetPatch,
-  sessionBackgroundManagerPending, STOP_SAFE_HINT, parseDispatchContractMarker,
+  STOP_SAFE_HINT, parseDispatchContractMarker,
   agentLoopKey, hasPriorStopBlock,
   parseSlashedCommand, promptCorrelationPatch, taskTransition,
   loopBlockResetKeys,
@@ -22,27 +22,27 @@ function loadPrompt(name) {
 // Fixture -> expected classification. Each row preserves the task type and
 // role state the migrated UserPromptSubmit hook must produce.
 const EXPECT = [
-  ['user_prompt_feature', { taskType: 'feature', managerMode: 'none', docsRequired: true, requiredSubagents: ['t', 'cr'], anyOf: [['e', 'a']], ctx: 'feature workflow' }],
-  ['user_prompt_bugfix', { taskType: 'bugfix', managerMode: 'none', docsRequired: true, requiredSubagents: ['t', 'cr'], anyOf: [['bug', 'e', 'dbg']], ctx: 'bugfix workflow' }],
-  ['user_prompt_bugfix_ru', { taskType: 'bugfix', managerMode: 'none', docsRequired: true, requiredSubagents: ['t', 'cr'], anyOf: [['bug', 'e', 'dbg']], ctx: 'bugfix workflow' }],
-  ['user_prompt_refactor', { taskType: 'refactor', managerMode: 'none', docsRequired: true, requiredSubagents: ['t', 'cr'], anyOf: [['a', 'e']], ctx: 'refactor workflow' }],
+  ['user_prompt_feature', { taskType: 'feature', managerMode: 'none', docsRequired: true, requiredSubagents: ['cr'], anyOf: [], ctx: 'feature workflow' }],
+  ['user_prompt_bugfix', { taskType: 'bugfix', managerMode: 'none', docsRequired: true, requiredSubagents: ['cr'], anyOf: [], ctx: 'bugfix workflow' }],
+  ['user_prompt_bugfix_ru', { taskType: 'bugfix', managerMode: 'none', docsRequired: true, requiredSubagents: ['cr'], anyOf: [], ctx: 'bugfix workflow' }],
+  ['user_prompt_refactor', { taskType: 'refactor', managerMode: 'none', docsRequired: true, requiredSubagents: ['cr'], anyOf: [], ctx: 'refactor workflow' }],
   ['user_prompt_review', { taskType: 'review', managerMode: 'none', docsRequired: false, requiredSubagents: ['cr'], anyOf: [], ctx: '@cr' }],
-  ['user_prompt_docs', { taskType: 'docs', managerMode: 'none', docsRequired: true, requiredSubagents: ['doc'], anyOf: [], ctx: '@doc' }],
+  ['user_prompt_docs', { taskType: 'docs', managerMode: 'none', docsRequired: true, requiredSubagents: [], anyOf: [], ctx: 'docs workflow' }],
   ['user_prompt_model_question', { taskType: 'other', managerMode: 'none', docsRequired: false, requiredSubagents: [], anyOf: [], ctx: '' }],
   ['user_prompt_models_info', { taskType: 'other', managerMode: 'none', docsRequired: false, requiredSubagents: [], anyOf: [], ctx: '' }],
   ['user_prompt_models_creative_typo_info', { taskType: 'other', managerMode: 'none', docsRequired: false, requiredSubagents: [], anyOf: [], ctx: '' }],
   ['user_prompt_models_compare_repo', { taskType: 'other', managerMode: 'none', docsRequired: false, requiredSubagents: [], anyOf: [], ctx: '' }],
-  ['user_prompt_models_feature', { taskType: 'feature', managerMode: 'none', docsRequired: true, requiredSubagents: ['t', 'cr'], anyOf: [['e', 'a']], ctx: 'feature workflow' }],
-  ['user_prompt_models_mixed_feature', { taskType: 'feature', managerMode: 'none', docsRequired: true, requiredSubagents: ['t', 'cr'], anyOf: [['e', 'a']], ctx: 'feature workflow' }],
+  ['user_prompt_models_feature', { taskType: 'feature', managerMode: 'none', docsRequired: true, requiredSubagents: ['cr'], anyOf: [], ctx: 'feature workflow' }],
+  ['user_prompt_models_mixed_feature', { taskType: 'feature', managerMode: 'none', docsRequired: true, requiredSubagents: ['cr'], anyOf: [], ctx: 'feature workflow' }],
   ['user_prompt_models_manager_plan_only', { taskType: 'feature', managerMode: 'plan_only', docsRequired: true, requiredSubagents: [], anyOf: [], ctx: 'Plan-only' }],
   ['user_prompt_models_review', { taskType: 'review', managerMode: 'none', docsRequired: false, requiredSubagents: ['cr'], anyOf: [], ctx: '@cr' }],
-  ['user_prompt_models_docs', { taskType: 'docs', managerMode: 'none', docsRequired: true, requiredSubagents: ['doc'], anyOf: [], ctx: '@doc' }],
+  ['user_prompt_models_docs', { taskType: 'docs', managerMode: 'none', docsRequired: true, requiredSubagents: [], anyOf: [], ctx: 'docs workflow' }],
   ['user_prompt_tech_support_bug_word', { taskType: 'support', managerMode: 'none', docsRequired: false, requiredSubagents: [], anyOf: [], ctx: 'support workflow' }],
-  ['user_prompt_benchmark_refactor_override', { taskType: 'refactor', managerMode: 'none', docsRequired: true, requiredSubagents: ['t', 'cr'], anyOf: [['a', 'e']], ctx: 'refactor workflow' }],
-  ['user_prompt_mixed_intent', { taskType: 'bugfix', managerMode: 'none', docsRequired: true, requiredSubagents: ['t', 'cr'], anyOf: [['bug', 'e', 'dbg']], ctx: 'bugfix workflow' }],
+  ['user_prompt_benchmark_refactor_override', { taskType: 'refactor', managerMode: 'none', docsRequired: true, requiredSubagents: ['cr'], anyOf: [], ctx: 'refactor workflow' }],
+  ['user_prompt_mixed_intent', { taskType: 'bugfix', managerMode: 'none', docsRequired: true, requiredSubagents: ['cr'], anyOf: [], ctx: 'bugfix workflow' }],
   ['user_prompt_hey', { taskType: 'other', managerMode: 'none', docsRequired: false, requiredSubagents: [], anyOf: [], ctx: '' }],
   ['user_prompt_manager_plan_only', { taskType: 'feature', managerMode: 'plan_only', docsRequired: true, requiredSubagents: [], anyOf: [], ctx: 'Plan-only' }],
-  ['user_prompt_no_session_id', { taskType: 'feature', managerMode: 'none', docsRequired: true, requiredSubagents: ['t', 'cr'], anyOf: [['e', 'a']], ctx: 'feature workflow' }],
+  ['user_prompt_no_session_id', { taskType: 'feature', managerMode: 'none', docsRequired: true, requiredSubagents: ['cr'], anyOf: [], ctx: 'feature workflow' }],
 ];
 
 for (const [name, exp] of EXPECT) {
@@ -58,9 +58,23 @@ for (const [name, exp] of EXPECT) {
   });
 }
 
-test('stop-safe hint appears on non-plan-only gated contexts', () => {
+test('root context message is short and states the real completion requirement', () => {
   const r = classifyPrompt(loadPrompt('user_prompt_feature'));
-  assert.ok(r.contextMessage.includes(STOP_SAFE_HINT.trim().slice(0, 40)));
+  assert.ok(r.contextMessage.length <= 180, `context message is ${r.contextMessage.length} chars`);
+  assert.ok(r.contextMessage.startsWith('Treat this as a feature workflow.'), r.contextMessage);
+  assert.match(r.contextMessage, /current verification evidence/);
+  // Accuracy over aspiration: @cr is recorded as required (and blocks) for
+  // these task types, not only for a "substantial" change.
+  assert.match(r.contextMessage, /started @cr review/);
+  assert.match(r.contextMessage, /feature, bugfix, refactor, and review tasks/);
+  // No ADR/plan-task references, no meta-rationale, no false "not a gate" claim.
+  assert.doesNotMatch(r.contextMessage, /ADR|plan task|reporting guidance|blocking gates/);
+  assert.equal(r.contextMessage.includes(STOP_SAFE_HINT), false);
+  for (const name of ['user_prompt_feature', 'user_prompt_bugfix', 'user_prompt_refactor', 'user_prompt_review', 'user_prompt_docs', 'user_prompt_tech_support_bug_word']) {
+    const c = classifyPrompt(loadPrompt(name));
+    assert.ok(c.contextMessage.length <= 180, `${name}: ${c.contextMessage.length} chars`);
+    assert.ok(c.contextMessage.startsWith('Treat this as a '), `${name}: ${c.contextMessage}`);
+  }
 });
 
 test('plan-only context omits the stop-safe hint', () => {
@@ -68,28 +82,28 @@ test('plan-only context omits the stop-safe hint', () => {
   assert.ok(!r.contextMessage.includes('If a later reply'));
 });
 
-test('classifyPrompt: dispatch-contract marker overrides category-default roles', () => {
+test('classifyPrompt: dispatch-contract marker overrides category-default roles (in a bench context)', () => {
   const prompt = 'Workflow override: treat this as a bugfix workflow, not a review-only workflow.\n'
-    + 'BENCHMARK_DISPATCH_CONTRACT: root_only; mode=observed; roles=bug\n'
+    + 'BENCHMARK_DISPATCH_CONTRACT: root_only; mode=observed; roles=dbg\n'
     + 'Task: fix the divide-by-zero in calculator.py.';
-  const r = classifyPrompt(prompt);
+  const r = classifyPrompt(prompt, { benchContext: true });
   // Category still classified (for docs/verification gating)...
   assert.equal(r.taskType, 'bugfix');
   // ...but required roles come from the marker only; any-of groups cleared.
-  assert.deepEqual(r.requiredSubagents, ['bug']);
+  assert.deepEqual(r.requiredSubagents, ['dbg']);
   assert.deepEqual(r.requiredSubagentAnyOf, []);
-  assert.ok(r.contextMessage.includes('Required specialist handoff before completion: @bug'), r.contextMessage);
+  assert.ok(r.contextMessage.includes('Required specialist handoff before completion: @dbg'), r.contextMessage);
   assert.ok(r.contextMessage.includes('do not add category-default'), r.contextMessage);
   // The marker mode is surfaced for persistence to session state.
   assert.equal(r.dispatchContractMode, 'observed');
 });
 
 test('classifyPrompt: enforced dispatch-contract mode is surfaced for the hard guard', () => {
-  const prompt = 'BENCHMARK_DISPATCH_CONTRACT: root_only; mode=enforced; roles=a\n'
-    + 'Use @a to extract the duplicated normalization into a shared helper.';
-  const r = classifyPrompt(prompt);
+  const prompt = 'BENCHMARK_DISPATCH_CONTRACT: root_only; mode=enforced; roles=dbg\n'
+    + 'Use @dbg to isolate the duplicated normalization into a shared helper.';
+  const r = classifyPrompt(prompt, { benchContext: true });
   assert.equal(r.dispatchContractMode, 'enforced');
-  assert.deepEqual(r.requiredSubagents, ['a']);
+  assert.deepEqual(r.requiredSubagents, ['dbg']);
 });
 
 test('classifyPrompt: no marker yields empty dispatchContractMode (guard inert)', () => {
@@ -224,18 +238,6 @@ test('userPromptResetPatch returns scalar reset + mapClears for the per-agent ma
   });
 });
 
-// --- session_background_manager_pending ------------------------------------
-
-test('sessionBackgroundManagerPending gating', () => {
-  const base = { taskType: 'feature', managerMode: 'orchestrate', codeChanged: false, backgroundedAgent: true, startedRoles: ['m'] };
-  assert.equal(sessionBackgroundManagerPending(base), true);
-  assert.equal(sessionBackgroundManagerPending({ ...base, taskType: 'other' }), false);
-  assert.equal(sessionBackgroundManagerPending({ ...base, managerMode: 'none' }), false);
-  assert.equal(sessionBackgroundManagerPending({ ...base, codeChanged: true }), false);
-  assert.equal(sessionBackgroundManagerPending({ ...base, backgroundedAgent: false }), false);
-  assert.equal(sessionBackgroundManagerPending({ ...base, startedRoles: ['e'] }), false);
-  assert.equal(sessionBackgroundManagerPending({ ...base, taskType: 'support' }), false);
-});
 // --- ADR-0010 (plan 05): slash routing + task identity ---------------------
 
 test('parseSlashedCommand parses namespaced, plain, and foreign tokens', () => {
@@ -272,8 +274,9 @@ test('classifyPrompt honors AGNTHIVE:Manager case-insensitive route', () => {
   assert.equal(classifyPrompt('/AGNTHIVE:Manager do it').managerMode, 'orchestrate');
 });
 
-test('classifyPrompt keeps @m/@manager regex routing (legacy unchanged)', () => {
-  assert.equal(classifyPrompt('@m coordinate the work').managerMode, 'orchestrate');
+test('classifyPrompt ignores the removed @m/@manager alias labels (ADR 0015)', () => {
+  assert.equal(classifyPrompt('@m coordinate the work').managerMode, 'none');
+  assert.equal(classifyPrompt('@manager coordinate the work').managerMode, 'none');
 });
 
 // --- ADR-0010 (plan 05.2): prompt correlation ------------------------------
@@ -442,53 +445,23 @@ test('loopBlockResetKeys preserves the _session key when any missing-id agent is
   assert.deepEqual(r2.mapDeletes, ['_session']);
 });
 // --- workflow profile: routing cases only (plan task 11). The profile
-// --- resolver/gate-flag contract lives in workflow-profile.test.mjs.
-import { leanProfileGates, leanRequiredRoles, DEFAULT_WORKFLOW_PROFILE, WORKFLOW_PROFILES } from '../../plugins/agnthive/modules/workflow.mjs';
-import { resolveWorkflowProfile, reportWorkflowProfileNote } from '../../plugins/agnthive/modules/plugin-config.mjs';
+// --- resolver contract lives in workflow-profile.test.mjs. Plan task 16
+// --- removed the legacy profile: the classification has one routing.
+import { DEFAULT_WORKFLOW_PROFILE, WORKFLOW_PROFILES } from '../../plugins/agnthive/modules/workflow.mjs';
 
-test('classifyPrompt: legacy routing survives absent and invalid profile opts', () => {
+test('classifyPrompt: the routing is profile-free (plan task 16)', () => {
   const r = classifyPrompt(loadPrompt('user_prompt_feature'));
-  assert.equal(r.profile, 'legacy');
-  assert.deepEqual(r.requiredSubagents, ['t', 'cr']);
-  assert.deepEqual(r.requiredSubagentAnyOf, [['e', 'a']]);
-  const bad = classifyPrompt(loadPrompt('user_prompt_feature'), { profile: 'turbo' });
-  assert.equal(bad.profile, 'legacy');
-  assert.deepEqual(bad.requiredSubagents, ['t', 'cr']);
-});
-
-test('classifyPrompt: lean routing drops quotas and keeps @cr', () => {
-  const r = classifyPrompt(loadPrompt('user_prompt_feature'), { profile: 'lean' });
-  assert.equal(r.taskType, 'feature');
+  assert.equal(r.profile, 'lean');
   assert.deepEqual(r.requiredSubagents, ['cr'], 'feature keeps only @cr');
   assert.deepEqual(r.requiredSubagentAnyOf, [], 'one-of groups cleared');
   assert.equal(r.docsRequired, true, 'docs decision flag is a decision, not a quota');
-  assert.equal(r.profile, 'lean');
-  assert.ok(r.contextMessage.includes('Lean profile'), 'lean context re-wording present');
+  const bad = classifyPrompt(loadPrompt('user_prompt_feature'), { profile: 'turbo' });
+  assert.equal(bad.profile, 'lean', 'an absent or invalid profile option changes nothing');
+  assert.deepEqual(bad.requiredSubagents, ['cr']);
 });
 
-test('classifyPrompt: lean routing keeps @cr but drops the @doc quota for docs work', () => {
-  const d = classifyPrompt(loadPrompt('user_prompt_docs'), { profile: 'lean' });
-  assert.equal(d.taskType, 'docs');
-  assert.deepEqual(d.requiredSubagents, []);
-  assert.equal(d.docsRequired, true);
-  const rv = classifyPrompt(loadPrompt('user_prompt_review'), { profile: 'lean' });
-  assert.equal(rv.taskType, 'review');
-  assert.deepEqual(rv.requiredSubagents, ['cr']);
-});
-
-test('classifyPrompt: lean scopes the benchmark dispatch contract to test contexts', () => {
-  const prompt = 'BENCHMARK_DISPATCH_CONTRACT: root_only; mode=enforced; roles=t,cr implement the login flow';
-  const out = classifyPrompt(prompt, { profile: 'lean', benchContext: true });
-  assert.deepEqual(out.requiredSubagents, ['t', 'cr'], 'bench marker honored in a test context');
-  assert.equal(out.dispatchContractMode, 'enforced');
-  assert.equal(out.dispatchContractClaimOnly, false);
-  const nonBench = classifyPrompt(prompt, { profile: 'lean', benchContext: false });
-  assert.deepEqual(nonBench.requiredSubagents, ['cr'], 'non-bench lean keeps only category @cr');
-  assert.equal(nonBench.dispatchContractMode, '', 'mode not persisted outside a test context');
-  assert.equal(nonBench.dispatchContractClaimOnly, true);
-  assert.ok(nonBench.contextMessage.includes('ignored'), 'scoping note emitted');
-  const legacyBench = classifyPrompt(prompt);
-  assert.deepEqual(legacyBench.requiredSubagents, ['t', 'cr'], 'legacy applies the marker unconditionally');
-  assert.equal(legacyBench.dispatchContractMode, 'enforced');
-  assert.equal(legacyBench.dispatchContractClaimOnly, false);
+test('classifyPrompt: docs work carries no docs-persona quota', () => {
+  const d = classifyPrompt(loadPrompt('user_prompt_docs'));
+  assert.deepEqual(d.requiredSubagents, [], 'the @doc quota is gone with the legacy profile');
+  assert.equal(d.docsRequired, true, 'the docs decision flag stays');
 });

@@ -1,7 +1,7 @@
 {
   "session_id": "case-subagent-stop-per-agent",
   "subagent_stop_blocks": {
-    "agent-A": {
+    "agentA": {
       "count": 2,
       "reason": "Subagent output must include a Changed files: or No files changed: line.",
       "message": "Outcome: implemented the parser. Verification status: not run. Remaining risks: none."

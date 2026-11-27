@@ -12,6 +12,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 > the paths referenced below (`claudecfg/`, `scripts/*.py`, `tests/`) no longer
 > exist and are preserved here as a historical record only.
 
+## [0.5.0] - 2026-10-22 (plugin `agnthive`)
+
+The full plugin-era entry lives in
+[`plugins/agnthive/CHANGELOG.md`](plugins/agnthive/CHANGELOG.md) § 0.5.0.
+Summary: the compatibility window closed and the plugin ships **one** SDLC
+engine — root orchestration plus three specialists (`@cr`, `@e`, `@dbg`).
+The `legacy` workflow profile and the five compatibility agents (Manager,
+Architect, Tester, Docwriter, Bugbuster) were removed (plan task 16). The
+release also ships the benchmark arm × repetition execution loop and the
+runner fixes the ADR-0012 rollout gate needed, and records the lean default
+flip (2026-10-22).
+
+### Removed
+
+- The `legacy` workflow profile and its mandatory-role / Manager-idle /
+  blocking-footer gate shape (plan task 16)
+- The compatibility agent definitions `manager`, `architect`, `tester`,
+  `docwriter`, `bugbuster` — three agent definitions remain
+  (`code-reviewer`, `explorer`, `debugger`)
+
+### Changed
+
+- `workflow_profile` resolves to `lean` only; a session that still names
+  `legacy` runs `lean` with an explicit migration note on stderr, and an
+  invalid value runs `lean` with a stderr note — never a silent switch
+- The alias map keeps the removed agent labels so historical benchmark
+  evidence reads the same way
+
 ## [0.4.0] - 2026-10-19 (plugin `agnthive`)
 
 The full plugin-era entry lives in

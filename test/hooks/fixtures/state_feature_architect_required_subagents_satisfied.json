@@ -19,21 +19,14 @@
   "last_test_command": "node --test",
   "last_lint_command": "",
   "last_build_command": "",
-  "subagent_start_count": 2,
+  "subagent_start_count": 1,
   "subagents_started": [
-    "a",
     "cr"
   ],
   "required_subagents": [
-    "t",
-    "cr"
+    "a"
   ],
-  "required_subagent_any_of": [
-    [
-      "e",
-      "a"
-    ]
-  ],
+  "required_subagent_any_of": [],
   "stop_block_count": 0,
   "stop_block_reason": "",
   "stop_block_message": "",

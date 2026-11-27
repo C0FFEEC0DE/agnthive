@@ -104,8 +104,9 @@ function parseArgs(argv) {
 // without spawning a runner.
 
 // The workflow profile of the default arm (the arm a task runs on when it
-// declares no arm matrix of its own) and the fallback for plugin arms.
-export const DEFAULT_ARM_PROFILE = 'legacy';
+// declares no arm matrix of its own) and the fallback for plugin arms. 'lean'
+// is the only profile the plugin runs, so that is what a run reports.
+export const DEFAULT_ARM_PROFILE = 'lean';
 
 // Parse --arms: a comma-separated subset of the suite arms.
 export function parseArmsFlag(value) {

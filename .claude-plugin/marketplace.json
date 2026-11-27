@@ -9,7 +9,7 @@
     {
       "name": "agnthive",
       "source": "./plugins/agnthive",
-      "description": "Hook-gated multi-agent SDLC profile: discover -> design -> implement -> verify -> review -> docs, with footer/role/verification contracts enforced by a Node.js hook runtime.",
+      "description": "Hook-gated multi-agent SDLC profile: discover -> design -> implement -> verify -> review -> docs, with completion-evidence and verification contracts enforced by a Node.js hook runtime.",
       "author": {
         "name": "C0FFEEC0DE",
         "url": "https://github.com/C0FFEEC0DE"

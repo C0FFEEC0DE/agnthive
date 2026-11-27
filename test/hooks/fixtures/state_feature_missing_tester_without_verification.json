@@ -13,7 +13,7 @@
   "lint_failed": false,
   "build_ok": false,
   "build_failed": false,
-  "detected_test_command": "",
+  "detected_test_command": "pytest",
   "detected_lint_command": "",
   "detected_build_command": "",
   "last_test_command": "",
@@ -25,15 +25,9 @@
     "cr"
   ],
   "required_subagents": [
-    "t",
     "cr"
   ],
-  "required_subagent_any_of": [
-    [
-      "e",
-      "a"
-    ]
-  ],
+  "required_subagent_any_of": [],
   "stop_block_count": 0,
   "stop_block_reason": "",
   "stop_block_message": "",

@@ -26,13 +26,13 @@ test.before(() => { dataRoot = mkdtempSync(join(tmpdir(), 'ss-int-')); });
 test.after(() => { rmSync(dataRoot, { recursive: true, force: true }); });
 
 function sid(name) { return JSON.parse(readFileSync(join(fixtures, `${name}.json`), 'utf8')).session_id; }
-function ctx(res) { return JSON.parse(res.stdout).hookSpecificOutput.additionalContext; }
 function state(name) { return loadState(statePaths(dataRoot, sid(name))); }
 
 test('SubagentStart code_reviewer -> @cr, records role', () => {
   const res = run('SubagentStart', 'subagent_start_code_reviewer', dataRoot);
   assert.equal(res.status, 0);
-  assert.match(ctx(res), /Recorded subagent handoff: @cr/);
+  // ADR 0014: the handoff contract is not re-injected; the record is the evidence.
+  assert.doesNotMatch(res.stdout, /additionalContext/);
   const s = state('subagent_start_code_reviewer');
   assert.deepEqual(s.subagents_started, ['cr']);
   assert.equal(s.subagent_instance_count_by_role.cr, 1);
@@ -40,58 +40,62 @@ test('SubagentStart code_reviewer -> @cr, records role', () => {
   assert.equal(s.subagent_events[0].role, 'cr');
 });
 
-test('SubagentStart designer_alias -> @a (alias from aliases.json)', () => {
+test('SubagentStart designer_alias -> normalized label (removed role, ADR 0015)', () => {
   const res = run('SubagentStart', 'subagent_start_designer_alias', dataRoot);
-  assert.match(ctx(res), /Recorded subagent handoff: @a/);
-  assert.deepEqual(state('subagent_start_designer_alias').subagents_started, ['a']);
+  assert.equal(res.status, 0);
+  assert.deepEqual(state('subagent_start_designer_alias').subagents_started, ['design']);
 });
 
-test('SubagentStart prefers tool_input.name over generic type -> @t', () => {
+test('SubagentStart prefers tool_input.name over generic type -> normalized label', () => {
   const res = run('SubagentStart', 'subagent_start_tool_input_name_over_type', dataRoot);
-  assert.match(ctx(res), /Recorded subagent handoff: @t/);
+  assert.equal(res.status, 0);
+  assert.deepEqual(state('subagent_start_tool_input_name_over_type').subagents_started, ['tester']);
 });
 
 test('SubagentStart tool_input.subagent_type over agent_type -> @t', () => {
-  const res = run('SubagentStart', 'subagent_start_tool_input_subagent_type_over_agent_type', dataRoot);
-  assert.match(ctx(res), /@t/);
+  run('SubagentStart', 'subagent_start_tool_input_subagent_type_over_agent_type', dataRoot);
   const s = state('subagent_start_tool_input_subagent_type_over_agent_type');
   assert.equal(s.subagent_events[0].purpose, 'Verify Mars Colony game files');
 });
 
 test('SubagentStart camelCase subagentType -> @e', () => {
   const res = run('SubagentStart', 'subagent_start_camelcase_subagent_type_over_agent_type', dataRoot);
-  assert.match(ctx(res), /@e/);
+  assert.equal(res.status, 0);
+  assert.deepEqual(state('subagent_start_camelcase_subagent_type_over_agent_type').subagents_started, ['e']);
 });
 
-test('SubagentStart top-level subagent_type -> @a', () => {
+test('SubagentStart top-level subagent_type -> normalized label', () => {
   const res = run('SubagentStart', 'subagent_start_top_level_subagent_type_over_type', dataRoot);
-  assert.match(ctx(res), /@a/);
+  assert.equal(res.status, 0);
+  assert.deepEqual(state('subagent_start_top_level_subagent_type_over_type').subagents_started, ['architect']);
 });
 
 test('SubagentStart tool_input.agentName -> @cr', () => {
   const res = run('SubagentStart', 'subagent_start_tool_input_agent_name_over_type', dataRoot);
-  assert.match(ctx(res), /@cr/);
+  assert.equal(res.status, 0);
+  assert.deepEqual(state('subagent_start_tool_input_agent_name_over_type').subagents_started, ['cr']);
 });
 
 test('SubagentStart tool_input.agentAlias -> @dbg', () => {
   const res = run('SubagentStart', 'subagent_start_tool_input_agent_alias_over_type', dataRoot);
-  assert.match(ctx(res), /@dbg/);
+  assert.equal(res.status, 0);
+  assert.deepEqual(state('subagent_start_tool_input_agent_alias_over_type').subagents_started, ['dbg']);
 });
 
-test('SubagentStart keeps started roles unique across duplicate tester', () => {
-  run('SubagentStart', 'subagent_start_duplicate_tester', dataRoot);
+test('SubagentStart keeps started roles unique across duplicate explorer', () => {
+  run('SubagentStart', 'subagent_start_duplicate_explorer', dataRoot);
   // ADR-0010: re-running the same fixture is a same-id resume of t2; the role
   // count must not double-count (upsertAgent resume idempotency), while the
   // registry record still advances (starts 2).
-  run('SubagentStart', 'subagent_start_duplicate_tester', dataRoot);
-  const s = state('subagent_start_duplicate_tester');
-  assert.deepEqual(s.subagents_started, ['t']);
-  assert.equal(s.subagent_instance_count_by_role.t, 1);
+  run('SubagentStart', 'subagent_start_duplicate_explorer', dataRoot);
+  const s = state('subagent_start_duplicate_explorer');
+  assert.deepEqual(s.subagents_started, ['e']);
+  assert.equal(s.subagent_instance_count_by_role.e, 1);
   assert.equal(s.subagent_start_count, 2);
   assert.equal(s.subagent_events.length, 2);
-  assert.equal(s.agents.t2.starts, 2);
-  assert.equal(s.agents.t2.role, 't');
-  assert.equal(s.agents.t2.status, 'running');
+  assert.equal(s.agents.e2.starts, 2);
+  assert.equal(s.agents.e2.role, 'e');
+  assert.equal(s.agents.e2.status, 'running');
 });
 
 test('SubagentStart tracks parallel same-role instances with distinct scope', () => {
@@ -102,7 +106,7 @@ test('SubagentStart tracks parallel same-role instances with distinct scope', ()
     input: JSON.stringify(first), encoding: 'utf8', env: { ...process.env, CLAUDE_PLUGIN_DATA: dataRoot },
   });
   const res = run('SubagentStart', 'subagent_start_second_explorer_scope', dataRoot);
-  assert.match(ctx(res), /Parallel same-role handoffs are allowed/);
+  assert.equal(res.status, 0);
   const s = state('subagent_start_second_explorer_scope');
   assert.deepEqual(s.subagents_started, ['e']);
   assert.equal(s.subagent_instance_count_by_role.e, 2);

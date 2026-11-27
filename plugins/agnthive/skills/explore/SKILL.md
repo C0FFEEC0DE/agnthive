@@ -7,8 +7,8 @@ argument-hint: "<area, symbol, or question to map>"
 # /explore — root exploration procedure
 
 Run this in the root session. For a small, well-known area, read the files
-directly. Delegate mapping to the Explorer specialist (`@e`) when the area is
-large, unfamiliar, or its bulk would cost the root session useful context —
+directly. Delegate mapping to the Explorer (`@e`) when the area is large,
+unfamiliar, or its bulk would cost the root session useful context —
 independent context isolation is the reason to delegate, not the stage name
 ([ADR 0008](../../../../docs/adr/0008-root-orchestration-and-three-specialists.md)).
 
@@ -17,11 +17,6 @@ independent context isolation is the reason to delegate, not the stage name
 - Looking for where behavior is implemented
 - Tracing config, hooks, or workflow wiring
 - Comparing multiple candidate edit points
-
-## Usage
-```text
-/explore [what to inspect]
-```
 
 ## Procedure
 1. Locate the relevant files and entry points
@@ -39,4 +34,3 @@ returned to the root reusable for the review dispatch.
 - Prefer evidence from files over guesses
 - Keep the result focused on decision-making
 - Do not surface hook, footer, or prefix-matching repair chatter in the user-facing explanation
-- Delegated handoffs should end with the stop-safe footer fields: `Outcome:`, `Changed files:` or `No files changed:`, `Verification status:`, and either `Remaining risks:` or `Next step:`

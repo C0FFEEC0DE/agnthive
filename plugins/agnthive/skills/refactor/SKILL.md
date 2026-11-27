@@ -8,9 +8,8 @@ argument-hint: "<code area with duplication or debt>"
 
 Run this in the root session. Behavior-preserving cleanup is ordinary
 implementation work — do it directly. Delegate to a focused subagent when a
-substantial multi-file refactor genuinely benefits from isolation (in explicit
-legacy workflows that is the `@a` (Architect) agent, deprecated for new use),
-and get independent review when the diff is substantial ([ADR
+substantial multi-file refactor genuinely benefits from isolation, and get
+independent review when the diff is substantial ([ADR
 0008](../../../../docs/adr/0008-root-orchestration-and-three-specialists.md)).
 
 ## When to use
@@ -19,11 +18,6 @@ and get independent review when the diff is substantial ([ADR
 - Bad variable names
 - Tests became fragile
 - Technical debt cleanup
-
-## Usage
-```
-/refactor [what to refactor]
-```
 
 ## Procedure
 1. Find the structural problem
@@ -39,4 +33,3 @@ and get independent review when the diff is substantial ([ADR
 - Preserve behavior: the change is structural, not semantic
 - For behavior changes inside the refactor, record a docs decision (`updated`, `not_required`, or `pending`) with a reason
 - Substantial refactors get completed independent review of the current diff (`/review`); trivial cleanups may note that rationale instead
-- The completion report carries the stop-safe footer fields: `Outcome:`, `Changed files:` or `No files changed:`, `Verification status:`, and either `Remaining risks:` or `Next step:`

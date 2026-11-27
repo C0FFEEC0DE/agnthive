@@ -3,15 +3,25 @@
 //
 // Design (per docs/specs/claude-code-plugin-node-migration.md behavior delta #1):
 //   - State lives under ${CLAUDE_PLUGIN_DATA}/<safe-session-id>/.
-//   - Every mutation is an append-only event record written as its own file
-//     via exclusive creation (flag 'wx'). Parallel writers race on the next
-//     sequence number; the winner keeps it, losers retry with seq+1. No event
-//     is ever lost and the sequence is monotonic per session.
+//   - Mutations are append-only event records grouped into batch files via
+//     exclusive creation (flag 'wx'). A process queues its events and flushes
+//     them with one directory listing and one write; every event in a batch
+//     shares the batch seq (array order preserves intra-batch order). Parallel
+//     writers race on the next batch seq; the winner keeps it, losers retry
+//     with seq+1. No event is ever lost and the sequence is monotonic per
+//     session. appendEvent flushes immediately, so it still yields one unique
+//     seq per call.
 //   - A pure reducer derives the latest state from the event records, applied
 //     in sequence order.
-//   - Snapshots are disposable caches: write a temp file, fsync when supported,
-//     then atomically rename. A stale or damaged snapshot is rebuilt from
-//     event records, and events already captured by a snapshot may be trimmed.
+//   - Snapshots are written to a temp file, fsync when supported, then
+//     atomically renamed. A stale snapshot is superseded; a damaged or missing
+//     one is rebuilt from event records while the retention window still holds
+//     them. Once events have been trimmed the snapshot is the only copy of
+//     older state: the seq allocator therefore floors new seqs at the
+//     snapshot's `_last_seq` so replay never silently skips a write. When the
+//     events replayed since the snapshot exceed a bounded threshold a fresh
+//     snapshot is written; events already captured by a snapshot are then
+//     trimmed to a bounded retention window.
 //   - Every event and snapshot carries a migration version (`v`).
 import {
   mkdirSync, readdirSync, readFileSync, writeFileSync, openSync, writeSync,
@@ -22,6 +32,25 @@ import { randomBytes } from 'node:crypto';
 
 const SCHEMA_VERSION = 1;
 const MAX_SEQ_ATTEMPTS = 128;
+// Replay-since-snapshot threshold and retention window for event records.
+// Both are overridable per process for tests and operational tuning.
+const SNAPSHOT_THRESHOLD_DEFAULT = 50;
+const MAX_EVENTS_DEFAULT = 500;
+
+function parsePositiveInt(raw, fallback) {
+  const n = Number.parseInt(raw ?? '', 10);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+/** Events replayed since the last snapshot before a fresh snapshot is written. */
+export function snapshotThreshold(env = process.env) {
+  return parsePositiveInt(env.AGNTHIVE_STATE_SNAPSHOT_THRESHOLD, SNAPSHOT_THRESHOLD_DEFAULT);
+}
+
+/** Bounded event-record retention applied after a snapshot is written. */
+export function eventRetentionLimit(env = process.env) {
+  return parsePositiveInt(env.AGNTHIVE_STATE_MAX_EVENTS, MAX_EVENTS_DEFAULT);
+}
 
 /**
  * Default session state, mirroring lib.sh ensure_state. loadState/reducer use
@@ -34,6 +63,10 @@ export const DEFAULT_STATE = Object.freeze({
   transcript_path: '',
   task_type: 'other',
   manager_mode: 'none',
+  // ADR-0014: signature of the last UserPromptSubmit context message emitted
+  // (task id + category + manager mode + profile). An unchanged signature
+  // emits nothing, so repeated prompts for the same open task stay quiet.
+  last_context_signature: '',
   edited: false,
   code_changed: false,
   docs_changed: false,
@@ -117,10 +150,12 @@ export const DEFAULT_STATE = Object.freeze({
   // restored_task_seq: bookkeeping so ledger restoration fires once per
   // restoration cycle (ADR-0013).
   restored_task_seq: 0,
-  // workflow_profile: 'legacy' | 'lean' selector. The default is 'lean' since
-  // the ADR-0012 rollout gate passed its live outcome comparison. A session
-  // that already carries a state keeps the profile it was started with, so a
-  // default switch never changes a running session's gates.
+  // workflow_profile: the profile the session runs. 'lean' is the only profile
+  // since 0.5.0 (plan task 16 removed 'legacy' when the compatibility window
+  // closed); a session that still names 'legacy' runs 'lean' and the caller
+  // prints an explicit migration note. A session that already carries a state
+  // keeps the profile it was started with, so a profile change never alters a
+  // running session's gates.
   workflow_profile: 'lean',
 });
 
@@ -282,7 +317,12 @@ export function reducer(events) {
 }
 
 function nextSeq(paths) {
-  let max = 0;
+  // The snapshot is the seq floor, not just the event filenames: a full trim
+  // leaves an empty events dir while the snapshot still covers seq 1..N, and
+  // replay only accepts seq > N. Deriving from filenames alone would restart
+  // at 1 and every new event would be invisible to loadState.
+  const snap = readSnapshot(paths);
+  let max = snap && snap.state ? (snap.state._last_seq || 0) : 0;
   try {
     for (const f of readdirSync(paths.eventsDir)) {
       const m = f.match(/^(\d+)\.json$/);
@@ -292,12 +332,37 @@ function nextSeq(paths) {
   return max + 1;
 }
 
+// Per-directory write queue. A hook process may emit several events in one
+// run; queueing them and flushing once turns N list+write rounds into one
+// directory listing and one file write.
+const pendingByDir = new Map();
+
+function pendingQueue(paths) {
+  let queue = pendingByDir.get(paths.eventsDir);
+  if (!queue) { queue = []; pendingByDir.set(paths.eventsDir, queue); }
+  return queue;
+}
+
+/** Queue one event; it becomes durable at the next flushEvents(paths). */
+export function queueEvent(paths, type, payload = null) {
+  pendingQueue(paths).push({ type, payload });
+}
+
 /**
- * Append an event record. Returns the assigned sequence number. Safe under
- * concurrent writers: an EEXIST collision on the chosen seq triggers a retry
- * with the next seq, so every event is durably recorded exactly once.
+ * Write every queued event for this session in one batch file, listing the
+ * events directory once. Returns the batch sequence number, or null when the
+ * queue was empty.
+ *
+ * Every event in a batch shares the batch seq: the batch is claimed by
+ * exclusive creation of `<seq>.json`, exactly like the old per-event scheme,
+ * so two parallel processes can never claim the same seq. Array order preserves
+ * intra-batch order; seq order orders batches. The reducer, snapshot replay
+ * (`seq > _last_seq`) and trim (deletes whole seqs) all treat a batch as one
+ * unit, so a snapshot never covers a batch only partially.
  */
-export function appendEvent(paths, type, payload = null) {
+export function flushEvents(paths) {
+  const queue = pendingByDir.get(paths.eventsDir);
+  if (!queue || queue.length === 0) return null;
   ensureStateDir(paths);
   for (let attempt = 0; attempt < MAX_SEQ_ATTEMPTS; attempt++) {
     const seq = nextSeq(paths);
@@ -306,8 +371,10 @@ export function appendEvent(paths, type, payload = null) {
     // sequence unique and monotonic under parallel writers. (A random suffix
     // here would let both writes succeed with the same seq — a lost update.)
     const file = join(paths.eventsDir, `${String(seq).padStart(10, '0')}.json`);
+    const records = queue.map((ev) => ({ seq, type: ev.type, payload: ev.payload, v: SCHEMA_VERSION }));
     try {
-      writeFileSync(file, JSON.stringify({ seq, type, payload, v: SCHEMA_VERSION }), { flag: 'wx' });
+      writeFileSync(file, JSON.stringify(records), { flag: 'wx' });
+      queue.length = 0;
       return seq;
     } catch (e) {
       if (e.code !== 'EEXIST') throw e;
@@ -316,22 +383,61 @@ export function appendEvent(paths, type, payload = null) {
   throw new Error(`could not allocate event seq after ${MAX_SEQ_ATTEMPTS} attempts`);
 }
 
-/** Read all event records in sequence order. Corrupt files are skipped. */
+/**
+ * Queue several events and flush them as one batch. Returns the batch seq
+ * (shared by every event) or null for an empty batch.
+ */
+export function appendEvents(paths, events) {
+  for (const ev of events) queueEvent(paths, ev.type, ev.payload ?? null);
+  return flushEvents(paths);
+}
+
+/**
+ * Append one event record immediately (queue + flush). Returns the assigned
+ * sequence number. Safe under concurrent writers: an EEXIST collision on the
+ * chosen seq triggers a retry with the next seq, so every event is durably
+ * recorded exactly once.
+ */
+export function appendEvent(paths, type, payload = null) {
+  return appendEvents(paths, [{ type, payload }]);
+}
+
+/**
+ * Read all event records in sequence order. Corrupt files are skipped. A file
+ * holds either one event (legacy shape) or an array of events (batch shape);
+ * array order is preserved within a batch, and the stable seq sort keeps it.
+ */
 export function readEvents(paths) {
   try {
     const files = readdirSync(paths.eventsDir).filter((f) => f.endsWith('.json')).sort();
     const events = [];
     for (const f of files) {
       try {
-        events.push(JSON.parse(readFileSync(join(paths.eventsDir, f), 'utf8')));
+        const parsed = JSON.parse(readFileSync(join(paths.eventsDir, f), 'utf8'));
+        if (Array.isArray(parsed)) {
+          for (const ev of parsed) {
+            if (ev && typeof ev === 'object') events.push(ev);
+          }
+        } else if (parsed && typeof parsed === 'object') {
+          events.push(parsed);
+        }
       } catch { /* skip damaged event file */ }
     }
     return events.sort((a, b) => (a.seq || 0) - (b.seq || 0));
   } catch { return []; }
 }
 
-/** Atomically write a snapshot (temp file + fsync + rename). */
+/**
+ * Atomically write a snapshot (temp file + fsync + rename). Returns false and
+ * leaves the on-disk snapshot untouched when that snapshot already covers a
+ * higher seq: a process that read older events must not regress the cache,
+ * which matters now that trimming can delete events a stale snapshot still
+ * needs.
+ */
 export function writeSnapshot(paths, state) {
+  const stateSeq = state._last_seq || 0;
+  const current = readSnapshot(paths);
+  if (current && (current.state._last_seq || 0) > stateSeq) return false;
   ensureStateDir(paths);
   const tmp = `${paths.snapshot}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`;
   let fd = null;
@@ -341,7 +447,11 @@ export function writeSnapshot(paths, state) {
     try { fsyncSync(fd); } catch { /* fsync unsupported or no-op */ }
     closeSync(fd);
     fd = null;
+    // Re-check immediately before the rename to narrow the stale-writer window.
+    const latest = readSnapshot(paths);
+    if (latest && (latest.state._last_seq || 0) > stateSeq) return false;
     renameSync(tmp, paths.snapshot);
+    return true;
   } finally {
     if (fd != null) { try { closeSync(fd); } catch {} }
     try { unlinkSync(tmp); } catch { /* renamed away or never written */ }
@@ -360,8 +470,10 @@ export function readSnapshot(paths) {
 /**
  * Load the current state with recovery. If a valid snapshot covers all known
  * events (plus any trimmed ones), use it as the base and replay only newer
- * events. Otherwise rebuild from the full event log and write a fresh
- * snapshot. A damaged or missing snapshot is transparently rebuilt.
+ * events; once that replay exceeds snapshotThreshold() a fresh snapshot is
+ * written and the covered log is trimmed. Otherwise rebuild from the full
+ * event log, write a fresh snapshot, and trim to the retention window. A
+ * damaged or missing snapshot is transparently rebuilt.
  */
 export function loadState(paths) {
   const events = readEvents(paths);
@@ -372,11 +484,22 @@ export function loadState(paths) {
     if (replay.length === 0) return snap.state;
     const state = structuredClone(snap.state);
     for (const ev of replay) applyEvent(state, ev);
+    // Refresh the snapshot cache once replaying has grown past the threshold,
+    // then trim what the fresh snapshot already covers.
+    if (replay.length > snapshotThreshold()) {
+      try {
+        writeSnapshot(paths, state);
+        trimToBound(paths, events, coveredSnapshotSeq(paths, state._last_seq));
+      } catch { /* snapshot is a cache; keep replaying from events */ }
+    }
     return state;
   }
   const state = reducer(events);
   if (events.length) {
-    try { writeSnapshot(paths, state); } catch { /* snapshot is a cache; non-fatal */ }
+    try {
+      writeSnapshot(paths, state);
+      trimToBound(paths, events, coveredSnapshotSeq(paths, state._last_seq));
+    } catch { /* snapshot is a cache; non-fatal */ }
   }
   return state;
 }
@@ -394,4 +517,32 @@ export function trimEvents(paths, keepAfterSeq) {
       }
     }
   } catch { /* nothing to trim */ }
+}
+
+/**
+ * The highest seq the snapshot currently on disk covers (bounded by our own
+ * state seq). Returns 0 when no readable snapshot is present, so callers skip
+ * trimming rather than delete events no cache covers.
+ */
+function coveredSnapshotSeq(paths, ownSeq) {
+  const snap = readSnapshot(paths);
+  const onDiskSeq = snap && snap.state ? (snap.state._last_seq || 0) : 0;
+  if (onDiskSeq <= 0) return 0;
+  return Math.min(ownSeq || 0, onDiskSeq);
+}
+
+/**
+ * Retention window applied after a snapshot is written: keep at most
+ * eventRetentionLimit() event records, measured in whole batches (a batch is
+ * never split), and never delete a seq the snapshot does not cover. The latter
+ * is what makes trimming safe against a concurrent writer that appended newer
+ * events after this process read the log.
+ */
+function trimToBound(paths, events, snapshotSeq) {
+  const limit = eventRetentionLimit();
+  if (!Number.isFinite(snapshotSeq) || snapshotSeq <= 0 || events.length <= limit) return;
+  const sorted = [...events].sort((a, b) => (a.seq || 0) - (b.seq || 0));
+  const firstKept = sorted[sorted.length - limit];
+  const cutoffSeq = Math.min((firstKept.seq || 0) - 1, snapshotSeq);
+  if (cutoffSeq > 0) trimEvents(paths, cutoffSeq);
 }

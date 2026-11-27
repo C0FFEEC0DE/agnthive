@@ -2,8 +2,8 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "agnthive",
   "displayName": "agnthive",
-  "version": "0.4.0",
-  "description": "Hook-gated multi-agent SDLC profile with a Node.js hook runtime that enforces discover -> design -> implement -> verify -> review -> docs, plus footer, specialist-role, and verification contracts.",
+  "version": "0.6.0",
+  "description": "Hook-gated multi-agent SDLC profile with a Node.js hook runtime that enforces discover -> design -> implement -> verify -> review -> docs, plus completion-evidence and verification contracts.",
   "author": {
     "name": "C0FFEEC0DE",
     "url": "https://github.com/C0FFEEC0DE"
@@ -43,7 +43,7 @@
     "workflow_profile": {
       "type": "string",
       "title": "Workflow profile",
-      "description": "SDLC hook workflow selector. 'lean' (default since the ADR 0012 outcome-benchmark rollout gate passed) is the root-orchestration profile: the benchmark dispatch contract applies only in a benchmark test context, mandatory role quotas relax, and the @cr and verification-evidence gates stay. 'legacy' keeps the full specialist-handoff, Manager-idle, footer and summary gates and stays selectable for one transition release. Valid values: legacy|lean (an invalid value falls back to legacy — the stricter profile — with a stderr note). The AGNTHIVE_WORKFLOW_PROFILE env var overrides this if set.",
+      "description": "SDLC hook workflow selector. 'lean' is the only profile since 0.5.0: the root-orchestration profile with the benchmark dispatch contract scoped to a benchmark test context, no mandatory role quotas, and the @cr plus verification-evidence gates kept. The 'legacy' profile was REMOVED in 0.5.0 (the compatibility window closed); a session that still names it runs 'lean' and prints an explicit migration note on stderr. Valid values: lean. The AGNTHIVE_WORKFLOW_PROFILE env var overrides this if set.",
       "default": "lean"
     }
   }

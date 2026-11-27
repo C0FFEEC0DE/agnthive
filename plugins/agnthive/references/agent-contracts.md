@@ -8,41 +8,41 @@ the main session owns orchestration. Three **primary specialists** — Code
 Reviewer, Explorer, Debugger — are agent definitions. Design, Test, Docs, and
 Refactor are **root procedures** (the `/design` `/test` `/docs` `/refactor`
 `/bug` skills plus the `/manager` orchestration procedure), not mandatory
-agent forks. Five **legacy compatibility agents** (Manager, Architect,
-Tester, Docwriter, Bugbuster) remain for one transition release so explicit
-legacy workflows keep a defined behavior; they are not recommended delegates
-and are removed after the compatibility window ([plan task
-16](../../../docs/plans/2026-10-19-harness-modernization-and-simplification.md)).
+agent forks. The legacy compatibility agents (Manager, Architect, Tester,
+Docwriter, Bugbuster) are gone; their procedures stay as root skills. [ADR
+0015](../../../docs/adr/0015-two-stage-review-and-alias-label-removal.md)
+deleted their alias labels and made `/review` a root two-stage procedure
+(`/simplify`, then `@cr`), so no skill is forked.
 
 The contract has five layers:
 
 1. `Hook-level contract` — Node hooks enforce workflow gates, summary fields, and completion safety
-2. `Benchmark task contract` — the legacy per-role smoke suite gives each role focused benchmark coverage
+2. `Benchmark task contract` — the per-role smoke suite gives each shipped role focused benchmark coverage
 3. `Bench runner assertions` — transcript patterns, used-agent signals, and changed-file checks validate actual behavior, not just exit codes
-4. `Role benchmark suite` — `bench/tasks/subagents/smoke/*.json` (compatibility suite; see below)
+4. `Role benchmark suite` — `bench/tasks/subagents/smoke/*.json` (one task per shipped role; see below)
 5. `Agent contract matrix` — the tables below map every agent to its expected handoff signal and benchmark coverage
 
 ## Hook-Level Contract
 
 Hook enforcement is shared across agents and workflows:
 
-- `UserPromptSubmit` classifies work and seeds required roles (legacy profile; lean replaces role quotas with completed-evidence requirements per ADR 0009)
+- `UserPromptSubmit` classifies work and records the contract (`@cr` for the review-bearing categories; no mandatory role quotas — ADR 0009)
 - `SubagentStart` normalizes aliases and records actual role use; generic Task tool types (`general-purpose`, `workflow-subagent`) are filtered from enforcement
-- `Stop`, `TaskCompleted`, and `TeammateIdle` fall back to transcript `@alias` patterns (e.g. `@explorer` -> `e`, `@code-reviewer` -> `cr`, plus legacy persona aliases) when runtimes omit explicit `SubagentStart`
-- `SubagentStop` requires a concrete handoff footer with `Outcome:`, `Changed files:` or `No files changed:`, `Verification status:`, and one closure line: `Remaining risks:` or `Next step:`
+- `Stop`, `TaskCompleted`, and `TeammateIdle` fall back to transcript launch lines and `@alias` mentions of a shipped specialist (`@explorer` -> `e`, `@code-reviewer` -> `cr`) when runtimes omit explicit `SubagentStart`; a skill-load line is not evidence (ADR 0015)
+- `SubagentStop` requires a concrete handoff summary (a missing summary blocks); the footer lines themselves are reporting guidance, not a blocking contract
 - `Stop`, `TaskCompleted`, and `TeammateIdle` block incomplete workflow completion
 - `PostToolUse` and `PostToolUseFailure` track edit and verification state: completion is a `verification[]` record scoped to the current change revision — launched/pending is not passed, an unknown outcome is not passed, and a later code/config edit invalidates the earlier result ([ADR 0009](../../../docs/adr/0009-completion-evidence-over-role-quotas.md)); completed reviews land in `review_results[]`, and the agent registry (`agents{}`) keys lifecycle by stable agent id with per-key map events
 - Failure policy ([ADR 0011](../../../docs/adr/0011-explicit-hook-failure-and-permission-policy.md)): events are classed `enforce` (PreToolUse, PermissionRequest, PermissionDenied, PostToolUseFailure), `guidance` (workflow gates), and `telemetry` (observability); an enforce-class handler that cannot run or classify blocks with a diagnostic, advisory stays neutral (no blanket allow), telemetry failures are nonblocking; every registration carries a `timeout` (`10s` sync / `30s` async) and the shared Bash/PowerShell PreToolUse safety registration carries `onFailure: "block"`; `PermissionDenied` emits the event-specific `hookSpecificOutput: { hookEventName: "PermissionDenied", retry }` envelope
 - `StopFailure` is telemetry ([ADR 0013](../../../docs/adr/0013-ledger-restoration-and-minimal-telemetry.md)): one bounded record per observed turn failure in `stop-failure.jsonl` (`ts`, `session_id`, `error_name`, `exit_code`, `signal`, `agent_id`) — API error text is never logged and a failure never counts as completion
 - `SessionStart` `compact`/`resume` restores a bounded task/revision summary and the ledger location ([ADR 0013](../../../docs/adr/0013-ledger-restoration-and-minimal-telemetry.md)); `PostCompact` is metadata-only bookkeeping
-- `workflow_profile` (`lean` default since the ADR 0012 rollout gate passed; `legacy` stays selectable for one transition release) selects the gate shape ([ADR 0008](../../../docs/adr/0008-root-orchestration-and-three-specialists.md)/0012): lean drops role quotas, the Manager-idle gate, and footer blocking, and keeps the review and current-verification gates; a session that already carries a state keeps the profile it started with, so the default switch never changes a running session's gates
+- `workflow_profile` (`lean`) selects the gate shape ([ADR 0008](../../../docs/adr/0008-root-orchestration-and-three-specialists.md)/0012): no role quotas, no Manager-idle gate, no footer blocking, and the review and current-verification gates stay. Since 0.5.0 the `legacy` profile is REMOVED — the key survives so an old userConfig does not break, and a session that still names `legacy` runs `lean` with an explicit migration note
 
-Footers are a concise reporting shape, not proof of completion: in the lean
-profile they are reporting guidance ([ADR 0009](../../../docs/adr/0009-completion-evidence-over-role-quotas.md)),
+Footers are a concise reporting shape, not proof of completion: they are
+reporting guidance ([ADR 0009](../../../docs/adr/0009-completion-evidence-over-role-quotas.md)),
 completion depends on current verification and completed review, and the stop
 gate is bounded — turn termination after loop prevention does not convert a
-failed check into a pass. Legacy footer gates remain scoped to recognized
-local specialists until removed.
+failed check into a pass. The blocking footer gates are gone with the legacy
+profile (0.5.0).
 
 Relevant files (plugin Node runtime — the single `hook-dispatcher.mjs` handles every event that the legacy per-hook shell scripts used to):
 
@@ -50,7 +50,7 @@ Relevant files (plugin Node runtime — the single `hook-dispatcher.mjs` handles
 - [`modules/summary-contract.mjs`](../modules/summary-contract.mjs) — handoff/stop-footer recognition
 - [`modules/workflow.mjs`](../modules/workflow.mjs) — workflow-gate enforcement (required-role groups, stop/TaskCompleted blocks, task transitions, lean gate projection)
 - [`modules/verification.mjs`](../modules/verification.mjs) — verification result normalization and revision scoping
-- [`modules/plugin-config.mjs`](../modules/plugin-config.mjs) — `workflow_profile` resolution (`AGNTHIVE_WORKFLOW_PROFILE` > userConfig bridge > `lean`; an invalid value falls back to `legacy`)
+- [`modules/plugin-config.mjs`](../modules/plugin-config.mjs) — `workflow_profile` resolution (`AGNTHIVE_WORKFLOW_PROFILE` > userConfig bridge > `lean`; the removed `legacy` value and any invalid value run `lean` with an explicit stderr note)
 - [`hooks/hooks.json`](../hooks/hooks.json) — event → command manifest (exec form, timeouts, `onFailure`, PowerShell parity)
 
 ## Bench Runner Assertions
@@ -80,12 +80,11 @@ Relevant files: `plugins/agnthive/modules/workflow.mjs` (`parseDispatchContractM
 
 ## Role Benchmark Suite (compatibility)
 
-The per-agent suite lives in `bench/tasks/subagents/smoke/`. It is the
-**legacy compatibility suite**: it covers the full eight-slot alias map
-because legacy dispatch contracts still reference those aliases and their
-historical evidence must not change meaning. It measures dispatch
-compliance of a named role, not orchestration-quality or cost; lean
-orchestration is compared by the outcome benchmarks instead ([plan task
+The per-agent suite lives in `bench/tasks/subagents/smoke/`. Since 0.5.0 it
+covers the three shipped roles (the smoke tasks of the removed compatibility
+agents went with them). It measures dispatch compliance of a named role, not
+orchestration-quality or cost; root orchestration is compared by the outcome
+benchmarks instead ([plan task
 10](../../../docs/plans/2026-10-19-harness-modernization-and-simplification.md)).
 Repository validation currently requires every canonical agent alias to have
 at least one smoke task, every subagent benchmark task to declare
@@ -108,8 +107,9 @@ intentionally omitted to keep the plugin model-agnostic.
 Delegation is by need — independent assessment, context isolation, or
 genuinely independent parallel work ([ADR
 0008](../../../docs/adr/0008-root-orchestration-and-three-specialists.md)).
-Review is required for substantial changes; trivial and docs-only work may
-omit a separate reviewer with an explicit rationale. The root passes
+The completion gate requires a started `@cr` review for feature, bugfix,
+refactor, and review work, with an independent reviewer for a substantial
+diff; docs-only work may record a rationale instead. The root passes
 exploration artifacts into the review dispatch; the reviewer never promises a
 delegation its tool list cannot perform.
 
@@ -129,28 +129,29 @@ delegated.
 | `/bug` | root bug-investigation procedure | long/cross-file diagnosis → `@dbg` | root cause with evidence, smallest credible fix, covering regression test |
 | `/debug` | root debugging procedure | long/cross-file diagnosis → `@dbg` | reproduction, isolation, root cause |
 | `/explore` | root exploration procedure | large/unfamiliar area → `@e` | locations, control flow, next step |
-| `/review` | forked specialist skill (the only fork) | — | completed independent review of the current diff |
+| `/review` | root two-stage procedure (ADR 0015) | stage 1 `/simplify` in the root; stage 2 → `@cr`, read-only | reductions recorded + verification re-run, then completed independent review of the simplified diff |
+| `/simplify` | root reduction procedure (stage 1 of `/review`) | — | behavior-preserving reductions with verification re-run |
 
 A root procedure may produce its work without launching a subagent; when it
 delegates, the delegated handoff uses the same stop-safe footer shape. Docs
 decisions follow ADR 0009/0008: internal changes without new user-facing
 semantics are `not_required`, with the reason recorded.
 
-## Legacy Compatibility Agents
+## Removed Compatibility Agents (0.5.0)
 
-Deprecated for new work; kept as working definitions for one transition
-release (removal is a separate compatibility step — plan task 16). They are
-**not recommended delegates**: prompt them only for explicit legacy usage.
-Aliases still resolve so historical evidence keeps its meaning; `@m/@a/@t/
-@doc/@bug` are plugin aliases, not guaranteed native CLI aliases.
+The compatibility window closed and plan task 16 removed the five
+compatibility agent definitions; ADR 0015 then removed their alias labels, so
+the alias map and the transcript fallback resolve only the three shipped roles.
+A gate never demands a role the plugin can no longer produce (a state recorded
+under the legacy profile is migrated to the shipped roles).
 
-| Agent | Alias | Legacy role now covered by | Smoke task (compat suite) |
-| --- | --- | --- | --- |
-| Manager | `m` | root orchestration (`/manager` procedure) | manager doc-map smoke task |
-| Architect | `a` | `/design` + `/refactor` procedures | rollout and refactor smoke tasks |
-| Tester | `t` | `/test` procedure | regression smoke task |
-| Docwriter | `doc` | `/docs` procedure | quickstart smoke task |
-| Bugbuster | `bug` | `/bug` procedure + Debugger/Reviewer specialists | zero-division smoke task |
+| Removed agent | Former alias | Role now covered by |
+| --- | --- | --- |
+| Manager | `m` | root orchestration (`/manager` procedure) |
+| Architect | `a` | `/design` + `/refactor` procedures |
+| Tester | `t` | `/test` procedure + the verification-evidence gate |
+| Docwriter | `doc` | `/docs` procedure |
+| Bugbuster | `bug` | `/bug` procedure + Debugger/Reviewer specialists |
 
 ## Static bug-pattern review checklist
 
@@ -182,19 +183,21 @@ material is present, say so.
 
 ## Aliases
 
-`assets/aliases.json` intentionally retains the full eight-slot mapping
-(`a`, `e`, `bug`, `dbg`, `t`, `cr`, `doc`, `m` plus persona aliases): alias
-resolution is a compatibility interface, and the meaning of recorded evidence
-from older runs must not change ([plan task
-12](../../../docs/plans/2026-10-19-harness-modernization-and-simplification.md)).
-Legacy shorthands are plugin aliases, not native CLI guarantees.
+`assets/aliases.json` maps only the three shipped roles and their persona
+spellings (`e`/`explorer`, `dbg`/`debugger`, `cr`/`code-reviewer`). ADR 0015
+deleted the removed labels (`a`, `bug`, `t`, `doc`, `m`): an alias the plugin
+cannot resolve to a shipped agent is a lie in the contract, and historical
+transcripts keep their text either way. Transcript evidence is
+`SubagentStart`, a specialist launch line (`Code Reviewer(`, `Explorer(`,
+`Debugger(`), or an `@`-mention of a shipped alias — a root-procedure skill
+load is no longer role evidence.
 
 ## How To Extend
 
 When adding or changing agents and procedures:
 
 1. Add or update the agent prompt in `plugins/agnthive/agents/`
-2. Keep the three-layer model: primary specialists are agents; workflow stages are root procedures; new legacy agents are not added
+2. Keep the three-layer model: the three specialists are agents; workflow stages are root procedures; no further compatibility agents are added
 3. Compatibility-suite coverage for a new primary specialist: add a focused smoke task in `bench/tasks/subagents/smoke/` with `agent_alias`, non-empty `forbidden_transcript_patterns`, and at least one required-behavior assertion
 4. Update this matrix
 5. Run:

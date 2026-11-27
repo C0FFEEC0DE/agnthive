@@ -5,41 +5,42 @@
 // filesystem, no child_process, no side effects — the caller prints any
 // diagnostic via reportWorkflowProfileNote.
 //
-// workflow_profile (plan task 11) is the SDLC workflow selector: 'legacy'
-// keeps the full specialist-handoff / Manager-idle / footer gate shape, 'lean'
-// is the experimental root-orchestration profile (ADR 0008/0009/0012). It is a
-// separate knob from the advisory/enforce command policy (plan 11.1) and gates
-// workflow shape only — it never decides a permission output or changes a
-// failure class (ADR 0011).
+// workflow_profile (plan task 11) was the SDLC workflow selector: 'legacy'
+// kept the full specialist-handoff / Manager-idle / footer gate shape, 'lean'
+// was the root-orchestration profile (ADR 0008/0009/0012). Plan task 16
+// removed the 'legacy' profile after the compatibility window: the
+// root-orchestration shape is the only shape, so the selector now resolves to
+// one value and the key survives only so an old userConfig does not break.
 //
 // Precedence (highest first):
 //   1. AGNTHIVE_WORKFLOW_PROFILE             (env override)
 //   2. CLAUDE_PLUGIN_OPTION_WORKFLOW_PROFILE (bridge env var exported by
 //      Claude Code from the workflow_profile userConfig key, same pattern as
 //      CLAUDE_PLUGIN_OPTION_ENFORCEMENT_MODE)
-//   3. default 'lean' — the ADR 0012 rollout gate passed its live outcome
-//      comparison; 'legacy' stays selectable for one transition release
+//   3. default 'lean'
 //
-// Validation: a value is trimmed and lowercased and must be exactly 'legacy'
-// or 'lean'. An UNSET or EMPTY value falls through to the next source; a
-// non-empty invalid value resolves to 'legacy' with a stderr diagnostic in
-// `note` (it does not silently fall through to the userConfig value underneath
-// — the caller set an explicit override that is not one of the enum values).
+// Validation: a value is trimmed and lowercased. 'lean' is the only profile.
+// 'legacy' is an EXPLICIT MIGRATION: the profile was removed in 0.5.0, the
+// session runs the root-orchestration profile, and the caller prints the
+// migration note (never a silent switch). Any other value is invalid and
+// resolves to the only profile with a stderr note.
 
-/** Valid workflow profile values (plan task 11.1). The default is 'lean'
- *  since the ADR 0012 rollout gate passed its live outcome comparison;
- *  'legacy' stays selectable for one transition release (plan task 16). */
-export const WORKFLOW_PROFILES = Object.freeze(['legacy', 'lean']);
+/** Valid workflow profile values. Plan task 16 removed 'legacy'. */
+export const WORKFLOW_PROFILES = Object.freeze(['lean']);
 
 export const DEFAULT_WORKFLOW_PROFILE = 'lean';
+
+/** The profile that plan task 16 removed, kept as a named constant so the
+ *  migration note can name it exactly. */
+export const REMOVED_WORKFLOW_PROFILE = 'legacy';
 
 /**
  * Resolve the workflow profile. Returns
  * { profile, source, raw, valid, note }:
- *   profile — 'legacy' | 'lean' (a non-empty invalid value resolves to legacy)
+ *   profile — 'lean' (the only profile)
  *   source  — 'env' | 'userConfig:workflow_profile' | 'default'
  *   raw     — the raw env string that produced the decision ('' when defaulted)
- *   valid   — false only when an override value was present but invalid
+ *   valid   — false when an override named a profile that does not exist
  *   note    — '' or the stderr diagnostic the wiring site prints
  * Pure; no I/O.
  */
@@ -53,17 +54,26 @@ export function resolveWorkflowProfile(env = process.env) {
     if (typeof raw !== 'string' || raw.trim() === '') continue;
     const shown = raw.trim();
     const value = shown.toLowerCase();
-    if (value === 'legacy' || value === 'lean') {
-      return { profile: value, source, raw: shown, valid: true, note: '' };
+    if (value === DEFAULT_WORKFLOW_PROFILE) {
+      return { profile: DEFAULT_WORKFLOW_PROFILE, source, raw: shown, valid: true, note: '' };
     }
-    // A misconfigured value falls back to 'legacy' — the STRICTER profile —
-    // so a typo can never relax the gates below the default.
+    if (value === REMOVED_WORKFLOW_PROFILE) {
+      // Explicit migration, not a silent switch: the removed profile is named
+      // in the note the caller prints.
+      return {
+        profile: DEFAULT_WORKFLOW_PROFILE,
+        source,
+        raw: shown,
+        valid: false,
+        note: `plugin-config: ${key}="${shown}" — the '${REMOVED_WORKFLOW_PROFILE}' workflow profile was REMOVED in 0.5.0 (plan task 16); this session runs the '${DEFAULT_WORKFLOW_PROFILE}' root-orchestration profile\n`,
+      };
+    }
     return {
-      profile: 'legacy',
+      profile: DEFAULT_WORKFLOW_PROFILE,
       source,
       raw: shown,
       valid: false,
-      note: `plugin-config: invalid ${key}="${shown}" — expected ${WORKFLOW_PROFILES.join('|')}; falling back to 'legacy'\n`,
+      note: `plugin-config: invalid ${key}="${shown}" — expected ${WORKFLOW_PROFILES.join('|')}; running the '${DEFAULT_WORKFLOW_PROFILE}' root-orchestration profile\n`,
     };
   }
   return { profile: DEFAULT_WORKFLOW_PROFILE, source: 'default', raw: '', valid: true, note: '' };

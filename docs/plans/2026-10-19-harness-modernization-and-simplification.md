@@ -1,7 +1,7 @@
 # План агенту: актуализация harness и упрощение orchestration
 
-Дата: 2026-10-19. Статус: **реализовано (задачи 01–15, включая переключение
-lean-профиля на default 2026-10-22); задача 16 — DEFERRED**.
+Дата: 2026-10-19. Статус: **реализовано полностью (задачи 01–16: переключение
+lean-профиля на default — 2026-10-22; удаление compatibility debt — 0.5.0)**.
 
 Основание всех задач: [ревью и дизайн](../specs/2026-10-19-harness-review-and-simplification-design.md), baseline `2cd40df`, plugin `0.3.0`.
 
@@ -12,7 +12,7 @@ ledger/telemetry — 0013. Исторические ADR сохраняются �
 
 ## Статус исполнения (обновлено 2026-10-21)
 
-Задачи 01–15 выполнены, задача 16 отложена. Источник истины — локальный ledger
+Задачи 01–16 выполнены. Источник истины — локальный ledger
 `.agnthive/progress.md` (gitignored, в checkout не входит): там реестр задач и
 журнал с командами и их реальными результатами.
 
@@ -33,7 +33,7 @@ ledger/telemetry — 0013. Исторические ADR сохраняются �
 | 13 Валидаторы | DONE | `scripts/validate.mjs`; релиз `efabe5a` |
 | 14 Совместимость и качество | DONE, host canary — pending | `.agnthive/progress.md`; host canary на pinned CLI не выполнен |
 | 15 Документация + переключение default | DONE, default не переключён | `docs/`, `plugins/agnthive/CHANGELOG.md`; полное live-сравнение outcome-матрицы из задачи 14 не выполнялось |
-| 16 Удаление compatibility debt | DEFERRED | compatibility-окно не прошло; 8 определений агентов по-прежнему в `plugins/agnthive/agents/` |
+| 16 Удаление compatibility debt | DONE (0.5.0) | профиль `legacy` и 5 compatibility-агентов удалены; в `plugins/agnthive/agents/` осталось 3 определения |
 
 Релиз: `efabe5a` «feat(plugin): v0.4.0 — task identity, lean profile, outcome
 benchmarks, validators»; `c2a9c42` «fix(bench): platform-neutral task id
@@ -46,8 +46,8 @@ fallback and win32-safe bench tests».
 `gate_inputs.available: true`: против `legacy` (текущий default) — 0 новых
 false completions, 0 потерянных material findings, 27 парных клеток; против
 `native` (без плагина) — −1 new false completions, 0 потерянных findings, 21
-парная клетка. `lean` — default, `legacy` остаётся доступным на один
-переходный релиз (задача 16 отложена). Измеренная дельта по permission
+парная клетка. `lean` — default, `legacy` оставался доступным на один
+переходный релиз; это окно закрыто в 0.5.0 (задача 16 выполнена). Измеренная дельта по permission
 denials — **+1** к каждому базису; все 7 отказов в матрице — host-side
 `Read`/`Write` (воркспейс не trusted), плагинная command-политика не отказала
 ни разу, инцидентность по клеткам одинакова (3 и 3), а в предыдущем прогоне
@@ -291,6 +291,13 @@ claude plugin validate --strict plugins/agnthive/skills
 **Приёмка:** installed behavior совпадает с README; переключение профиля не повреждает state; нет обещаний абсолютного fail-closed или гарантированного качества по footer.
 
 ### 16. Удалить compatibility debt отдельным завершающим изменением
+
+**Выполнено в 0.5.0** (compatibility-окно закрыто): профиль `legacy` и пять
+compatibility-агентов (Manager, Architect, Tester, Docwriter, Bugbuster) удалены;
+в `plugins/agnthive/agents/` осталось три реальных определения. Сессия, которая
+всё ещё называет `legacy`, выполняет root-orchestration профиль и печатает явную
+migration note; alias-map сохранён как reader старого evidence для historical
+benchmark reports. Ниже — исходное тело задачи, оно не переписывается.
 
 **Файлы:** deprecated agent definitions, aliases, legacy policy branches, старые manager-specific stop/idle exceptions и связанные tests/docs.
 

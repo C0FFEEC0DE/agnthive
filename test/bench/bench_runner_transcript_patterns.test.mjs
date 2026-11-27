@@ -18,14 +18,9 @@ import {
 // (see buildAgentLabelMap -> loadAliasesJson fallback). Mirrors it exactly so
 // the test asserts the same canonicalization the runner applies in unit mode.
 const FALLBACK_MAP = {
-  a: 'a', architect: 'a', 'the-architect': 'a', design: 'a', plan: 'a',
-  e: 'e', explorer: 'e', explore: 'e', nerd: 'e',
-  bug: 'bug', bugbuster: 'bug', 'bug-pattern-hunter': 'bug', 'bug-pattern': 'bug',
-  dbg: 'dbg', debugger: 'dbg', 'debugging-specialist': 'dbg',
-  t: 't', tester: 't', testing: 't', paranoid: 't',
-  cr: 'cr', 'code-reviewer': 'cr', 'code-review': 'cr', reviewer: 'cr', 'toxic-senior': 'cr',
-  doc: 'doc', docwriter: 'doc', 'documentation-writer': 'doc', 'docs-writer': 'doc', docs: 'doc',
-  m: 'm', manager: 'm', 'big-boss': 'm',
+  e: 'e', explorer: 'e', explore: 'e',
+  dbg: 'dbg', debugger: 'dbg', debug: 'dbg',
+  cr: 'cr', 'code-reviewer': 'cr', 'code-review': 'cr', reviewer: 'cr',
 };
 
 test('canonicalizeSubagentLabel: known aliases canonicalize correctly', () => {
@@ -33,18 +28,14 @@ test('canonicalizeSubagentLabel: known aliases canonicalize correctly', () => {
   assert.equal(canonicalizeSubagentLabel('cr', FALLBACK_MAP), 'cr');
   assert.equal(canonicalizeSubagentLabel('explorer', FALLBACK_MAP), 'e');
   assert.equal(canonicalizeSubagentLabel('e', FALLBACK_MAP), 'e');
-  assert.equal(canonicalizeSubagentLabel('architect', FALLBACK_MAP), 'a');
-  assert.equal(canonicalizeSubagentLabel('a', FALLBACK_MAP), 'a');
-  assert.equal(canonicalizeSubagentLabel('tester', FALLBACK_MAP), 't');
-  assert.equal(canonicalizeSubagentLabel('t', FALLBACK_MAP), 't');
-  assert.equal(canonicalizeSubagentLabel('bugbuster', FALLBACK_MAP), 'bug');
-  assert.equal(canonicalizeSubagentLabel('bug', FALLBACK_MAP), 'bug');
   assert.equal(canonicalizeSubagentLabel('debugger', FALLBACK_MAP), 'dbg');
   assert.equal(canonicalizeSubagentLabel('dbg', FALLBACK_MAP), 'dbg');
-  assert.equal(canonicalizeSubagentLabel('manager', FALLBACK_MAP), 'm');
-  assert.equal(canonicalizeSubagentLabel('m', FALLBACK_MAP), 'm');
-  assert.equal(canonicalizeSubagentLabel('docwriter', FALLBACK_MAP), 'doc');
-  assert.equal(canonicalizeSubagentLabel('doc', FALLBACK_MAP), 'doc');
+});
+
+test('canonicalizeSubagentLabel: removed compatibility labels no longer resolve (ADR 0015)', () => {
+  for (const raw of ['a', 'architect', 't', 'tester', 'bug', 'bugbuster', 'doc', 'docwriter', 'm', 'manager']) {
+    assert.equal(canonicalizeSubagentLabel(raw, FALLBACK_MAP), null, `${raw} must not canonicalize to a role`);
+  }
 });
 
 test('canonicalizeSubagentLabel: case insensitive', () => {
@@ -55,7 +46,7 @@ test('canonicalizeSubagentLabel: case insensitive', () => {
 
 test('canonicalizeSubagentLabel: underscore to hyphen', () => {
   assert.equal(canonicalizeSubagentLabel('code_reviewer', FALLBACK_MAP), 'cr');
-  assert.equal(canonicalizeSubagentLabel('bugbuster', FALLBACK_MAP), 'bug');
+  assert.equal(canonicalizeSubagentLabel('code reviewer', FALLBACK_MAP), 'cr');
 });
 
 test('canonicalizeSubagentLabel: unknown labels return null', () => {
@@ -106,19 +97,24 @@ test('infer: detects @e', () => {
   assert.ok(result.includes('e'));
 });
 
-test('infer: @nerd infers e via alias canonicalization', () => {
-  const result = inferWithCleanup('@nerd traced the issue');
+test('infer: @explorer infers e via alias canonicalization', () => {
+  const result = inferWithCleanup('@explorer traced the issue');
   assert.ok(result.includes('e'));
 });
 
-test('infer: @toxic-senior infers cr', () => {
-  const result = inferWithCleanup('@toxic-senior confirmed the fix');
+test('infer: @code-reviewer infers cr', () => {
+  const result = inferWithCleanup('@code-reviewer confirmed the fix');
   assert.ok(result.includes('cr'));
 });
 
-test('infer: @paranoid infers t', () => {
-  const result = inferWithCleanup('@paranoid ran the tests');
-  assert.ok(result.includes('t'));
+test('infer: @debugger infers dbg', () => {
+  const result = inferWithCleanup('@debugger reproduced the failure');
+  assert.ok(result.includes('dbg'));
+});
+
+test('infer: removed legacy aliases infer nothing (ADR 0015)', () => {
+  const result = inferWithCleanup('@nerd verified\n@toxic-senior confirmed\n@paranoid tested\n@m coordinated');
+  assert.deepEqual(result, []);
 });
 
 test('infer: no false positive on email-like tokens', () => {
@@ -128,10 +124,8 @@ test('infer: no false positive on email-like tokens', () => {
 });
 
 test('infer: detects multiple aliases', () => {
-  const result = inferWithCleanup('@nerd verified\n@toxic-senior confirmed\n@paranoid tested');
-  assert.ok(result.includes('e'));
-  assert.ok(result.includes('cr'));
-  assert.ok(result.includes('t'));
+  const result = inferWithCleanup('@explorer verified\n@code-reviewer confirmed\n@debugger tested');
+  assert.deepEqual([...result].sort(), ['cr', 'dbg', 'e']);
 });
 
 test('infer: empty payload returns empty', () => {
@@ -148,9 +142,9 @@ test('infer: generic types not detected as aliases', () => {
   assert.ok(!result.includes('workflow-subagent'));
 });
 
-test('infer: dedupes alias and slash-skill pattern (same role once)', () => {
-  const result = inferWithCleanup('@cr confirmed\nSkill(/review)');
-  assert.equal(result.filter((a) => a === 'cr').length, 1);
+test('infer: a slash-skill load is not dispatch evidence (ADR 0015)', () => {
+  assert.deepEqual(inferWithCleanup('Skill(/review)'), []);
+  assert.deepEqual(inferWithCleanup('Skill(/test)'), []);
 });
 
 test('infer: dedupes alias and agent-name pattern (same role once)', () => {

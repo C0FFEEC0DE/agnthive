@@ -57,7 +57,7 @@ For prompt-behavior regressions, keep a reusable forbidden pattern set in [`../b
 Recommended transcript regression coverage:
 
 - `@e` exploration task: require structural mapping output and forbid footer-repair chatter
-- `@m` coordination task: require planning/coordinating output and forbid hook-mechanics chatter
+- `@dbg` debugging task: require reproduction/root-cause output and forbid hook-mechanics chatter
 - `@cr` review task: require findings output and forbid guard/prefix/meta formatting chatter
 
 The subagent smoke suite under `bench/tasks/subagents/smoke/*.json` keeps one canary task per canonical alias for PR-time coverage. Tasks that still validate transcript shape are expected to carry the shared footer markers `Outcome:`, `Changed files:` or `No files changed:`, `Verification status:`, and `Remaining risks:` or `Next step:` so role prompts, hook contracts, and runner assertions stay aligned.
@@ -93,14 +93,14 @@ Under `observed`/`enforced`, the runner's `requiredUsedAgentMisses` is fed `enfo
 
 ## Dispatch Contract Marker
 
-The `dispatch_contract` task field lets a benchmark task declare an exact specialist contract so the runner and the plugin hook agree on a single required-role set instead of the category defaults. It is optional; tasks without it keep the legacy behavior.
+The `dispatch_contract` task field lets a benchmark task declare an exact specialist contract so the runner and the plugin hook agree on a single required-role set instead of the category defaults. It is optional; tasks without it keep the default behavior.
 
 Shape (validated by `scripts/validate.mjs`):
 
 ```json
 "dispatch_contract": {
   "mode": "observed",
-  "required_agents": ["bug"],
+  "required_agents": ["cr"],
   "root_only": true
 }
 ```
@@ -112,20 +112,16 @@ Shape (validated by `scripts/validate.mjs`):
 The runner's `dispatchContractMarker(task)` builds a single line from those fields:
 
 ```text
-BENCHMARK_DISPATCH_CONTRACT: root_only; mode=observed; roles=bug
+BENCHMARK_DISPATCH_CONTRACT: root_only; mode=observed; roles=cr
 ```
 
-`buildPrompt` injects it into the root benchmark prompt only. The plugin's `UserPromptSubmit` classifier (`parseDispatchContractMarker` / `RE_DISPATCH_CONTRACT` in `modules/workflow.mjs`) parses that marker and, when present, **overrides the category-default required roles**: it sets `requiredSubagents` to exactly the listed role(s), clears `required_subagent_any_of` (the any-of groups), and emits a contract-specific context message. This resolves the conflict where a tiny bugfix task was forced to also dispatch `@t`/`@cr`/one-of-`@e|@a` by category classification even though the runner only asks for one specialist.
+`buildPrompt` injects it into the root benchmark prompt only. The plugin's `UserPromptSubmit` classifier (`parseDispatchContractMarker` / `RE_DISPATCH_CONTRACT` in `modules/workflow.mjs`) parses that marker and, when present, **overrides the category-default required roles**: it sets `requiredSubagents` to exactly the listed role(s), clears `required_subagent_any_of` (the any-of groups), and emits a contract-specific context message. This resolves the conflict where a task was forced to also dispatch the category-default roles by classification even though the runner only asks for one specialist. Since 0.5.0 the category defaults are `@cr` only — the legacy `@t` and one-of-`@e|@a` quotas are gone — so the override decides the surviving specialist a task needs.
 
 The marker does **not** override `docs_required`; that flag still follows category classification. A bugfix task that changes behavior still needs `docs_required: false` set explicitly if it should not be gated on a docs update.
 
 When a task declares a `dispatch_contract`, `buildPrompt` also appends a **"Dispatch contract discipline"** note to the root prompt: the first substantive action must be launching the required specialist via the Agent tool (a real `SubagentStart`); the root agent must not `Edit`/`Write`/`MultiEdit` any file before that specialist starts; and the specialist owns the substantive work while the root coordinates, verifies, and reports. For **`observed`** and **`standard`** modes this is **advisory prompt discipline only** — the hard gate is the `observed`-mode evidence check, which fails the task when a required role has no real `SubagentStart`. For **`enforced`** mode the discipline is **backed by a harness `PreToolUse` guard** (Stage 5, wired): the plugin stashes `dispatch_contract_mode` to session state at `UserPromptSubmit`, and the `PreToolUse` `EditWrite` handler denies root edits until the required role has started, so the model is forced to dispatch before it can touch code.
 
-Three smoke tasks now declare dispatch contracts (all `root_only: true`):
-
-- `bench/tasks/subagents/smoke/subagent-bugbuster-zero-division-lite.json` — `mode: observed`, `required_agents: ["bug"]`.
-- `bench/tasks/subagents/smoke/subagent-tester-regression-lite.json` — `mode: observed`, `required_agents: ["t"]`.
-- `bench/tasks/subagents/smoke/subagent-architect-refactor-lite.json` — `mode: enforced`, `required_agents: ["a"]`. This is the Stage 5 canary: the `PreToolUse` guard forces a real `@a` dispatch before any code edit.
+No shipped smoke task declares a dispatch contract any more: the three that did (`bug`, `t`, `a`) required the compatibility agents 0.5.0 removed, so the task files were deleted with them. The mechanism itself is unchanged and still supported — a task that names a SURVIVING alias (`cr`, `e`, `dbg`) in `dispatch_contract.required_agents` gets the same marker, the same `UserPromptSubmit` override, and the same `enforced` `PreToolUse` guard.
 
 ## CI Gate-Line Split (functional / dispatch-observed / dispatch-enforced)
 
@@ -135,7 +131,7 @@ The three lines:
 
 - **`functional`** — fix + verification + review/docs + structural execution coverage (`configured_tasks > 0`, `executed_tasks === configured_tasks`, `tasks === executed_tasks`, `policy_violations === 0`, and every task has no functional failures). This is the **MERGE-BLOCKING** check: `assert-benchmark-summary.mjs` exits non-zero only on this line.
 - **`dispatch-observed`** — whether the model itself called the Agent tool (a real `SubagentStart`, the hook source from the [Agent-Dispatch Evidence Split](#agent-dispatch-evidence-split)) on `observed`-mode tasks. This is a **VISIBLE, NON-BLOCKING** capability signal. It is never masked or "repaired" through final text; a red `dispatch-observed` line is an honest model-capability signal, not a CI failure.
-- **`dispatch-enforced`** — whether the model dispatched after the hard `PreToolUse` guard on `enforced`-mode tasks (the architect-refactor canary). This is a **VISIBLE, NON-BLOCKING** capability signal: a red `dispatch-enforced` line means the guard fired but the model still did not dispatch, reported honestly rather than masked.
+- **`dispatch-enforced`** — whether the model dispatched after the hard `PreToolUse` guard on `enforced`-mode tasks (the `enforced` canary; 0.5.0 removed the architect-refactor task that used to carry it, so no shipped task exercises the hard guard today). This is a **VISIBLE, NON-BLOCKING** capability signal: a red `dispatch-enforced` line means the guard fired but the model still did not dispatch, reported honestly rather than masked.
 
 ### How it is computed
 
@@ -170,7 +166,7 @@ The old strict `summaryPassesGate(summary, opts)` (`passed === tasks`, `tool_fai
 
 ## Agent-Backed Skill Taxonomy
 
-Since ADR 0008 (implemented in 0.4.0), `/review` is the **only** agent-backed skill: it declares `agent: Code Reviewer`, `context: fork`, `disable-model-invocation: true`, and a scoped `allowed-tools`/`paths` set, so invoking it dispatches the Code Reviewer in an isolated read-only forked subagent. The other eight skills (`manager`, `explore`, `bug`, `debug`, `design`, `test`, `refactor`, `docs`) are **root procedures** — plain entry points the root session executes directly, delegating to a specialist only when the work earns isolation. The repository validator pins this inventory (`AGENT_BACKED_SKILLS = ['review']` in `scripts/validate.mjs`). For legacy per-role dispatch contracts the `bug` alias still resolves to the deprecated Bugbuster compatibility agent and `test` to the Tester, exactly as in earlier runs.
+Since ADR 0015, **no** skill is agent-backed: `/review` is a root two-stage procedure whose body runs a `/simplify` pass and then dispatches `@cr` through the Agent tool, and the other nine skills (`manager`, `explore`, `bug`, `debug`, `design`, `test`, `refactor`, `simplify`, `docs`) are **root procedures** — plain entry points the root session executes directly, delegating to a specialist only when the work earns isolation. The repository validator pins this inventory (`AGENT_BACKED_SKILLS = []` in `scripts/validate.mjs`, plus a body check that `/review` names both stages). Dispatch evidence is therefore `SubagentStart` for `@cr`/`@e`/`@dbg`; the removed compatibility labels (`m`, `a`, `t`, `doc`, `bug`) were deleted from the alias map, so historical transcripts that used them no longer canonicalize.
 
 ## Hook Test Layers
 
@@ -422,7 +418,7 @@ The outcome benchmark suite under `bench/tasks/outcomes/` scores END STATES inst
 
 Suite layout and contract: tasks under `bench/tasks/outcomes/tasks/`, integrity-pinned seed sources under `bench/tasks/outcomes/seeds/`, the task and metrics contract in `bench/tasks/outcomes/schema/outcome-schema.mjs`, and the metrics emitter in `bench/tasks/outcomes/tools/emit-outcome-metrics.mjs`. See `bench/tasks/outcomes/README.md` for the full field and predicate vocabulary.
 
-Arms: `native` (no plugin), `legacy` (current profile), `lean` (candidate slimmed profile). Each task declares its own arm subset (1..3); plugin-only lifecycle scenarios and evidence-flag predicates never include `native`. The suite declares a floor of 3 paired repetitions per arm (`MIN_LIVE_REPS`) for gate-eligible live runs; the runner config owns the actual rep loop. The orchestrator ablation (Manager vs root) is declared per task via `ablation`; the two-independent-subtasks task carries it.
+Arms: `native` (no plugin), `lean` (the current and only runtime profile), and `legacy` (the historical comparison arm for the removed profile). Each task declares its own arm subset (1..3); plugin-only lifecycle scenarios and evidence-flag predicates never include `native`. The suite declares a floor of 3 paired repetitions per arm (`MIN_LIVE_REPS`) for gate-eligible live runs; the runner config owns the actual rep loop. The orchestrator ablation (Manager vs root) is declared per task via `ablation`; the two-independent-subtasks task carries it.
 
 Mock-first: every task must run with no model spend. Mock predicates (`evaluate_in: "mock"`) check the task's declared initial state offline (fixtures and seeds) — the suite validator runs them at PR time and every mock run re-checks them. Live predicates (`evaluate_in: "live"`) assert the run's end state and are evaluated only by the runner in live runs; in mock mode they are `unverified` and outcome pass rates stay null — mock verifies plumbing, live verifies quality.
 

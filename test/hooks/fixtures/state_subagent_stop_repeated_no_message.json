@@ -1,0 +1,10 @@
+{
+  "session_id": "case-subagent-stop-no-message",
+  "subagent_stop_blocks": {
+    "_session": {
+      "count": 2,
+      "reason": "No assistant summary message was found for this subagent stop event.",
+      "message": ""
+    }
+  }
+}

@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import {
   tailJsonlLines, extractLastAssistantMessageFromJsonlStream,
   extractLastAssistantMessageFromTranscript, resolvedLastAssistantMessage,
-  transcriptIndicatesBackgroundedAgent, resolveSubagentReport,
+  resolveSubagentReport,
 } from '../../plugins/agnthive/modules/transcripts.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -91,20 +91,6 @@ test('resolvedLastAssistantMessage: empty/whitespace field falls through', () =>
   assert.ok(msg.length > 0);
 });
 
-// --- transcriptIndicatesBackgroundedAgent ---------------------------------
-
-test('backgrounded: true for manager_backgrounded_review fixture', () => {
-  assert.equal(transcriptIndicatesBackgroundedAgent(join(transcripts, 'manager_backgrounded_review.jsonl')), true);
-});
-
-test('backgrounded: false for review_agent_started fixture', () => {
-  assert.equal(transcriptIndicatesBackgroundedAgent(join(transcripts, 'review_agent_started.jsonl')), false);
-});
-
-test('backgrounded: false for missing path', () => {
-  assert.equal(transcriptIndicatesBackgroundedAgent(''), false);
-  assert.equal(transcriptIndicatesBackgroundedAgent('/no/such.jsonl'), false);
-});
 // --- ADR 0010 report ownership (plan 06.3) ---------------------------------
 
 test('resolveSubagentReport prefers delivered report data and stamps agentId', () => {

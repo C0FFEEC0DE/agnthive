@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { existsSync } from 'node:fs';
 import {
   loadAliases, canonicalizeSubagentLabel, extractSubagentLabel, extractSubagentScope,
   inferStartedRolesFromTranscript, effectiveStartedRoles, formatSubagentList,
@@ -17,32 +18,39 @@ const transcripts = join(here, '..', '..', 'test', 'hooks', 'fixtures', 'transcr
 import { readFileSync, readdirSync } from 'node:fs';
 function readTranscript(name) { return readFileSync(join(transcripts, name), 'utf8'); }
 
-test('loadAliases reads the bundled alias map', () => {
+test('loadAliases reads the bundled alias map (ADR 0015: three shipped roles only)', () => {
   assert.equal(aliases.cr.includes('code-reviewer'), true);
-  assert.equal(aliases.a.includes('design'), true);
-  assert.equal(aliases.e.includes('nerd'), true);
+  assert.equal(aliases.e.includes('explorer'), true);
+  assert.equal(aliases.dbg.includes('debugger'), true);
+  assert.deepEqual(Object.keys(aliases).sort(), ['cr', 'dbg', 'e']);
+  for (const removed of ['a', 'bug', 't', 'doc', 'm']) {
+    assert.equal(removed in aliases, false, `removed label '${removed}' must not stay in the alias map`);
+  }
 });
 
-// --- the new roster contract (ADR 0008; modernization plan task 12) --------
+// --- the roster contract (ADR 0008; ADR 0015) -------------------------------
 //
-// Explicit migration of the old implicit "eight agents" contract: the plugin
-// now ships three primary specialists as agents (Code Reviewer, Explorer,
-// Debugger) and five legacy compatibility agents (Manager, Architect, Tester,
-// Docwriter, Bugbuster), which remain only for explicit legacy use and are
-// not recommended delegates. The file set and the legacy marker in the
-// frontmatter descriptions are pinned here so roster drift cannot happen
-// silently. Legacy role gates themselves live in the runtime until the lean
-// profile switch (plan tasks 11/16) and are NOT weakened by this test.
+// The plugin ships three primary specialists as agents (Code Reviewer,
+// Explorer, Debugger). The five legacy compatibility agents (Manager,
+// Architect, Tester, Docwriter, Bugbuster) were removed from the roster in
+// 0.5.0, and ADR 0015 removed their alias labels too: the file set and the
+// alias map are pinned here so roster drift cannot happen silently.
 
 const AGENT_DIR = join(pluginRoot, 'agents');
 // Deliberately not a Set: the exact file name list is part of the contract.
 const PRIMARY_AGENT_FILES = ['code-reviewer.md', 'explorer.md', 'debugger.md'];
+// Plan task 16 removed the five legacy compatibility agent definitions
+// (manager, architect, tester, docwriter, bugbuster); ADR 0015 removed their
+// alias labels as well.
 const LEGACY_AGENT_FILES = ['manager.md', 'architect.md', 'tester.md', 'docwriter.md', 'bugbuster.md'];
 
-test('plugin ships exactly three primary specialist agents plus five legacy compatibility agents', () => {
+test('plugin ships exactly three primary specialist agents (plan task 16 removed the legacy definitions)', () => {
   const files = readdirSync(AGENT_DIR).filter((f) => f.endsWith('.md')).sort();
-  const expected = [...PRIMARY_AGENT_FILES, ...LEGACY_AGENT_FILES].sort();
-  assert.deepEqual(files, expected, `agents/ must be exactly the primary specialists ${JSON.stringify(PRIMARY_AGENT_FILES)} plus the legacy compatibility files ${JSON.stringify(LEGACY_AGENT_FILES)}`);
+  const expected = [...PRIMARY_AGENT_FILES].sort();
+  assert.deepEqual(files, expected, `agents/ must be exactly the primary specialists ${JSON.stringify(PRIMARY_AGENT_FILES)}`);
+  for (const f of LEGACY_AGENT_FILES) {
+    assert.ok(!files.includes(f), `${f}: the legacy compatibility agent definition must be gone after the compatibility window`);
+  }
 });
 
 test('primary specialist agents carry the primary aliases cr, e, dbg', () => {
@@ -57,21 +65,18 @@ test('primary specialist agents carry the primary aliases cr, e, dbg', () => {
   }
 });
 
-test('legacy compatibility agents are marked as legacy in their description', () => {
+test('no legacy compatibility agent definition is left (plan task 16)', () => {
   for (const f of LEGACY_AGENT_FILES) {
-    const lines = readFileSync(join(AGENT_DIR, f), 'utf8').split('\n');
-    const descLine = lines.find((l) => l.startsWith('description:'));
-    assert.ok(descLine, `${f}: missing description field`);
-    assert.ok(
-      /Legacy compatibility agent/.test(descLine),
-      `${f}: description must mark the agent as a legacy compatibility agent (found: ${descLine})`,
-    );
+    assert.ok(!existsSync(join(AGENT_DIR, f)), `${f}: the legacy compatibility agent definition must be removed`);
   }
 });
 
-test('legacy alias map keeps the full 8-role mapping for historical evidence (plan task 12.5)', () => {
-  for (const role of ['a', 'e', 'bug', 'dbg', 't', 'cr', 'doc', 'm']) {
-    assert.ok(Array.isArray(aliases[role]) && aliases[role].length > 0, `alias '${role}' must stay mapped for legacy evidence compatibility`);
+test('alias map carries only the three shipped roles (ADR 0015)', () => {
+  for (const role of ['cr', 'e', 'dbg']) {
+    assert.ok(Array.isArray(aliases[role]) && aliases[role].length > 0, `alias '${role}' must stay mapped`);
+  }
+  for (const removed of ['a', 'bug', 't', 'doc', 'm']) {
+    assert.equal(aliases[removed], undefined, `removed label '${removed}' must not stay mapped`);
   }
 });
 
@@ -80,27 +85,32 @@ test('legacy alias map keeps the full 8-role mapping for historical evidence (pl
 const CANON_CASES = [
   ['Code Reviewer', 'cr'],
   ['code reviewer', 'cr'],
-  ['@toxic-senior', 'cr'],
-  ['design', 'a'],
-  ['the-architect', 'a'],
-  ['Tester', 't'],
-  ['@paranoid', 't'],
+  ['@code-review', 'cr'],
   ['Explorer', 'e'],
-  ['nerd', 'e'],
-  ['Architect', 'a'],
+  ['explore', 'e'],
   ['dbg', 'dbg'],
-  ['manager', 'm'],
-  ['big-boss', 'm'],
+  ['debugger', 'dbg'],
   ['general-purpose', 'general-purpose'],
   ['  @Code_Reviewer  ', 'cr'],
   ['', ''],
   [null, ''],
+  // ADR 0015: the removed labels and persona nicknames no longer canonicalize
+  // to a role — they come back as the normalized label, which no gate accepts.
+  ['@toxic-senior', 'toxic-senior'],
+  ['design', 'design'],
+  ['the-architect', 'the-architect'],
+  ['Tester', 'tester'],
+  ['@paranoid', 'paranoid'],
+  ['nerd', 'nerd'],
+  ['Architect', 'architect'],
+  ['manager', 'manager'],
+  ['big-boss', 'big-boss'],
   // ADR 0004: strip a leading namespace: prefix before normalizing.
   ['agnthive:Explorer', 'e'],
   ['agnthive:Code Reviewer', 'cr'],
-  ['agnthive:architect', 'a'],
-  ['AGNTHIVE:Tester', 't'],
-  ['@agnthive:Manager', 'm'],
+  ['agnthive:architect', 'architect'],
+  ['AGNTHIVE:Tester', 'tester'],
+  ['@agnthive:Manager', 'manager'],
   // Bare labels (no colon) are unchanged — general-purpose/workflow-subagent
   // are generic dispatch types, not canonical roles.
   ['workflow-subagent', 'workflow-subagent'],
@@ -123,11 +133,13 @@ for (const [raw, expected] of CANON_CASES) {
 
 const LABEL_FIXTURES = [
   ['subagent_start_code_reviewer', 'cr'],
-  ['subagent_start_designer_alias', 'a'],
-  ['subagent_start_tool_input_name_over_type', 't'],
-  ['subagent_start_tool_input_subagent_type_over_agent_type', 't'],
+  // ADR 0015: an unmapped legacy label is recorded as its normalized text, not
+  // as a role; these fixtures also pin the field-precedence probes.
+  ['subagent_start_designer_alias', 'design'],
+  ['subagent_start_tool_input_name_over_type', 'tester'],
+  ['subagent_start_tool_input_subagent_type_over_agent_type', 'tester'],
   ['subagent_start_camelcase_subagent_type_over_agent_type', 'e'],
-  ['subagent_start_top_level_subagent_type_over_type', 'a'],
+  ['subagent_start_top_level_subagent_type_over_type', 'architect'],
   ['subagent_start_tool_input_agent_name_over_type', 'cr'],
   ['subagent_start_tool_input_agent_alias_over_type', 'dbg'],
 ];
@@ -151,16 +163,16 @@ test('extractSubagentScope: falls back through prompt/task', () => {
 
 // --- inferStartedRolesFromTranscript --------------------------------------
 
-test('infer roles: alias_pattern_multiple -> cr, e, t', () => {
-  assert.deepEqual(inferStartedRolesFromTranscript(readTranscript('alias_pattern_multiple.jsonl'), aliases), ['cr', 'e', 't']);
+test('infer roles: alias_pattern_multiple -> cr, dbg, e', () => {
+  assert.deepEqual(inferStartedRolesFromTranscript(readTranscript('alias_pattern_multiple.jsonl'), aliases), ['cr', 'dbg', 'e']);
 });
 
-test('infer roles: review_agent_started -> cr, m (Manager( + Code Reviewer()', () => {
-  assert.deepEqual(inferStartedRolesFromTranscript(readTranscript('review_agent_started.jsonl'), aliases), ['cr', 'm']);
+test('infer roles: review_agent_started -> cr only (Manager( is not a shipped launch line)', () => {
+  assert.deepEqual(inferStartedRolesFromTranscript(readTranscript('review_agent_started.jsonl'), aliases), ['cr']);
 });
 
-test('infer roles: review_skill_started -> cr, m (skill loads)', () => {
-  assert.deepEqual(inferStartedRolesFromTranscript(readTranscript('review_skill_started.jsonl'), aliases), ['cr', 'm']);
+test('infer roles: review_skill_started -> [] (a skill load is not dispatch evidence, ADR 0015)', () => {
+  assert.deepEqual(inferStartedRolesFromTranscript(readTranscript('review_skill_started.jsonl'), aliases), []);
 });
 
 test('infer roles: short @cr -> cr', () => {
@@ -201,17 +213,17 @@ test('formatSubagentList / formatSubagentGroup', () => {
   assert.equal(formatSubagentGroup([]), '');
 });
 
-// The role lists below span all eight aliases on purpose: runtime alias
-// recognition and footer enforcement stay scoped to the legacy alias map
-// (aliases.json is kept byte-identical so old evidence keeps its meaning)
-// until the lean profile switch — plan tasks 11/16. New contract lives at
-// the top: three primary specialists, five marked legacy agents.
-//
-// --- isAgntHiveSpecialistRole (ADR 0001) -----------------------------------
+// --- isAgntHiveSpecialistRole (ADR 0001; ADR 0015 scope) ------------------
 
-test('isAgntHiveSpecialistRole: true for recognized canonical roles', () => {
-  for (const role of ['a', 'e', 'bug', 'dbg', 't', 'cr', 'doc', 'm']) {
+test('isAgntHiveSpecialistRole: true for the three shipped canonical roles', () => {
+  for (const role of ['cr', 'e', 'dbg']) {
     assert.equal(isAgntHiveSpecialistRole(role, aliases), true, `expected ${role} to be recognized`);
+  }
+});
+
+test('isAgntHiveSpecialistRole: false for the removed compatibility labels (ADR 0015)', () => {
+  for (const role of ['a', 'bug', 't', 'doc', 'm', 'architect', 'tester', 'manager']) {
+    assert.equal(isAgntHiveSpecialistRole(role, aliases), false, `removed label '${role}' must not be recognized`);
   }
 });
 
@@ -262,8 +274,11 @@ test('shouldEnforceSubagentFooter: raw agent_type also exempts generics', () => 
 });
 
 test('shouldEnforceSubagentFooter: recognized specialists are enforced when aliases loaded', () => {
-  for (const role of ['a', 'e', 'bug', 'dbg', 't', 'cr', 'doc', 'm']) {
+  for (const role of ['cr', 'e', 'dbg']) {
     assert.equal(shouldEnforceSubagentFooter(role, role, aliases), true, `${role} should be enforced`);
+  }
+  for (const removed of ['a', 'bug', 't', 'doc', 'm']) {
+    assert.equal(shouldEnforceSubagentFooter(removed, removed, aliases), false, `${removed} is no longer a shipped role`);
   }
 });
 

@@ -20,7 +20,7 @@
 //  12 enforcement_mode advisory|enforce
 //  13 byte-cap userConfig defaults (positive finite numbers)
 //  14 workflow_profile is a required contract key (legacy|lean, default lean)
-//  15 slash-command inventory: agent-backed set is exactly ['review']
+//  15 slash-command inventory: no forked skill, /review names both stages
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
@@ -29,6 +29,7 @@ import {
   validateHookManifestStructure,
   validateUserConfigShape,
   collectSlashCommandInventoryErrors,
+  reviewStageBodyErrors,
   AGENT_BACKED_SKILLS,
   SLASH_COMMAND_NAMES,
   KNOWN_HOOK_EVENTS,
@@ -63,15 +64,17 @@ test('landed plugin userConfig passes the userConfig validator', () => {
   assert.deepEqual(validateUserConfigShape(PLUGIN_JSON.userConfig), []);
 });
 
-test('workflow_profile is a required contract key with legacy|lean domain', () => {
+test('workflow_profile is a required contract key whose manifest default must be lean', () => {
   assert.ok(USER_CONFIG_CONTRACT_KEYS.includes('workflow_profile'));
-  assert.ok(WORKFLOW_PROFILE_VALUES.has('legacy') && WORKFLOW_PROFILE_VALUES.has('lean'));
-  // The landed manifest ships default "legacy" (task 11), and `lean` stays an
-  // accepted in-domain value.
+  assert.ok(WORKFLOW_PROFILE_VALUES.has('lean'));
   assert.equal(PLUGIN_JSON.userConfig.workflow_profile.default, 'lean');
   const uc = ucClone();
   uc.workflow_profile.default = 'lean';
   assert.deepEqual(validateUserConfigShape(uc), []);
+  // A removed profile may be an installed session's INPUT (migration note) but
+  // never a packaged default.
+  uc.workflow_profile.default = 'legacy';
+  assert.ok(validateUserConfigShape(uc).some((e) => e.includes('default must be lean')));
 });
 
 test('StopFailure is a known event registered async with timeout 30', () => {
@@ -236,11 +239,11 @@ test('negative: typo-d workflow_profile key and out-of-domain value fail', () =>
   const bad = ucClone();
   bad.workflow_profile.default = 'yolo';
   const badErrors = validateUserConfigShape(bad);
-  assert.ok(badErrors.some((e) => e.includes('legacy|lean')), JSON.stringify(badErrors));
+  assert.ok(badErrors.some((e) => e.includes('default must be lean')), JSON.stringify(badErrors));
 });
 
-// ---- rule 14: slash-command inventory (agent-backed set) ----
-test('agent-backed skill set in the repo is exactly review', () => {
+// ---- rule 14/15: slash-command inventory (no forked skill) ----
+test('no skill in the repo is agent-backed (ADR 0015)', () => {
   // Independent repo read (no shared helper): dirs whose SKILL.md
   // declares `agent:`.
   const skillsDir = join(REPO, 'plugins', 'agnthive', 'skills');
@@ -252,13 +255,14 @@ test('agent-backed skill set in the repo is exactly review', () => {
     const fm = text.split('---')[1] ?? '';
     return fm.split('\n').some((l) => l.startsWith('agent:'));
   });
-  assert.deepEqual(agentBacked.sort(), ['review']);
+  assert.deepEqual(agentBacked.sort(), []);
 });
 
-test('validator expects exactly the review agent-backed skill set', () => {
-  assert.deepEqual(AGENT_BACKED_SKILLS, ['review']);
-  assert.deepEqual(SLASH_COMMAND_NAMES.length, 9);
+test('validator expects no forked skill and both /review stages', () => {
+  assert.deepEqual(AGENT_BACKED_SKILLS, []);
+  assert.deepEqual(SLASH_COMMAND_NAMES.length, 10);
   assert.ok(SLASH_COMMAND_NAMES.includes('review'));
+  assert.ok(SLASH_COMMAND_NAMES.includes('simplify'));
   assert.ok(USER_CONFIG_CONTRACT_KEYS.includes('enforcement_mode'));
 });
 
@@ -266,4 +270,15 @@ test('repo passes the exported slash-command inventory collector', () => {
   const { checks, errors } = collectSlashCommandInventoryErrors();
   assert.deepEqual(errors, []);
   assert.ok(checks.includes('plugin agent-backed skill inventory'), JSON.stringify(checks));
+  assert.ok(checks.includes('/review two-stage body'), JSON.stringify(checks));
+});
+
+test('review stage body check ignores frontmatter and fails a stage-less body', () => {
+  const fm = '---\nname: review\ndescription: Two-stage review — simplify first, then an independent Code Reviewer pass.\n---\n';
+  assert.deepEqual(reviewStageBodyErrors(`${fm}\nRun /simplify, then dispatch @cr.\n`), []);
+  // The description alone names both stages; the procedure body must still
+  // carry them, or a deleted/replaced body would pass vacuously.
+  const bodyless = reviewStageBodyErrors(`${fm}\nNothing to see here.\n`);
+  assert.equal(bodyless.length, 1);
+  assert.match(bodyless[0], /simplify stage and @cr stage/);
 });
